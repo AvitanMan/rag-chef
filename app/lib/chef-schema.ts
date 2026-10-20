@@ -1,0 +1,524 @@
+export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
+export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
+export const DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text";
+export const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
+
+export type ChefProvider = "ollama" | "openai";
+
+export type PantryItem = {
+  name: string;
+  quantity?: string | number;
+  unit?: string;
+};
+
+export type ChefProfile = {
+  allergies: string[];
+  diet: string[];
+  dislikes: string[];
+  skillLevel?: string;
+  budget?: string;
+  equipment: string[];
+};
+
+export type RecipeIngredient = {
+  name: string;
+  measure: string;
+};
+
+export type RecipeSource = {
+  name: string;
+  url: string;
+};
+
+export type RecipeCandidate = {
+  id: string;
+  title: string;
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  source: RecipeSource;
+  sourceUrl: string;
+  summary?: string;
+  tags: string[];
+  allergens: string[];
+  communityTips: string[];
+  servings?: string | number;
+  prepMinutes?: number;
+  cookMinutes?: number;
+  rating?: number;
+  nutrition?: Record<string, string | number>;
+};
+
+export type ChefRequest = {
+  query: string;
+  pantry: PantryItem[];
+  profile: ChefProfile;
+  candidates: RecipeCandidate[];
+  provider: ChefProvider;
+  model?: string;
+};
+
+export type ChefSourceFact = {
+  recipeId: string;
+  fact: string;
+};
+
+export type ChefChange = {
+  recipeId: string;
+  change: string;
+  reason: string;
+};
+
+export type ChefRecommendation = {
+  recipeId: string;
+  reason: string;
+  pantryMatch: string[];
+  missingIngredients: string[];
+};
+
+export type ChefCitation = {
+  recipeId: string;
+  title: string;
+  sourceName: string;
+  sourceUrl: string;
+};
+
+export type ChefStructuredAnswer = {
+  answer: string;
+  sourceFacts: ChefSourceFact[];
+  chefChanges: ChefChange[];
+  recommendations: ChefRecommendation[];
+  citations: ChefCitation[];
+  warnings: string[];
+};
+
+export type RankedRecipe = {
+  recipeId: string;
+  score: number;
+  pantryScore: number;
+  semanticScore: number | null;
+};
+
+export type ChefApiResponse = ChefStructuredAnswer & {
+  provider: ChefProvider;
+  model: string;
+  retrieval: {
+    method: "precomputed_embeddings" | "pantry_fallback";
+    embedModel: string;
+    ranked: RankedRecipe[];
+    allergyExcludedCount: number;
+    sourceExcludedCount: number;
+  };
+};
+
+/**
+ * Shared strict schema for both OpenAI Responses structured outputs and
+ * Ollama's JSON-schema `format` option. Every object is closed and all object
+ * properties are required so providers cannot silently invent fields.
+ */
+export const CHEF_RESPONSE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    answer: { type: "string", minLength: 1 },
+    sourceFacts: {
+      type: "array",
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          recipeId: { type: "string", minLength: 1 },
+          fact: { type: "string", minLength: 1 },
+        },
+        required: ["recipeId", "fact"],
+      },
+    },
+    chefChanges: {
+      type: "array",
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          recipeId: { type: "string", minLength: 1 },
+          change: { type: "string", minLength: 1 },
+          reason: { type: "string", minLength: 1 },
+        },
+        required: ["recipeId", "change", "reason"],
+      },
+    },
+    recommendations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          recipeId: { type: "string", minLength: 1 },
+          reason: { type: "string", minLength: 1 },
+          pantryMatch: {
+            type: "array",
+            maxItems: 30,
+            items: { type: "string" },
+          },
+          missingIngredients: {
+            type: "array",
+            maxItems: 30,
+            items: { type: "string" },
+          },
+        },
+        required: [
+          "recipeId",
+          "reason",
+          "pantryMatch",
+          "missingIngredients",
+        ],
+      },
+    },
+    citations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          recipeId: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1 },
+          sourceName: { type: "string" },
+          sourceUrl: { type: "string" },
+        },
+        required: ["recipeId", "title", "sourceName", "sourceUrl"],
+      },
+    },
+    warnings: {
+      type: "array",
+      maxItems: 12,
+      items: { type: "string" },
+    },
+  },
+  required: [
+    "answer",
+    "sourceFacts",
+    "chefChanges",
+    "recommendations",
+    "citations",
+    "warnings",
+  ],
+} as const;
+
+export class ChefValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChefValidationError";
+  }
+}
+
+const MAX_CANDIDATES = 80;
+
+export function parseChefRequest(value: unknown): ChefRequest {
+  if (!isRecord(value)) {
+    throw new ChefValidationError("Request body must be a JSON object.");
+  }
+
+  const query = requiredString(value.query, "query", 1_000);
+  const provider = parseProvider(value.provider);
+  const model = optionalString(value.model, 120);
+  const pantry = parsePantry(value.pantry);
+  const profile = parseProfile(value.profile);
+
+  if (!Array.isArray(value.candidates) || value.candidates.length === 0) {
+    throw new ChefValidationError("candidates must contain at least one recipe.");
+  }
+  if (value.candidates.length > MAX_CANDIDATES) {
+    throw new ChefValidationError(
+      `candidates cannot contain more than ${MAX_CANDIDATES} recipes.`,
+    );
+  }
+
+  const candidates = value.candidates.map((candidate, index) =>
+    parseCandidate(candidate, index),
+  );
+  const ids = new Set<string>();
+  for (const candidate of candidates) {
+    if (ids.has(candidate.id)) {
+      throw new ChefValidationError(
+        `candidates contains duplicate recipe id "${candidate.id}".`,
+      );
+    }
+    ids.add(candidate.id);
+  }
+
+  return { query, pantry, profile, candidates, provider, model };
+}
+
+function parseProvider(value: unknown): ChefProvider {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_CHEF_PROVIDER;
+  }
+  if (value === "ollama" || value === "openai") return value;
+  throw new ChefValidationError('provider must be either "ollama" or "openai".');
+}
+
+function parsePantry(value: unknown): PantryItem[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ChefValidationError("pantry must be an array.");
+  }
+
+  return value.slice(0, 120).map((item, index) => {
+    if (typeof item === "string") {
+      return { name: requiredString(item, `pantry[${index}]`, 120) };
+    }
+    if (!isRecord(item)) {
+      throw new ChefValidationError(
+        `pantry[${index}] must be a string or pantry item object.`,
+      );
+    }
+    const quantity =
+      typeof item.quantity === "number" && Number.isFinite(item.quantity)
+        ? item.quantity
+        : optionalString(item.quantity, 40);
+    return {
+      name: requiredString(item.name, `pantry[${index}].name`, 120),
+      ...(quantity !== undefined ? { quantity } : {}),
+      ...(optionalString(item.unit, 40)
+        ? { unit: optionalString(item.unit, 40) }
+        : {}),
+    };
+  });
+}
+
+function parseProfile(value: unknown): ChefProfile {
+  if (value === undefined || value === null) {
+    return { allergies: [], diet: [], dislikes: [], equipment: [] };
+  }
+  if (!isRecord(value)) {
+    throw new ChefValidationError("profile must be an object.");
+  }
+
+  return {
+    allergies: stringArray(value.allergies, "profile.allergies", 30, 100),
+    diet: flexibleStringArray(value.diet, "profile.diet", 20, 100),
+    dislikes: stringArray(value.dislikes, "profile.dislikes", 50, 100),
+    equipment: stringArray(value.equipment, "profile.equipment", 50, 100),
+    ...(optionalString(value.skillLevel, 80)
+      ? { skillLevel: optionalString(value.skillLevel, 80) }
+      : {}),
+    ...(optionalString(value.budget, 80)
+      ? { budget: optionalString(value.budget, 80) }
+      : {}),
+  };
+}
+
+function parseCandidate(value: unknown, index: number): RecipeCandidate {
+  if (!isRecord(value)) {
+    throw new ChefValidationError(`candidates[${index}] must be an object.`);
+  }
+
+  const id = requiredString(value.id, `candidates[${index}].id`, 160);
+  const title = requiredString(
+    value.title ?? value.name,
+    `candidates[${index}].title`,
+    240,
+  );
+  const ingredients = parseIngredients(value.ingredients, index);
+  const instructions = flexibleStringArray(
+    value.instructions ?? value.steps,
+    `candidates[${index}].instructions`,
+    40,
+    1_000,
+  );
+  const source = parseSource(value.source, value.sourceUrl, index);
+  const sourceUrl = safeHttpUrl(
+    optionalString(value.sourceUrl, 1_500) ?? source.url,
+  );
+
+  return {
+    id,
+    title,
+    ingredients,
+    instructions,
+    source: {
+      name:
+        source.name || optionalString(value.sourceName, 160) || "Recipe source",
+      url: source.url || sourceUrl,
+    },
+    sourceUrl: sourceUrl || source.url,
+    tags: stringArray(value.tags, `candidates[${index}].tags`, 40, 100),
+    allergens: stringArray(
+      value.allergens,
+      `candidates[${index}].allergens`,
+      30,
+      100,
+    ),
+    communityTips: flexibleStringArray(
+      value.communityTips ?? value.tips,
+      `candidates[${index}].communityTips`,
+      12,
+      500,
+    ),
+    ...(optionalString(value.summary ?? value.description, 1_200)
+      ? { summary: optionalString(value.summary ?? value.description, 1_200) }
+      : {}),
+    ...(typeof value.servings === "number" && Number.isFinite(value.servings)
+      ? { servings: value.servings }
+      : optionalString(value.servings, 80)
+        ? { servings: optionalString(value.servings, 80) }
+        : {}),
+    ...numberField(value.prepMinutes, "prepMinutes"),
+    ...numberField(value.cookMinutes, "cookMinutes"),
+    ...numberField(value.rating, "rating"),
+    ...(isRecord(value.nutrition)
+      ? { nutrition: parseNutrition(value.nutrition) }
+      : {}),
+  };
+}
+
+function parseIngredients(value: unknown, candidateIndex: number): RecipeIngredient[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new ChefValidationError(
+      `candidates[${candidateIndex}].ingredients must contain at least one ingredient.`,
+    );
+  }
+
+  return value.slice(0, 80).map((ingredient, ingredientIndex) => {
+    if (typeof ingredient === "string") {
+      return {
+        name: requiredString(
+          ingredient,
+          `candidates[${candidateIndex}].ingredients[${ingredientIndex}]`,
+          240,
+        ),
+        measure: "",
+      };
+    }
+    if (!isRecord(ingredient)) {
+      throw new ChefValidationError(
+        `candidates[${candidateIndex}].ingredients[${ingredientIndex}] must be a string or object.`,
+      );
+    }
+    return {
+      name: requiredString(
+        ingredient.name,
+        `candidates[${candidateIndex}].ingredients[${ingredientIndex}].name`,
+        240,
+      ),
+      measure:
+        optionalString(
+          ingredient.measure ?? ingredient.quantity,
+          120,
+        ) ?? "",
+    };
+  });
+}
+
+function parseSource(
+  value: unknown,
+  fallbackUrl: unknown,
+  candidateIndex: number,
+): RecipeSource {
+  if (typeof value === "string") {
+    return { name: value.slice(0, 160).trim(), url: safeHttpUrl(fallbackUrl) };
+  }
+  if (value === undefined || value === null) {
+    return { name: "Recipe source", url: safeHttpUrl(fallbackUrl) };
+  }
+  if (!isRecord(value)) {
+    throw new ChefValidationError(
+      `candidates[${candidateIndex}].source must be an object or source name.`,
+    );
+  }
+  return {
+    name: optionalString(value.name, 160) ?? "Recipe source",
+    url: safeHttpUrl(value.url ?? fallbackUrl),
+  };
+}
+
+function parseNutrition(value: Record<string, unknown>): Record<string, string | number> {
+  const result: Record<string, string | number> = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, 30)) {
+    const key = rawKey.trim().slice(0, 80);
+    if (!key) continue;
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      result[key] = rawValue;
+    } else if (typeof rawValue === "string" && rawValue.trim()) {
+      result[key] = rawValue.trim().slice(0, 120);
+    }
+  }
+  return result;
+}
+
+function numberField(
+  value: unknown,
+  key: "prepMinutes" | "cookMinutes" | "rating",
+): Partial<Pick<RecipeCandidate, "prepMinutes" | "cookMinutes" | "rating">> {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? { [key]: value }
+    : {};
+}
+
+function stringArray(
+  value: unknown,
+  path: string,
+  maxItems: number,
+  maxLength: number,
+): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ChefValidationError(`${path} must be an array of strings.`);
+  }
+  return value.slice(0, maxItems).map((item, index) =>
+    requiredString(item, `${path}[${index}]`, maxLength),
+  );
+}
+
+function flexibleStringArray(
+  value: unknown,
+  path: string,
+  maxItems: number,
+  maxLength: number,
+): string[] {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    return trimmed
+      .split(/\r?\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, maxItems)
+      .map((item) => item.slice(0, maxLength));
+  }
+  return stringArray(value, path, maxItems, maxLength);
+}
+
+function requiredString(value: unknown, path: string, maxLength: number): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ChefValidationError(`${path} must be a non-empty string.`);
+  }
+  return value.trim().slice(0, maxLength);
+}
+
+function optionalString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function safeHttpUrl(value: unknown): string {
+  const candidate = optionalString(value, 1_500);
+  if (!candidate) return "";
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.toString()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
