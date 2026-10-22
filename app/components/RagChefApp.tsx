@@ -244,8 +244,15 @@ export default function RagChefApp() {
   const [view, setView] = useState<View>("plan");
   const [today, setToday] = useState(localDate);
   useEffect(() => {
-    const id = window.setInterval(() => setToday(localDate()), 30_000);
-    return () => window.clearInterval(id);
+    const refreshDate = () => setToday(localDate());
+    const id = window.setInterval(refreshDate, 30_000);
+    window.addEventListener("focus", refreshDate);
+    document.addEventListener("visibilitychange", refreshDate);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", refreshDate);
+      document.removeEventListener("visibilitychange", refreshDate);
+    };
   }, []);
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [view]);
   const kitchen = useKitchen(LOCAL_RECIPES);
@@ -266,7 +273,7 @@ export default function RagChefApp() {
   const [planningReasons, setPlanningReasons] = useState<Record<string, string>>({});
   const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
   const [loadingRecipes, setLoadingRecipes] = useState(false);
-  const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, settings });
+  const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, settings, today });
   const [chefBusyContext, setChefBusyContext] = useState<string | null>(null);
   const askingChef = chefBusyContext === chefContext;
   const [storedChefResult, setChefResult] = useState<(ChefResponse & { contextKey: string }) | null>(null);
@@ -292,7 +299,11 @@ export default function RagChefApp() {
   const [pendingCookingStart, setPendingCookingStart] = useState<CookingSession | null>(null);
   const [backupExportError, setBackupExportError] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("");
-  useEffect(() => () => chefRequest.current.controller?.abort(), []);
+  useEffect(() => () => {
+    ++chefRequest.current.id;
+    chefRequest.current.controller?.abort();
+    chefRequest.current.controller = null;
+  }, [chefContext]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {

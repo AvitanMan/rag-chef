@@ -163,7 +163,9 @@ citations remain server-owned. Unsupported requests can return `no_match` withou
 calling a generation provider. Empty catalogs and unsatisfied constraints have
 separate outcomes. Pantry coverage cannot turn an unrelated query into a match.
 Canceling or superseding a request prevents its late response from appearing;
-changing the pantry or profile hides results from the old context.
+changing the pantry, profile or current date hides results from the old context
+and cancels any pending request. Returning to the app refreshes the current date
+so stock that has passed its entered use-by date is excluded from new requests.
 
 Exact title requests and explicit positive questions such as
 `For Zucchini Pasta Bake, can I use olive oil instead of butter?`

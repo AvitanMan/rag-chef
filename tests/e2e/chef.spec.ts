@@ -119,3 +119,40 @@ test("expired and depleted same-name pantry rows never enter the Chef request or
   expect(JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2)).pantry).toEqual([{ name: "rice", quantity: "100 g" }]);
   expect((await (await request.get("/api/kitchen")).json()).state.pantry).toEqual(pantry);
 });
+
+test("a new day hides yesterday's Chef answer and excludes stock that has just passed its use-by date", async ({ page, request }) => {
+  await page.clock.install({ time: new Date("2026-10-22T23:59:45+03:00") });
+  const current = await (await request.get("/api/kitchen")).json();
+  const state = { schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy: "2026-10-22" }], meals: {}, shoppingChecked: {}, migratedLegacy: false };
+  expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+  const answer = await ask(page, "Tomato Rice");
+  expect(answer.recommendations[0].pantryMatch).toEqual(["rice"]);
+  await expect(page.locator(".chef-answer")).toBeVisible();
+  await page.clock.fastForward(31_000);
+  await expect(page.locator(".chef-answer")).toHaveCount(0);
+  const outgoing = page.waitForRequest((request) => request.url().endsWith("/api/chef") && request.method() === "POST");
+  await page.getByRole("button", { name: "Find my dinner" }).click();
+  expect((await outgoing).postDataJSON().pantry).toEqual([]);
+  await expect(page.locator(".chef-answer")).toBeVisible();
+  expect((await (await request.get("/api/kitchen")).json()).state.pantry).toEqual(state.pantry);
+});
+
+test("changing the pantry cancels a pending Chef request even without starting a replacement", async ({ page }) => {
+  await control({ mode: "hold" });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("button", { name: "Find my dinner" }).click();
+  await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
+  const failed = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));
+  await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("unique test beans");
+  await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+  await failed;
+  await control({ release: true });
+  await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Find my dinner" })).toBeEnabled();
+  await expect(page.locator(".chef-answer")).toHaveCount(0);
+});
