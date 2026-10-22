@@ -20,6 +20,7 @@ export type ChefProfile = {
   skillLevel?: string;
   budget?: string;
   equipment: string[];
+  equipmentSpecified?: boolean;
 };
 
 export type RecipeIngredient = {
@@ -272,7 +273,7 @@ function parsePantry(value: unknown): PantryItem[] {
 
 function parseProfile(value: unknown): ChefProfile {
   if (value === undefined || value === null) {
-    return { allergies: [], diet: [], dislikes: [], equipment: [] };
+    return { allergies: [], diet: [], dislikes: [], equipment: [], equipmentSpecified: false };
   }
   if (!isRecord(value)) {
     throw new ChefValidationError("profile must be an object.");
@@ -283,6 +284,7 @@ function parseProfile(value: unknown): ChefProfile {
     diet: flexibleStringArray(value.diet, "profile.diet", 20, 100),
     dislikes: stringArray(value.dislikes, "profile.dislikes", 50, 100),
     equipment: stringArray(value.equipment, "profile.equipment", 50, 100),
+    equipmentSpecified: Object.hasOwn(value, "equipment"),
     ...(optionalString(value.skillLevel, 80)
       ? { skillLevel: optionalString(value.skillLevel, 80) }
       : {}),

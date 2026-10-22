@@ -20,6 +20,8 @@ files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
 files.push(["chef-route", "../app/api/chef/route.ts"]);
 files.push(["admin-route", "../app/api/admin/catalog/route.ts"]);
+files.push(["metadata-route", "../app/api/admin/recipes/metadata/route.ts"]);
+files.push(["search-route", "../app/api/recipes/route.ts"]);
 files.push(["recipe-source", "../app/lib/recipe-source.ts"]);
 for (const [name, path] of files) {
   const source = await readFile(new URL(path, import.meta.url), "utf8");
@@ -59,6 +61,9 @@ const catalogRoute = await load("catalog-route");
 const chefRoute = await load("chef-route");
 const adminRoute = await load("admin-route");
 const chefSchema = await load("chef-schema");
+const constraintRules = await load("recipe-constraints");
+const metadataRoute = await load("metadata-route");
+const searchRoute = await load("search-route");
 const originalFetch = globalThis.fetch;
 let modelCalls = 0;
 beforeEach(() => {
@@ -530,4 +535,96 @@ test("canonical URLs reject unsafe targets and preserve Unicode recipe identity"
   assert.equal(importer.canonicalRecipeUrl("https://en.wikibooks.org/wiki/Cookbook:Cr%C3%A8me_br%C3%BBl%C3%A9e#Notes"), "https://en.wikibooks.org/wiki/Cookbook:Cr%C3%A8me_br%C3%BBl%C3%A9e");
   assert.equal(importer.canonicalRecipeUrl("https://en.wikibooks.org/wiki/Cookbook:Bob's_(Rice)"), "https://en.wikibooks.org/wiki/Cookbook:Bob%27s_%28Rice%29");
   for (const url of ["http://en.wikibooks.org/wiki/Cookbook:Foo", "https://evil.example/wiki/Cookbook:Foo", "https://en.wikibooks.org/wiki/Special:Foo", "https://en.wikibooks.org/wiki/Cookbook:Foo?x=1"]) assert.throws(() => importer.canonicalRecipeUrl(url));
+});
+
+async function metadataReview(overrides = {}) {
+  const item = (await store.listCatalogRecipes(1000))[0];
+  const evidence = { basis: "curator_assessment", evidence: "Reviewed the complete ingredient list and source directions; unknowns remain explicit." };
+  return { recipeId: item.recipe.id, reviewed: true, metadata: {
+    revision: 1, sourceContentHash: item.contentHash, coreDinner: true, dinnerRole: "main",
+    diets: { vegan: "fits", vegetarian: "fits", gluten_free: "fits", low_carb: "unknown" },
+    totalMinutes: null, equipment: ["Stovetop"],
+    provenance: Object.fromEntries(["coreDinner", "dinnerRole", "diets.vegan", "diets.vegetarian", "diets.gluten_free", "diets.low_carb", "totalMinutes", "equipment", "servings", "ingredients"].map((key) => [key, { ...evidence }])),
+    reviewedBy: "test reviewer", reviewedAt: "2026-10-22T00:00:00.000Z", ...overrides,
+  } };
+}
+function metadataRequest(entries, extra = {}) {
+  return new Request("http://localhost:3000/api/admin/recipes/metadata", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ entries, ...extra }) });
+}
+
+test("metadata preview is read-only; imports are idempotent, hash-bound, and preserve recipes, embeddings and saved meals", async () => {
+  await importOne(await draft());
+  const rawBefore = JSON.stringify(db.prepare("SELECT * FROM recipes").all());
+  const embeddingsBefore = JSON.stringify(db.prepare("SELECT * FROM recipe_embeddings").all());
+  const source = (await store.listCatalogRecipes())[0].recipe;
+  const planned = state.createPlannedMeal("2026-10-22", source);
+  const plannedBefore = JSON.stringify(planned);
+  const entry = await metadataReview();
+  const preview = await metadataRoute.POST(metadataRequest([entry], { preview: true }));
+  assert.equal(preview.status, 200); assert.equal(db.prepare("SELECT COUNT(*) n FROM recipe_metadata").get().n, 0);
+  assert.equal((await metadataRoute.POST(metadataRequest([entry]))).status, 200);
+  const catalog = await (await catalogRoute.GET()).json();
+  assert.equal(catalog.metadataByRecipeId[source.id].coreDinner, true);
+  const repeated = await (await metadataRoute.POST(metadataRequest([entry]))).json();
+  assert.equal(repeated.results[0].changed, false);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM recipe_metadata").get().n, 1);
+  assert.equal(JSON.stringify(db.prepare("SELECT * FROM recipes").all()), rawBefore);
+  assert.equal(JSON.stringify(db.prepare("SELECT * FROM recipe_embeddings").all()), embeddingsBefore);
+  assert.equal(JSON.stringify(planned), plannedBefore);
+  await importOne(await draft(0, { servings: 8 }));
+  assert.equal((await store.listCatalogRecipes())[0].metadata, undefined);
+  assert.equal((await metadataRoute.POST(metadataRequest([entry]))).status, 400);
+});
+
+test("metadata validates all reviews before writes and enforces field provenance and admin boundaries", async () => {
+  await importOne(await draft());
+  const entry = await metadataReview();
+  for (const bad of [
+    { ...entry, reviewed: false },
+    { ...entry, metadata: { ...entry.metadata, equipment: ["knife"] } },
+    { ...entry, metadata: { ...entry.metadata, diets: { ...entry.metadata.diets, low_carb: "fits?" } } },
+    { ...entry, metadata: { ...entry.metadata, provenance: {} } },
+    { ...entry, metadata: { ...entry.metadata, provenance: { ...entry.metadata.provenance, totalMinutes: { basis: "source", evidence: "Invented total time 7 minutes." } } } },
+  ]) assert.equal((await metadataRoute.POST(metadataRequest([bad]))).status, 400);
+  assert.equal((await metadataRoute.POST(metadataRequest([entry, { ...entry, recipeId: "unknown" }]))).status, 400);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM recipe_metadata").get().n, 0);
+  assert.equal((await metadataRoute.POST(new Request("http://localhost:3000/api/admin/recipes/metadata", { method: "POST", headers: { origin: "https://other.example", "content-type": "application/json" }, body: JSON.stringify({ entries: [entry] }) }))).status, 403);
+  const exported = await (await metadataRoute.GET(new Request("http://localhost:3000/api/admin/recipes/metadata"))).json();
+  assert.equal(exported.entries[0].contentHash, entry.metadata.sourceContentHash);
+});
+
+test("equipment omission survives Chef parsing and query normalization; explicit none remains restrictive", async () => {
+  await importOne(await draft());
+  const entry = await metadataReview();
+  await metadataRoute.POST(metadataRequest([entry]));
+  const omitted = chefSchema.parseChefRequest({ query: "Suggest dinner", profile: { diet: "Vegan" } }).profile;
+  assert.equal(omitted.equipmentSpecified, false);
+  const unspecified = search.constraintsForRecipeQuery("Suggest dinner", constraintRules.normalizeConstraints(omitted));
+  assert.equal(unspecified.equipmentSpecified, false);
+  assert.equal((await search.searchRecipeCatalog({ query: "Suggest dinner", constraints: unspecified }, "nomic-embed-text")).recipes.length, 1);
+  const explicit = chefSchema.parseChefRequest({ query: "Suggest dinner", profile: { equipment: [] } }).profile;
+  assert.equal(explicit.equipmentSpecified, true);
+  const result = await search.searchRecipeCatalog({ query: "Suggest dinner", constraints: constraintRules.normalizeConstraints(explicit) }, "nomic-embed-text");
+  assert.equal(result.outcome, "constraints_unsatisfied"); assert.deepEqual(result.recipes, []);
+  const request = (suffix = "") => new Request(`http://localhost:3000/api/recipes?q=Suggest%20dinner${suffix}`);
+  assert.equal((await (await searchRoute.GET(request())).json()).recipes.length, 1, "Omitted GET equipment is unspecified");
+  const none = await (await searchRoute.GET(request("&equipment="))).json();
+  assert.equal(none.outcome, "constraints_unsatisfied"); assert.deepEqual(none.recipes, []);
+  assert.equal((await (await searchRoute.GET(request("&equipment=Stovetop"))).json()).recipes.length, 1);
+});
+
+test("the curated manifest has exactly 30 reviewed main dinners, source attribution and explicit unknowns", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v1.json", import.meta.url), "utf8"));
+  assert.equal(manifest.schemaVersion, 1); assert.equal(manifest.coreDinnerCount, 30); assert.equal(manifest.entries.length, 30);
+  assert.equal(new Set(manifest.entries.map((x) => x.recipeId)).size, 30);
+  for (const entry of manifest.entries) {
+    assert.equal(entry.reviewed, true);
+    const metadata = store.validateRecipeMetadata(entry.metadata);
+    assert.equal(metadata.coreDinner, true); assert.equal(metadata.dinnerRole, "main");
+    assert.equal(metadata.totalMinutes, null, "Step durations must not be promoted to total times");
+    assert.equal(metadata.diets.low_carb, "unknown", "No guessed macro threshold");
+    assert.equal(metadata.provenance.servings.basis, "source");
+    assert.match(entry.sourceUrl, /^https:\/\/en\.wikibooks\.org\/wiki\/Cookbook:/);
+    assert.equal(entry.source.licenseId, "CC-BY-SA-4.0"); assert.ok(entry.source.attributionText);
+  }
 });

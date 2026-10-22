@@ -248,6 +248,19 @@ export const recipeEmbeddings = sqliteTable(
   ],
 );
 
+/** Reviewed annotations are versioned independently from immutable source text. */
+export const recipeMetadata = sqliteTable("recipe_metadata", {
+  recipeId: text("recipe_id").notNull().references(() => recipes.id, { onDelete: "cascade" }),
+  revision: integer("revision").notNull(),
+  sourceContentSha256: text("source_content_sha256").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  reviewedBy: text("reviewed_by").notNull(),
+  reviewedAt: text("reviewed_at").notNull(),
+}, (table) => [
+  uniqueIndex("recipe_metadata_recipe_revision_uidx").on(table.recipeId, table.revision),
+  index("recipe_metadata_hash_idx").on(table.recipeId, table.sourceContentSha256),
+]);
+
 /** One durable document for this local, personal kitchen (not a multi-user store). */
 export const kitchenState = sqliteTable("kitchen_state", {
   id: text("id").primaryKey(),

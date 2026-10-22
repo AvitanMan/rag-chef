@@ -2172,3 +2172,10 @@ img {
 .restore-preview { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
 .restore-preview p { margin: 8px 0; }
 
+.catalog-filters { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 16px; }
+.catalog-filters label { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; }
+.catalog-filters input[type="number"] { width: 90px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.core-badge { display: inline-block; padding: 4px 8px; border-radius: 8px; color: var(--green); background: var(--green-pale); font-size: 0.8rem; }
+.recipe-quality { display: block; color: var(--ink-soft); margin: 10px 0; font-size: 0.8rem; line-height: 1.6; }
+.equipment-options { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+.equipment-options label { display: flex; align-items: center; gap: 6px; }

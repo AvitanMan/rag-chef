@@ -7,6 +7,7 @@ type ConstraintInput = {
   diets?: string[];
   dislikes?: string[];
   equipment?: string[];
+  equipmentSpecified?: boolean;
   maxTotalMinutes?: number;
 };
 
@@ -22,6 +23,7 @@ export function normalizeConstraints(input: ConstraintInput = {}): RecipeConstra
     diets: [...new Set(diets.map((x) => DIETS[normalizeIngredientText(x)]).filter((x): x is Diet => Boolean(x)))],
     dislikes: [...new Set((input.dislikes ?? []).map(normalizeIngredientText).filter(Boolean))],
     equipment: [...new Set((input.equipment ?? []).map((x) => normalizeIngredientText(x).replace(/^stove top$|^hob$/, "stovetop")).filter(Boolean))],
+    equipmentSpecified: input.equipmentSpecified ?? Object.hasOwn(input, "equipment"),
     ...(Number.isFinite(input.maxTotalMinutes) && input.maxTotalMinutes! > 0 ? { maxTotalMinutes: input.maxTotalMinutes } : {}),
   };
 }
@@ -59,7 +61,7 @@ export function evaluateRecipeConstraints(recipe: Recipe, metadata: RecipeMetada
   const dietConflicts = constraints.diets.filter((diet) => ingredientDietConflicts(recipe, diet) || metadata?.diets[diet] === "conflicts");
   const dietUnknowns = constraints.diets.filter((diet) => !dietConflicts.includes(diet) && metadata?.diets[diet] !== "fits");
   const dislikedIngredients = recipe.ingredients.filter((ingredient) => constraints.dislikes.some((term) => containsIngredientTerm(normalizeIngredientText(ingredient.name), term))).map((x) => x.name);
-  const equipmentMissing = constraints.equipment.length && metadata?.equipment ? metadata.equipment.filter((item) => !constraints.equipment.includes(normalizeIngredientText(item))) : [];
+  const equipmentMissing = constraints.equipmentSpecified && metadata?.equipment ? metadata.equipment.filter((item) => !constraints.equipment.includes(normalizeIngredientText(item))) : [];
   const establishedTotal = metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source" ? metadata.totalMinutes : null;
   const reasons = [
     ...allergyMatches.map((x) => `Excluded ingredient allergy: ${x}.`),

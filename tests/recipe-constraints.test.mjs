@@ -49,3 +49,17 @@ test("dislikes are a soft preference, not a food exclusion", () => {
   assert.equal(value.eligible, true); assert.deepEqual(value.dislikedIngredients, ["chopped mushrooms"]);
   assert.deepEqual(normalizeConstraints({ diet: "Gluten-free" }).diets, ["gluten_free"]);
 });
+
+test("omitted appliances are unspecified; an explicit empty selection means no available appliances", () => {
+  const metadata = { diets: {}, equipment: ["Oven"] };
+  const unspecified = normalizeConstraints();
+  assert.equal(unspecified.equipmentSpecified, false);
+  assert.equal(evaluateRecipeConstraints(recipe("rice"), metadata, unspecified).eligible, true);
+  assert.equal(normalizeConstraints(unspecified).equipmentSpecified, false, "Repeated normalization preserves omitted equipment");
+  const none = normalizeConstraints({ equipment: [] });
+  assert.equal(none.equipmentSpecified, true);
+  assert.equal(evaluateRecipeConstraints(recipe("rice"), metadata, none).eligible, false);
+  assert.deepEqual(evaluateRecipeConstraints(recipe("rice"), metadata, none).equipmentMissing, ["Oven"]);
+  assert.equal(decide(["rice"], { equipment: [] }).eligible, true, "Unknown recipe equipment remains eligible");
+  assert.equal(decide(["rice"], { equipment: [] }, { diets: {}, equipment: [] }).eligible, true, "A reviewed no-appliance recipe is compatible with none available");
+});

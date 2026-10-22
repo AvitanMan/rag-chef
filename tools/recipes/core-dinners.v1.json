@@ -1,0 +1,2202 @@
+{
+  "schemaVersion": 1,
+  "coreDinnerCount": 30,
+  "description": "Reviewed annotations for 30 existing source recipes. Not a source-recipe replacement or nutritional/allergy certification. Unknowns are explicit; source text, quantities, source servings, and saved meals remain unchanged.",
+  "entries": [
+    {
+      "recipeId": "wikibooks:a6c85fbd801c51f8dc05eec0942deb13c900435eb5fa2c18ab3598bfd2391e3c",
+      "title": "Asparagus Frittata",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Asparagus_Frittata",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "58f57d6f3576ddc37167bc2ed2f66763a4084e8c3af56bd3e7b20818a476fafe",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Asparagus Frittata"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 tablespoon olive oil | 2 garlic cloves, minced | 1 bunch of fresh asparagus, trimmed and chopped | 8 large eggs | 3 teaspoons milk (whole fat milk is best, but part skim would be fine) | 2 teaspoons chopped fresh basil or 1 teaspoon dried basil | 1 pinch of salt | 1 pinch of ground black pepper | 3 tablespoons grated Parmesan cheese"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 tablespoon olive oil | 2 garlic cloves, minced | 1 bunch of fresh asparagus, trimmed and chopped | 8 large eggs | 3 teaspoons milk (whole fat milk is best, but part skim would be fine) | 2 teaspoons chopped fresh basil or 1 teaspoon dried basil | 1 pinch of salt | 1 pinch of ground black pepper | 3 tablespoons grated Parmesan cheese"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 tablespoon olive oil | 2 garlic cloves, minced | 1 bunch of fresh asparagus, trimmed and chopped | 8 large eggs | 3 teaspoons milk (whole fat milk is best, but part skim would be fine) | 2 teaspoons chopped fresh basil or 1 teaspoon dried basil | 1 pinch of salt | 1 pinch of ground black pepper | 3 tablespoons grated Parmesan cheese"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: When the oil is hot, add the garlic and sauté until fragrant, about a minute. | Add the chopped asparagus and sauté for about 5 minutes until it begins to become tender. | Pour the egg mixture into the skillet and cook about 4 minutes or until bubbles begin to form in the center of the eggs. | Cook under the broiler until the top puffs and browns, about 3 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Preheat broiler/oven to 350°F (175°C). Heat the olive oil in the heat-safe skillet over medium heat. | Pour the egg mixture into the skillet and cook about 4 minutes or until bubbles begin to form in the center of the eggs. | Sprinkle the Parmesan cheese on top of the eggs, and immediately transfer the pan to the oven. | Cook under the broiler until the top puffs and browns, about 3 minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 tablespoon olive oil | 2 garlic cloves, minced | 1 bunch of fresh asparagus, trimmed and chopped | 8 large eggs | 3 teaspoons milk (whole fat milk is best, but part skim would be fine) | 2 teaspoons chopped fresh basil or 1 teaspoon dried basil | 1 pinch of salt | 1 pinch of ground black pepper | 3 tablespoons grated Parmesan cheese"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:a56ea8e3be24bf941c8122afbd1c18aff5f0419b551e5c256051f8031a656450",
+      "title": "Baked Ziti",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Baked_Ziti",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "d373dc5216ec4565d1aea94139612379c94315cf8c10d27b2e402d58ff0fa7b1",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Baked Ziti"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 lb (450 g) ziti or other pasta | 1 ½ cups (360 ml) marinara sauce | 1 lb (450 g) grated mozzarella | ½ lb (225 g) ricotta | 4 oz (110 g) grated Parmesan cheese | 1 egg, beaten | 3 tbsp basil, chopped fine | 2 tbsp oregano, chopped fine | 3 tbsp Italian parsley, chopped fine | ½ cup (120 ml) bread crumbs | 1 pinch crushed red pepper flakes (optional) | Salt | Pepper"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 lb (450 g) ziti or other pasta | 1 ½ cups (360 ml) marinara sauce | 1 lb (450 g) grated mozzarella | ½ lb (225 g) ricotta | 4 oz (110 g) grated Parmesan cheese | 1 egg, beaten | 3 tbsp basil, chopped fine | 2 tbsp oregano, chopped fine | 3 tbsp Italian parsley, chopped fine | ½ cup (120 ml) bread crumbs | 1 pinch crushed red pepper flakes (optional) | Salt | Pepper"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 lb (450 g) ziti or other pasta | 1 ½ cups (360 ml) marinara sauce | 1 lb (450 g) grated mozzarella | ½ lb (225 g) ricotta | 4 oz (110 g) grated Parmesan cheese | 1 egg, beaten | 3 tbsp basil, chopped fine | 2 tbsp oregano, chopped fine | 3 tbsp Italian parsley, chopped fine | ½ cup (120 ml) bread crumbs | 1 pinch crushed red pepper flakes (optional) | Salt | Pepper"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Bake at 425 °F (225 °C) for 20 minutes or until cheese on top turns golden and begins to bubble."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Preheat oven to 425 °F (225 °C). Coat a large baking dish with olive oil. | Cook ziti in a large pot of salted water until al dente. Drain well. | In a large bowl or pot, toss ziti with marinara sauce and red pepper flakes until noodles are covered. Stir in ricotta mixture and fold until it begins to melt. Pour mixture into greased dish and spread it out with a spoon. | Bake at 425 °F (225 °C) for 20 minutes or until cheese on top turns golden and begins to bubble."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 8"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 lb (450 g) ziti or other pasta | 1 ½ cups (360 ml) marinara sauce | 1 lb (450 g) grated mozzarella | ½ lb (225 g) ricotta | 4 oz (110 g) grated Parmesan cheese | 1 egg, beaten | 3 tbsp basil, chopped fine | 2 tbsp oregano, chopped fine | 3 tbsp Italian parsley, chopped fine | ½ cup (120 ml) bread crumbs | 1 pinch crushed red pepper flakes (optional) | Salt | Pepper"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:0bfbe6f5c32b034b982681c8d39b931e0b8ba2b2b1319c05626ffdab7b65d9a5",
+      "title": "Basic Lasagna",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Basic_Lasagna",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "6560655d58ad238d24f7dcf128ec8bfe09732f5035e010d75a925cc89564a88f",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Basic Lasagna"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 6 eggs, separated | 2 cups ricotta cheese OR shredded mozzarella cheese OR shredded cheddar cheese | 1 pinch of salt | ¼ tsp freshly-ground white pepper | ½ cup heavy cream | ~1000 g cooked lasagne noodles | 1 ½ cups Italian Tomato Sauce"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 6 eggs, separated | 2 cups ricotta cheese OR shredded mozzarella cheese OR shredded cheddar cheese | 1 pinch of salt | ¼ tsp freshly-ground white pepper | ½ cup heavy cream | ~1000 g cooked lasagne noodles | 1 ½ cups Italian Tomato Sauce"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 6 eggs, separated | 2 cups ricotta cheese OR shredded mozzarella cheese OR shredded cheddar cheese | 1 pinch of salt | ¼ tsp freshly-ground white pepper | ½ cup heavy cream | ~1000 g cooked lasagne noodles | 1 ½ cups Italian Tomato Sauce"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Cover with aluminum foil and bake at 375°F for 15 minutes. Remove foil and bake for another 20 minutes. | Remove from oven, and let rest for 10 minutes. Serve."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. In a large spotlessly clean stainless steel bowl, whip egg whites to stiff peaks and set aside. | Lay half the cooked noodles in the bottom of a roasting pan. Add a layer of tomato sauce on top, then a layer of the cheese mixture. Repeat this step for a second layer of noodles/tomato/cheese. The last layer should be cheese. | Cover with aluminum foil and bake at 375°F for 15 minutes. Remove foil and bake for another 20 minutes. | Remove from oven, and let rest for 10 minutes. Serve."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 6"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 6 eggs, separated | 2 cups ricotta cheese OR shredded mozzarella cheese OR shredded cheddar cheese | 1 pinch of salt | ¼ tsp freshly-ground white pepper | ½ cup heavy cream | ~1000 g cooked lasagne noodles | 1 ½ cups Italian Tomato Sauce"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:7f52cd202673c0cc106f083263394ce6818449c18ce33476284979bbe7831b44",
+      "title": "Bean Chili",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Bean_Chili",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "191e2cdae4a81f095cbe6badfbb0ab40c2a048a0af01c2a00b6b8b7405e83ec2",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Bean Chili"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 can red kidney beans, drained | 1 can black beans, drained | 2 cans crushed tomatoes | 1 small can of tomato paste | 2 cloves garlic, diced | 1 medium onion, chopped | 1 medium green bell pepper, chopped | 1 medium red bell pepper, chopped | 2 tbsp olive oil or vegetable oil | 1 tsp chili powder | ½ tsp cayenne pepper | 1 tsp thyme, basil, oregano, or other spice"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 can red kidney beans, drained | 1 can black beans, drained | 2 cans crushed tomatoes | 1 small can of tomato paste | 2 cloves garlic, diced | 1 medium onion, chopped | 1 medium green bell pepper, chopped | 1 medium red bell pepper, chopped | 2 tbsp olive oil or vegetable oil | 1 tsp chili powder | ½ tsp cayenne pepper | 1 tsp thyme, basil, oregano, or other spice"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 can red kidney beans, drained | 1 can black beans, drained | 2 cans crushed tomatoes | 1 small can of tomato paste | 2 cloves garlic, diced | 1 medium onion, chopped | 1 medium green bell pepper, chopped | 1 medium red bell pepper, chopped | 2 tbsp olive oil or vegetable oil | 1 tsp chili powder | ½ tsp cayenne pepper | 1 tsp thyme, basil, oregano, or other spice"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Add peppers and sauté for a few minutes. Add crushed tomatoes, tomato paste, and spices. | When mixture is bubbling, reduce heat to simmer and add beans. Cover and simmer for at least 1 hour, stirring occasionally. The longer it simmers, the better it tastes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat oil over medium-high heat in a large pot. | When mixture is bubbling, reduce heat to simmer and add beans. Cover and simmer for at least 1 hour, stirring occasionally. The longer it simmers, the better it tastes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 can red kidney beans, drained | 1 can black beans, drained | 2 cans crushed tomatoes | 1 small can of tomato paste | 2 cloves garlic, diced | 1 medium onion, chopped | 1 medium green bell pepper, chopped | 1 medium red bell pepper, chopped | 2 tbsp olive oil or vegetable oil | 1 tsp chili powder | ½ tsp cayenne pepper | 1 tsp thyme, basil, oregano, or other spice"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:0e8f67d0aa18042a2dfb8554a816c695f349bf576ab47d04e8e392ad558f31dc",
+      "title": "Bean Soup (Vegetarian)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Bean_Soup_%28Vegetarian%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "6b015c83a0c2eb3551a67f3ff370fc70d6a69cd99ffa0c5b3d834ffc2d375fcc",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Bean Soup (Vegetarian)"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 2 cans (28 ounces) fat-free vegetable broth | 1 cup water | 1 bag (1 pound) frozen mixed vegetables | 1 can (14½ ounces) no-salt-added stewed tomatoes | ⅓ cup broken angel-hair pasta, in 1- to 2-inch lengths | 1 can (15 ounces) no-salt-added kidney beans | 1 can (15 ounces) no-salt-added black beans | 1 teaspoon Italian seasoning | ½ teaspoon garlic powder | ¼ cup grated Parmesan cheese"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 2 cans (28 ounces) fat-free vegetable broth | 1 cup water | 1 bag (1 pound) frozen mixed vegetables | 1 can (14½ ounces) no-salt-added stewed tomatoes | ⅓ cup broken angel-hair pasta, in 1- to 2-inch lengths | 1 can (15 ounces) no-salt-added kidney beans | 1 can (15 ounces) no-salt-added black beans | 1 teaspoon Italian seasoning | ½ teaspoon garlic powder | ¼ cup grated Parmesan cheese"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 2 cans (28 ounces) fat-free vegetable broth | 1 cup water | 1 bag (1 pound) frozen mixed vegetables | 1 can (14½ ounces) no-salt-added stewed tomatoes | ⅓ cup broken angel-hair pasta, in 1- to 2-inch lengths | 1 can (15 ounces) no-salt-added kidney beans | 1 can (15 ounces) no-salt-added black beans | 1 teaspoon Italian seasoning | ½ teaspoon garlic powder | ¼ cup grated Parmesan cheese"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Stir frequently and cook until pasta is tender, about 5 minutes. | Stir occasionally and simmer for 5 minutes to develop the flavor."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Pour broth and water into a 4½-quart Dutch oven or soup pot. | Place pot over high heat. | While liquid is heating, add frozen vegetables, stewed tomatoes with their juices and uncooked pasta. | Cover pot and bring to boil."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 6"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 2 cans (28 ounces) fat-free vegetable broth | 1 cup water | 1 bag (1 pound) frozen mixed vegetables | 1 can (14½ ounces) no-salt-added stewed tomatoes | ⅓ cup broken angel-hair pasta, in 1- to 2-inch lengths | 1 can (15 ounces) no-salt-added kidney beans | 1 can (15 ounces) no-salt-added black beans | 1 teaspoon Italian seasoning | ½ teaspoon garlic powder | ¼ cup grated Parmesan cheese"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:242652b720c4e5e9d651e7d9879da1b7c3318ee5fe301ed68674f6895e2512cb",
+      "title": "Beef Stew II",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Beef_Stew_II",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "0fe5f061a3fff633a5e56a90ab735c5bdb284a9db0008feb9d5e2d9db642d030",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Beef Stew II"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 60 g (2 oz) flour | Salt to taste | Pepper to taste | Garlic powder to taste | 50 ml (3 Tablespoons) olive oil | 1 medium onion, peeled and chopped | 500 g (1 lb) beef suitable for soup/stew, cut into cubes and trimmed of fat and gristle | 1 L (1 qt) beef broth | 200–250 g (approx. ½ lb) potatoes, diced | 100–125 g (approx. ¼ lb) frozen carrots, sliced | 100–125 g (approx. ¼ lb) frozen mushrooms, sliced | 1 can (400 g / 14 oz) diced tomatoes | Marjoram to taste | 1 large or 2 small bay leaves"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 60 g (2 oz) flour | Salt to taste | Pepper to taste | Garlic powder to taste | 50 ml (3 Tablespoons) olive oil | 1 medium onion, peeled and chopped | 500 g (1 lb) beef suitable for soup/stew, cut into cubes and trimmed of fat and gristle | 1 L (1 qt) beef broth | 200–250 g (approx. ½ lb) potatoes, diced | 100–125 g (approx. ¼ lb) frozen carrots, sliced | 100–125 g (approx. ¼ lb) frozen mushrooms, sliced | 1 can (400 g / 14 oz) diced tomatoes | Marjoram to taste | 1 large or 2 small bay leaves"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 60 g (2 oz) flour | Salt to taste | Pepper to taste | Garlic powder to taste | 50 ml (3 Tablespoons) olive oil | 1 medium onion, peeled and chopped | 500 g (1 lb) beef suitable for soup/stew, cut into cubes and trimmed of fat and gristle | 1 L (1 qt) beef broth | 200–250 g (approx. ½ lb) potatoes, diced | 100–125 g (approx. ¼ lb) frozen carrots, sliced | 100–125 g (approx. ¼ lb) frozen mushrooms, sliced | 1 can (400 g / 14 oz) diced tomatoes | Marjoram to taste | 1 large or 2 small bay leaves"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Once it has come to a boil, reduce the heat to the lowest setting, cover, and simmer for an hour or more, until the beef and potatoes are tender."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat a large saucepan on the stovetop, then add olive oil and chopped onion. | Dredge the beef cubes in the flour mixture and drop them into the saucepan; reserve the remaining flour mixture. Brown the beef on all sides. | Pour in the broth and add the remaining flour mixture, the potatoes, carrots, mushrooms, tomatoes, marjoram and bay leaf/leaves. | Once it has come to a boil, reduce the heat to the lowest setting, cover, and simmer for an hour or more, until the beef and potatoes are tender."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 60 g (2 oz) flour | Salt to taste | Pepper to taste | Garlic powder to taste | 50 ml (3 Tablespoons) olive oil | 1 medium onion, peeled and chopped | 500 g (1 lb) beef suitable for soup/stew, cut into cubes and trimmed of fat and gristle | 1 L (1 qt) beef broth | 200–250 g (approx. ½ lb) potatoes, diced | 100–125 g (approx. ¼ lb) frozen carrots, sliced | 100–125 g (approx. ¼ lb) frozen mushrooms, sliced | 1 can (400 g / 14 oz) diced tomatoes | Marjoram to taste | 1 large or 2 small bay leaves"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:50fe7ac3c871368794fdd82b70e4a301f1c3ed713e3a90ebc0019c4d3319b26a",
+      "title": "Basic Scrambled Eggs",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Basic_Scrambled_Eggs",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e6bcfd5dc1c691fd105835e85055edea427dee957a8975c5111783ede17a4f87",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Basic Scrambled Eggs"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 3 eggs | 2–3 tbsp milk (optional) | 2 tbsp butter | ¼ tsp salt (or to taste) | ⅛ tsp black pepper (or to taste)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 3 eggs | 2–3 tbsp milk (optional) | 2 tbsp butter | ¼ tsp salt (or to taste) | ⅛ tsp black pepper (or to taste)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 3 eggs | 2–3 tbsp milk (optional) | 2 tbsp butter | ¼ tsp salt (or to taste) | ⅛ tsp black pepper (or to taste)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Melt butter in a frying pan on medium heat | Pour eggs into frying pan. | Stir mixture to break up the egg as it cooks and allow more liquid to touch the hot pan. Stirring rapidly will create small curds, while slower stirring will create larger curds. | Cook until just before you feel that they are done, since the eggs will continue to cook after being removed from the pan. The eggs are done when the sheen disappears; stop cooking just before this happens."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 1"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 3 eggs | 2–3 tbsp milk (optional) | 2 tbsp butter | ¼ tsp salt (or to taste) | ⅛ tsp black pepper (or to taste)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:092c82954eb77d7fa3aaba3407e3741b702ed0367fbc8a8e93bba0adf576287d",
+      "title": "Black-Eyed Peas and Kale",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Black-Eyed_Peas_and_Kale",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "7871c9900ba5af9f264f8ab6b102c13b4386541ca49761236fb53cf6c92628f1",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Black-Eyed Peas and Kale"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 tbsp olive oil | 2 cloves garlic, chopped | 1 medium onion, chopped | 1 can (15 oz) diced tomatoes, undrained | 1 can (15 oz) black-eyed peas, drained | ¼–½ tsp cayenne pepper | 1 bay leaf | 1 package (10 oz) frozen kale, thawed | Salt to taste | Pepper to taste"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 tbsp olive oil | 2 cloves garlic, chopped | 1 medium onion, chopped | 1 can (15 oz) diced tomatoes, undrained | 1 can (15 oz) black-eyed peas, drained | ¼–½ tsp cayenne pepper | 1 bay leaf | 1 package (10 oz) frozen kale, thawed | Salt to taste | Pepper to taste"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 tbsp olive oil | 2 cloves garlic, chopped | 1 medium onion, chopped | 1 can (15 oz) diced tomatoes, undrained | 1 can (15 oz) black-eyed peas, drained | ¼–½ tsp cayenne pepper | 1 bay leaf | 1 package (10 oz) frozen kale, thawed | Salt to taste | Pepper to taste"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Sauté the onion and garlic in the oil over medium heat for several minutes. | Add tomatoes and their juice, peas, cayenne and bay leaf. Simmer, covered, for 15 minutes. | Add kale and simmer uncovered until kale is tender but still green (5–10 minutes). Season to taste with salt and freshly-ground black pepper."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Sauté the onion and garlic in the oil over medium heat for several minutes. | Add tomatoes and their juice, peas, cayenne and bay leaf. Simmer, covered, for 15 minutes. | Add kale and simmer uncovered until kale is tender but still green (5–10 minutes). Season to taste with salt and freshly-ground black pepper."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 tbsp olive oil | 2 cloves garlic, chopped | 1 medium onion, chopped | 1 can (15 oz) diced tomatoes, undrained | 1 can (15 oz) black-eyed peas, drained | ¼–½ tsp cayenne pepper | 1 bay leaf | 1 package (10 oz) frozen kale, thawed | Salt to taste | Pepper to taste"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:061b35d90c1ad7cb32f9cb6e7791746b6d084c2cb97ed08eb19121cb15e0cacb",
+      "title": "Chanterelle Goulash",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chanterelle_Goulash",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "4080a1027c59e1dc4b05ea39d6cc6ebd586b1462fefbfd6a31378962e8551b2c",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Chanterelle Goulash"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 800 g chanterelle mushrooms | 100 g onions | 60 g butter or oil | 125 g sour cream | 10 g paprika powder | 3–4 tbsp white wine vinegar | 1 tsp flour | 1 tbsp parsley | Salt | Pepper"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 800 g chanterelle mushrooms | 100 g onions | 60 g butter or oil | 125 g sour cream | 10 g paprika powder | 3–4 tbsp white wine vinegar | 1 tsp flour | 1 tbsp parsley | Salt | Pepper"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 800 g chanterelle mushrooms | 100 g onions | 60 g butter or oil | 125 g sour cream | 10 g paprika powder | 3–4 tbsp white wine vinegar | 1 tsp flour | 1 tbsp parsley | Salt | Pepper"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Put the chanterelles into the pot, and add pepper and salt to taste. Put a lid on it and steam the mixture for about 10–12 minutes until the chanterelles are soft. | Combine the flour and sour cream. Stir this mixture into the casserole, reduce the temperature, and cook for another 5 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat the butter in a pot. | When the pot is hot enough, add the chopped onions. Cook the onions until golden brown. | Put the chanterelles into the pot, and add pepper and salt to taste. Put a lid on it and steam the mixture for about 10–12 minutes until the chanterelles are soft."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 800 g chanterelle mushrooms | 100 g onions | 60 g butter or oil | 125 g sour cream | 10 g paprika powder | 3–4 tbsp white wine vinegar | 1 tsp flour | 1 tbsp parsley | Salt | Pepper"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
+      "title": "Chicken Fried Rice",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chicken_Fried_Rice",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "4daaa4d2638f640db5e7316a5cd4d8ddb26ddad8239297b8ee8aff116fd68e09",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Chicken Fried Rice"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 2 tbsp butter | 3 cloves garlic, crushed and minced | 2 red chiles, cut into 1 cm pieces | 2 scallion, cut into 1 cm pieces | 200 g carrot | 200 g minced raw chicken | 1 cup (550 g) cooked rice | 2 tbsp oyster sauce | 1¼ tbsp Worcestershire sauce | 1 tbsp salt | 1 tbsp pepper | Cucumber | Tomato | Fried egg | Pickles"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 2 tbsp butter | 3 cloves garlic, crushed and minced | 2 red chiles, cut into 1 cm pieces | 2 scallion, cut into 1 cm pieces | 200 g carrot | 200 g minced raw chicken | 1 cup (550 g) cooked rice | 2 tbsp oyster sauce | 1¼ tbsp Worcestershire sauce | 1 tbsp salt | 1 tbsp pepper | Cucumber | Tomato | Fried egg | Pickles"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 2 tbsp butter | 3 cloves garlic, crushed and minced | 2 red chiles, cut into 1 cm pieces | 2 scallion, cut into 1 cm pieces | 200 g carrot | 200 g minced raw chicken | 1 cup (550 g) cooked rice | 2 tbsp oyster sauce | 1¼ tbsp Worcestershire sauce | 1 tbsp salt | 1 tbsp pepper | Cucumber | Tomato | Fried egg | Pickles"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Melt the butter in a non-stick pan. Fry the garlic, chilli, and scallion, stirring, for 15 seconds."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 5"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 2 tbsp butter | 3 cloves garlic, crushed and minced | 2 red chiles, cut into 1 cm pieces | 2 scallion, cut into 1 cm pieces | 200 g carrot | 200 g minced raw chicken | 1 cup (550 g) cooked rice | 2 tbsp oyster sauce | 1¼ tbsp Worcestershire sauce | 1 tbsp salt | 1 tbsp pepper | Cucumber | Tomato | Fried egg | Pickles"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:dfd7acf6463fa043a97463a3c4e215b4313d8e542cb5028bb69d555ef0683752",
+      "title": "Chickpea Omelette",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chickpea_Omelette",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "74461fdc5fb42f2ed1ab03e86e8f639db784621fe436a1bf0fab9faec190daf5",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Chickpea Omelette"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat up a skillet on medium heat and add the olive oil. Spread the oil across the pan and let it heat up a little. | Pour the batter into the skillet. Cook until bubbles form in the middle. Then, carefully flip using a spatula."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 1"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:2e615aa3925f818be215c2f36e41ab9744e67f4f9805de8972e8f6e1db75619f",
+      "title": "Chili (Vegan)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chili_%28Vegan%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "8f7f7210220d3d5d09411370a0f40a78e299d242db44e9f8c5f84732903b8fc4",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Chili (Vegan)"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 2 cans (30 oz) red kidney beans | 1 can (15 oz) black beans | 1 can (15 oz) navy beans | 1 can corn kernels | 1 can (6 oz) tomato paste | 1 medium tomato, chopped (canned diced tomato works too) | 2 fresh jalapeños (or your favorite chili pepper works too; more if you like it really hot) | 1 green bell pepper, chopped | 1 red or yellow bell pepper, chopped | 2 medium onions, chopped | 4 medium cloves of garlic, chopped or crushed | 10 ml chili powder | 1 large pinch salt (optional) | pinch of oregano | 10 ml olive oil (or any other kind of vegetable oil) | 50 ml molasses | Chili garlic sauce (optional)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 2 cans (30 oz) red kidney beans | 1 can (15 oz) black beans | 1 can (15 oz) navy beans | 1 can corn kernels | 1 can (6 oz) tomato paste | 1 medium tomato, chopped (canned diced tomato works too) | 2 fresh jalapeños (or your favorite chili pepper works too; more if you like it really hot) | 1 green bell pepper, chopped | 1 red or yellow bell pepper, chopped | 2 medium onions, chopped | 4 medium cloves of garlic, chopped or crushed | 10 ml chili powder | 1 large pinch salt (optional) | pinch of oregano | 10 ml olive oil (or any other kind of vegetable oil) | 50 ml molasses | Chili garlic sauce (optional)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 2 cans (30 oz) red kidney beans | 1 can (15 oz) black beans | 1 can (15 oz) navy beans | 1 can corn kernels | 1 can (6 oz) tomato paste | 1 medium tomato, chopped (canned diced tomato works too) | 2 fresh jalapeños (or your favorite chili pepper works too; more if you like it really hot) | 1 green bell pepper, chopped | 1 red or yellow bell pepper, chopped | 2 medium onions, chopped | 4 medium cloves of garlic, chopped or crushed | 10 ml chili powder | 1 large pinch salt (optional) | pinch of oregano | 10 ml olive oil (or any other kind of vegetable oil) | 50 ml molasses | Chili garlic sauce (optional)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Let the pot simmer, covered, for at least 30 minutes—longer will distribute the flavor better. If the chili is too thick, add a little water; if it's too thin, uncover the pot to let water evaporate. | Add the bell peppers, stir, and simmer for a minute or two (peppers should stay crunchy)."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. In a large pot, heat the olive oil with a few drops of water. When the water starts sizzling, add the onions and garlic. Stir until the onions are soft (optionally until they are slightly brown). | Add the chili peppers and fry for a few more seconds. Add the tomato paste and tomato, and the chili powder, salt, and oregano. Stir a few times then let boil and simmer. | Rinse the beans well and add them to the simmering vegetables. Drain the corn and add to the chili. Add the molasses. | Let the pot simmer, covered, for at least 30 minutes—longer will distribute the flavor better. If the chili is too thick, add a little water; if it's too thin, uncover the pot to let water evaporate."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 8"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 2 cans (30 oz) red kidney beans | 1 can (15 oz) black beans | 1 can (15 oz) navy beans | 1 can corn kernels | 1 can (6 oz) tomato paste | 1 medium tomato, chopped (canned diced tomato works too) | 2 fresh jalapeños (or your favorite chili pepper works too; more if you like it really hot) | 1 green bell pepper, chopped | 1 red or yellow bell pepper, chopped | 2 medium onions, chopped | 4 medium cloves of garlic, chopped or crushed | 10 ml chili powder | 1 large pinch salt (optional) | pinch of oregano | 10 ml olive oil (or any other kind of vegetable oil) | 50 ml molasses | Chili garlic sauce (optional)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
+      "title": "Creamy Mushroom Pasta",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Creamy_Mushroom_Pasta",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "210de5e774667abe31356eaf3d9b1f187a6328376e3ef1704b77726c5fca2c39",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Creamy Mushroom Pasta"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 serving uncooked pasta (⅔ cup / 75 g / 2.6 oz) (suggestion: whole wheat linguine) | 1 tablespoon unsalted butter | 2 garlic cloves, minced | 8 oz (230 g) white button mushroom, stems removed | 2 tablespoons dry white wine | ¼ cup (60 ml / 2 oz) heavy cream | ¼ cup (60 ml / 2 oz) low-sodium chicken bone broth | Salt to taste | ¼ cup (30 g / 1.1 oz) grated parmesan cheese | Freshly-ground black pepper | Chopped fresh parsley for garnishing"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1 serving uncooked pasta (⅔ cup / 75 g / 2.6 oz) (suggestion: whole wheat linguine) | 1 tablespoon unsalted butter | 2 garlic cloves, minced | 8 oz (230 g) white button mushroom, stems removed | 2 tablespoons dry white wine | ¼ cup (60 ml / 2 oz) heavy cream | ¼ cup (60 ml / 2 oz) low-sodium chicken bone broth | Salt to taste | ¼ cup (30 g / 1.1 oz) grated parmesan cheese | Freshly-ground black pepper | Chopped fresh parsley for garnishing"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 serving uncooked pasta (⅔ cup / 75 g / 2.6 oz) (suggestion: whole wheat linguine) | 1 tablespoon unsalted butter | 2 garlic cloves, minced | 8 oz (230 g) white button mushroom, stems removed | 2 tablespoons dry white wine | ¼ cup (60 ml / 2 oz) heavy cream | ¼ cup (60 ml / 2 oz) low-sodium chicken bone broth | Salt to taste | ¼ cup (30 g / 1.1 oz) grated parmesan cheese | Freshly-ground black pepper | Chopped fresh parsley for garnishing"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: In a large pot, cook pasta in salted boiling water for 8–9 minutes or according to the package directions until al dente. Drain. | Place mushrooms in the skillet, cup side up. Cook for 3–5 minutes or until mushrooms start shrinking, moving the mushrooms around with a spatula occasionally. | Add white wine; continue cooking to let the wine and mushroom juice evaporate (about 3 minutes)."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. In a large pot, cook pasta in salted boiling water for 8–9 minutes or according to the package directions until al dente. Drain. | Meanwhile, in a large skillet, melt butter over medium-high heat. Stir in minced garlic and let it cook for about 30 seconds until fragrant. | Place mushrooms in the skillet, cup side up. Cook for 3–5 minutes or until mushrooms start shrinking, moving the mushrooms around with a spatula occasionally. | Pour heavy cream and chicken bone broth into the skillet, and add a generous pinch of salt. Switch to medium heat and cook until the cooking liquid is slightly thickened, flipping the mushrooms a couple times."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 1"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 serving uncooked pasta (⅔ cup / 75 g / 2.6 oz) (suggestion: whole wheat linguine) | 1 tablespoon unsalted butter | 2 garlic cloves, minced | 8 oz (230 g) white button mushroom, stems removed | 2 tablespoons dry white wine | ¼ cup (60 ml / 2 oz) heavy cream | ¼ cup (60 ml / 2 oz) low-sodium chicken bone broth | Salt to taste | ¼ cup (30 g / 1.1 oz) grated parmesan cheese | Freshly-ground black pepper | Chopped fresh parsley for garnishing"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:69d0b0541fb5752961ef6050d797ffad0f65f315bb9fc25bf978eda93ef38ae9",
+      "title": "Easy Onion Chicken",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Easy_Onion_Chicken",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "1d8fd8218da062678263a3c79f63291cba67d525fe1dc754d921152b8aefa99d",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Easy Onion Chicken"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1–1½ cups canned French-fried onions | 1 egg, beaten | 4 ea. (1–1½ pounds) boneless, skinless chicken breasts"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1–1½ cups canned French-fried onions | 1 egg, beaten | 4 ea. (1–1½ pounds) boneless, skinless chicken breasts"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: canned French-fried onions are a prepared product whose composition is not established by the captured recipe; no gluten-free claim inferred."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Bake 20–25 minutes until chicken is done."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Preheat oven to 400°F. | Place on sprayed baking pan. | Bake 20–25 minutes until chicken is done."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1–1½ cups canned French-fried onions | 1 egg, beaten | 4 ea. (1–1½ pounds) boneless, skinless chicken breasts"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:9027d3b1984e95c17def0775ec82295f96b025b843455c974784bca8ea928946",
+      "title": "Eggplant Pasta",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Eggplant_Pasta",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "c4d135fdae4c7f451f077f1a1a1a1cce4787db5fc6c7711b6c24bca3b5134bc6",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Eggplant Pasta"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 eggplant (aubergine) | 1 large onion, chopped | 1 tbsp olive oil | Salt to taste | 2 tins of peeled tomatoes | 1 chile pepper | Handfuls of fresh basil | Dried Italian herbs mixture (marjoram, basil, capsicum, oregano, rosemary, parsley, garlic, thyme; often sold pre-mixed) | Fresh garlic, crushed | Pasta, cooked"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 eggplant (aubergine) | 1 large onion, chopped | 1 tbsp olive oil | Salt to taste | 2 tins of peeled tomatoes | 1 chile pepper | Handfuls of fresh basil | Dried Italian herbs mixture (marjoram, basil, capsicum, oregano, rosemary, parsley, garlic, thyme; often sold pre-mixed) | Fresh garlic, crushed | Pasta, cooked"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 eggplant (aubergine) | 1 large onion, chopped | 1 tbsp olive oil | Salt to taste | 2 tins of peeled tomatoes | 1 chile pepper | Handfuls of fresh basil | Dried Italian herbs mixture (marjoram, basil, capsicum, oregano, rosemary, parsley, garlic, thyme; often sold pre-mixed) | Fresh garlic, crushed | Pasta, cooked"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Slice eggplant and cover in salt. Leave for at least 30 minutes. | Add all other ingredients and simmer for 30 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Cut eggplant into chip-sized pieces and fry in oil. | Add all other ingredients and simmer for 30 minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 eggplant (aubergine) | 1 large onion, chopped | 1 tbsp olive oil | Salt to taste | 2 tins of peeled tomatoes | 1 chile pepper | Handfuls of fresh basil | Dried Italian herbs mixture (marjoram, basil, capsicum, oregano, rosemary, parsley, garlic, thyme; often sold pre-mixed) | Fresh garlic, crushed | Pasta, cooked"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:cc3c677dc061dfbd52f25cd000d7e40ab20c9ce28c4790c1df59ab9147e7b881",
+      "title": "Eggplant and Chickpea Skillet",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Eggplant_and_Chickpea_Skillet",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "ab57e2cb8c737cd6d53946407daa8a8aa88f318e9e84e95b375b1aa947dbbdb9",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Eggplant and Chickpea Skillet"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 tbsp olive oil | 1 green bell pepper, diced | 2 cloves garlic, chopped | 1 small eggplant (aubergine) or 2 Italian eggplants, quartered and sliced | 6–8 mushrooms, sliced | 1 can (15 oz / 400 g) diced tomatoes | 1 can (15 oz / 400 g) chickpeas, drained | ½ tsp tarragon | 2–3 cups (200–250 g) broccoli, cut into small florets | 8–12 fresh basil leaves (preferably Thai basil)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 tbsp olive oil | 1 green bell pepper, diced | 2 cloves garlic, chopped | 1 small eggplant (aubergine) or 2 Italian eggplants, quartered and sliced | 6–8 mushrooms, sliced | 1 can (15 oz / 400 g) diced tomatoes | 1 can (15 oz / 400 g) chickpeas, drained | ½ tsp tarragon | 2–3 cups (200–250 g) broccoli, cut into small florets | 8–12 fresh basil leaves (preferably Thai basil)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 tbsp olive oil | 1 green bell pepper, diced | 2 cloves garlic, chopped | 1 small eggplant (aubergine) or 2 Italian eggplants, quartered and sliced | 6–8 mushrooms, sliced | 1 can (15 oz / 400 g) diced tomatoes | 1 can (15 oz / 400 g) chickpeas, drained | ½ tsp tarragon | 2–3 cups (200–250 g) broccoli, cut into small florets | 8–12 fresh basil leaves (preferably Thai basil)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Sauté the green bell pepper and garlic in the oil over medium heat for several minutes. Add mushrooms and eggplant and continue cooking, stirring often, for 5 minutes. | Add the tomatoes with their juice, chickpeas and tarragon. Stir well, cover, and simmer for 10–12 minutes until eggplant has softened somewhat. | Stir in the basil leaves and broccoli and simmer, partially covered, for 8–10 minutes or until broccoli is bright green."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Sauté the green bell pepper and garlic in the oil over medium heat for several minutes. Add mushrooms and eggplant and continue cooking, stirring often, for 5 minutes. | Add the tomatoes with their juice, chickpeas and tarragon. Stir well, cover, and simmer for 10–12 minutes until eggplant has softened somewhat. | Stir in the basil leaves and broccoli and simmer, partially covered, for 8–10 minutes or until broccoli is bright green."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 tbsp olive oil | 1 green bell pepper, diced | 2 cloves garlic, chopped | 1 small eggplant (aubergine) or 2 Italian eggplants, quartered and sliced | 6–8 mushrooms, sliced | 1 can (15 oz / 400 g) diced tomatoes | 1 can (15 oz / 400 g) chickpeas, drained | ½ tsp tarragon | 2–3 cups (200–250 g) broccoli, cut into small florets | 8–12 fresh basil leaves (preferably Thai basil)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:d122dd44ad577c08a6b557ce9a5f82536e3a209b3c0a23e7af3b9e0405cc992b",
+      "title": "Garbanzo Bean Stew",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Garbanzo_Bean_Stew",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "ce4e58884cb2d6bb32588372609e4ac85a43b5149dd356cfab6480d3a31c6185",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Garbanzo Bean Stew"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 tablespoon olive oil | 1 medium red onion, chopped | 1 red bell pepper, peeled, cored and chopped | 2 cloves garlic, minced | Pinch saffron | ½ pound new or boiling potatoes, unpeeled and cut into bite-sized chunks | 2 teaspoons smoked sweet paprika (such as Pimenton de la Vera) | ¼ cup sherry | 2 cups cooked chickpeas (garbanzo beans), drained or 1 can (15 ounces) chickpeas, rinsed and drained | 1 can (14½ ounces) diced tomatoes plus their liquid | 2½ cups vegetable stock or water | Salt to taste | Freshly-ground pepper to taste | 2 cups hot cooked rice | Chopped parsley, optional garnish"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 tablespoon olive oil | 1 medium red onion, chopped | 1 red bell pepper, peeled, cored and chopped | 2 cloves garlic, minced | Pinch saffron | ½ pound new or boiling potatoes, unpeeled and cut into bite-sized chunks | 2 teaspoons smoked sweet paprika (such as Pimenton de la Vera) | ¼ cup sherry | 2 cups cooked chickpeas (garbanzo beans), drained or 1 can (15 ounces) chickpeas, rinsed and drained | 1 can (14½ ounces) diced tomatoes plus their liquid | 2½ cups vegetable stock or water | Salt to taste | Freshly-ground pepper to taste | 2 cups hot cooked rice | Chopped parsley, optional garnish"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 tablespoon olive oil | 1 medium red onion, chopped | 1 red bell pepper, peeled, cored and chopped | 2 cloves garlic, minced | Pinch saffron | ½ pound new or boiling potatoes, unpeeled and cut into bite-sized chunks | 2 teaspoons smoked sweet paprika (such as Pimenton de la Vera) | ¼ cup sherry | 2 cups cooked chickpeas (garbanzo beans), drained or 1 can (15 ounces) chickpeas, rinsed and drained | 1 can (14½ ounces) diced tomatoes plus their liquid | 2½ cups vegetable stock or water | Salt to taste | Freshly-ground pepper to taste | 2 cups hot cooked rice | Chopped parsley, optional garnish"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Sauté onion, red pepper, garlic, saffron, and potatoes, stirring occasionally, until the potatoes start to soften, about 15 minutes. | Stir in paprika, then sherry and cook about 1 minute. | Bring to a boil, reduce heat to low, and cook partially covered until potatoes are tender and stew thickens, 30–40 minutes. | Remove from heat and let stand about 15 minutes to meld flavors and thicken slightly."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. In a Dutch Oven or large soup pot, heat oil over medium heat. | Sauté onion, red pepper, garlic, saffron, and potatoes, stirring occasionally, until the potatoes start to soften, about 15 minutes. | Bring to a boil, reduce heat to low, and cook partially covered until potatoes are tender and stew thickens, 30–40 minutes. | Remove from heat and let stand about 15 minutes to meld flavors and thicken slightly."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 tablespoon olive oil | 1 medium red onion, chopped | 1 red bell pepper, peeled, cored and chopped | 2 cloves garlic, minced | Pinch saffron | ½ pound new or boiling potatoes, unpeeled and cut into bite-sized chunks | 2 teaspoons smoked sweet paprika (such as Pimenton de la Vera) | ¼ cup sherry | 2 cups cooked chickpeas (garbanzo beans), drained or 1 can (15 ounces) chickpeas, rinsed and drained | 1 can (14½ ounces) diced tomatoes plus their liquid | 2½ cups vegetable stock or water | Salt to taste | Freshly-ground pepper to taste | 2 cups hot cooked rice | Chopped parsley, optional garnish"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:c281c34bec657fddb2b85048683329336561b2019ccd35dde2e402aa9030038e",
+      "title": "Garlic Parmesan Pasta",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Garlic_Parmesan_Pasta",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "0ed4d7452c88e1cbfa92a8c134abebbde8f2ccf03455614be27f2153e68ca902",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Garlic Parmesan Pasta"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 120 ml (½ cup) butter | 2 tsp crushed dried basil | 2 tsp lemon juice | 1 ¼ tsp garlic powder | ¾ tsp seasoned salt | 220 g (8 oz) fettuccine or angel hair pasta, cooked and drained | 360 ml (1 ½ cups) broccoli florets, cooked tender-crisp | 3 Tbsp walnuts, chopped | Fresh, grated Parmesan cheese"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 120 ml (½ cup) butter | 2 tsp crushed dried basil | 2 tsp lemon juice | 1 ¼ tsp garlic powder | ¾ tsp seasoned salt | 220 g (8 oz) fettuccine or angel hair pasta, cooked and drained | 360 ml (1 ½ cups) broccoli florets, cooked tender-crisp | 3 Tbsp walnuts, chopped | Fresh, grated Parmesan cheese"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 120 ml (½ cup) butter | 2 tsp crushed dried basil | 2 tsp lemon juice | 1 ¼ tsp garlic powder | ¾ tsp seasoned salt | 220 g (8 oz) fettuccine or angel hair pasta, cooked and drained | 360 ml (1 ½ cups) broccoli florets, cooked tender-crisp | 3 Tbsp walnuts, chopped | Fresh, grated Parmesan cheese"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Melt the butter in a large skillet. Add the basil, lemon juice, garlic powder and seasoned salt, blending well."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 120 ml (½ cup) butter | 2 tsp crushed dried basil | 2 tsp lemon juice | 1 ¼ tsp garlic powder | ¾ tsp seasoned salt | 220 g (8 oz) fettuccine or angel hair pasta, cooked and drained | 360 ml (1 ½ cups) broccoli florets, cooked tender-crisp | 3 Tbsp walnuts, chopped | Fresh, grated Parmesan cheese"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:1ab6b0ac4b715b25ce1551db741b62f3530f71ff55d5e5aa3a9c97fa7ebae4b7",
+      "title": "Hamburger Skillet Dinner",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Hamburger_Skillet_Dinner",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "1c01c30ed1e2344945934cf8f159f43301054e5c1c120c7552d452aa87ce16ee",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Hamburger Skillet Dinner"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 cup uncooked pasta, such as macaroni, elbows, or wagon wheels | 1 pound (about 500 g) ground beef, crumbled | a sprinkle of garlic salt | a sprinkle of minced onion | 1–2 cans condensed tomato soup"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1 cup uncooked pasta, such as macaroni, elbows, or wagon wheels | 1 pound (about 500 g) ground beef, crumbled | a sprinkle of garlic salt | a sprinkle of minced onion | 1–2 cans condensed tomato soup"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 cup uncooked pasta, such as macaroni, elbows, or wagon wheels | 1 pound (about 500 g) ground beef, crumbled | a sprinkle of garlic salt | a sprinkle of minced onion | 1–2 cans condensed tomato soup"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Add tomato soup and cook a minute or two."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. While pasta is cooking, sprinkle a 10-inch (25 cm) skillet with garlic salt and minced onion, and brown beef."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 cup uncooked pasta, such as macaroni, elbows, or wagon wheels | 1 pound (about 500 g) ground beef, crumbled | a sprinkle of garlic salt | a sprinkle of minced onion | 1–2 cans condensed tomato soup"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:a485e96ae9340402a1674968c28c772528a01a7493547fc54f47f088c8ef1d4d",
+      "title": "Jambalaya I",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Jambalaya_I",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e024f22b959f2a2882c07098ceb024556aa27b91cbb45741305ca242236622eb",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Jambalaya I"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 bay leaf | ½ teaspoon savory | ½ teaspoon salt | 1 teaspoon dried basil | 1 teaspoon thyme | 1½ teaspoons cumin | ⅓ cup chopped celery | ½ tablespoon butter | 14.5 ounces (411 g) canned tomatoes, diced or torn apart | ⅔ cup long-grain rice | 1½ cups chicken broth | 2 cups cooked and chopped turkey or chicken | 1 small can of sliced mushrooms (optional), drained"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1 bay leaf | ½ teaspoon savory | ½ teaspoon salt | 1 teaspoon dried basil | 1 teaspoon thyme | 1½ teaspoons cumin | ⅓ cup chopped celery | ½ tablespoon butter | 14.5 ounces (411 g) canned tomatoes, diced or torn apart | ⅔ cup long-grain rice | 1½ cups chicken broth | 2 cups cooked and chopped turkey or chicken | 1 small can of sliced mushrooms (optional), drained"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 bay leaf | ½ teaspoon savory | ½ teaspoon salt | 1 teaspoon dried basil | 1 teaspoon thyme | 1½ teaspoons cumin | ⅓ cup chopped celery | ½ tablespoon butter | 14.5 ounces (411 g) canned tomatoes, diced or torn apart | ⅔ cup long-grain rice | 1½ cups chicken broth | 2 cups cooked and chopped turkey or chicken | 1 small can of sliced mushrooms (optional), drained"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Bring to a boil, then cover and simmer for about 20 minutes. The rice will absorb the liquid."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat a wide pan with a lid. Lightly fry the celery in the butter. Soften the celery but do not brown it. | Add everything to the pan. You can add the basil, meat, and mushrooms later if you prefer. | Bring to a boil, then cover and simmer for about 20 minutes. The rice will absorb the liquid."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 3"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 bay leaf | ½ teaspoon savory | ½ teaspoon salt | 1 teaspoon dried basil | 1 teaspoon thyme | 1½ teaspoons cumin | ⅓ cup chopped celery | ½ tablespoon butter | 14.5 ounces (411 g) canned tomatoes, diced or torn apart | ⅔ cup long-grain rice | 1½ cups chicken broth | 2 cups cooked and chopped turkey or chicken | 1 small can of sliced mushrooms (optional), drained"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:0ebaaa35b2937eea6e71c054eba5699d9ba57c60da583be51233e8b4fbd2812d",
+      "title": "Keralan Vegetable Stew",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Keralan_Vegetable_Stew",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "8436b39a1fb4d743bf10535128d5f935780f2d8ab9401dde7b88c73c9fecba53",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Keralan Vegetable Stew"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. ½ coconut, freshly grated | 1½ cups boiled vegetables (carrots, green beans, potatoes, peas, etc.) | 2 Tbsp oil | 1 onion, diced | 1 very small piece of ginger, chopped | 2–5 green chillies (as desired), split lengthwise | 10 curry leaves | 4 cloves | 2 small pieces cinnamon | 2 pods green cardamom | 1 Tbsp vinegar | 1 Tbsp flour or rice flour or cornstarch | 1 pinch of salt | 1 tsp ground black pepper | 1 tsp mustard seed | 1 shallot"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. ½ coconut, freshly grated | 1½ cups boiled vegetables (carrots, green beans, potatoes, peas, etc.) | 2 Tbsp oil | 1 onion, diced | 1 very small piece of ginger, chopped | 2–5 green chillies (as desired), split lengthwise | 10 curry leaves | 4 cloves | 2 small pieces cinnamon | 2 pods green cardamom | 1 Tbsp vinegar | 1 Tbsp flour or rice flour or cornstarch | 1 pinch of salt | 1 tsp ground black pepper | 1 tsp mustard seed | 1 shallot"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. ½ coconut, freshly grated | 1½ cups boiled vegetables (carrots, green beans, potatoes, peas, etc.) | 2 Tbsp oil | 1 onion, diced | 1 very small piece of ginger, chopped | 2–5 green chillies (as desired), split lengthwise | 10 curry leaves | 4 cloves | 2 small pieces cinnamon | 2 pods green cardamom | 1 Tbsp vinegar | 1 Tbsp flour or rice flour or cornstarch | 1 pinch of salt | 1 tsp ground black pepper | 1 tsp mustard seed | 1 shallot"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Add the boiled vegetables and stir for 1 minute. | Pour in the second milk and boil for about 5–7 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. In a large pan, heat oil and add the cloves, cinnamon, and cardamom. | Add the chopped onion, ginger, chillies and curry leaves. Fry until the onion is slightly browned."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 6"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. ½ coconut, freshly grated | 1½ cups boiled vegetables (carrots, green beans, potatoes, peas, etc.) | 2 Tbsp oil | 1 onion, diced | 1 very small piece of ginger, chopped | 2–5 green chillies (as desired), split lengthwise | 10 curry leaves | 4 cloves | 2 small pieces cinnamon | 2 pods green cardamom | 1 Tbsp vinegar | 1 Tbsp flour or rice flour or cornstarch | 1 pinch of salt | 1 tsp ground black pepper | 1 tsp mustard seed | 1 shallot"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:8920adfb29bf2600a3a20df0584cd3f56d207e69780767037b2aa64d8f268fc5",
+      "title": "Khichdi (South Asian Rice and Lentils)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Khichdi_%28South_Asian_Rice_and_Lentils%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e0ffc498cf3fc0810f84b8872f908742f95b609cc6c8de02c93ae233c97e7a17",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Pressure cooker"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Khichdi (South Asian Rice and Lentils)"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 teacup rice | 1 teacup dal (e.g. moong dhal, arhar dal or masoor dal or combination thereof) | Salt to taste | 1 tsp turmeric powder Source step: Allow to cool. Serve with ghee or buttermilk."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 teacup rice | 1 teacup dal (e.g. moong dhal, arhar dal or masoor dal or combination thereof) | Salt to taste | 1 tsp turmeric powder"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 teacup rice | 1 teacup dal (e.g. moong dhal, arhar dal or masoor dal or combination thereof) | Salt to taste | 1 tsp turmeric powder"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Wash rice and lentils and soak them for 10–15 minutes in water. | After the first whistle, reduce the heat and cook for 4–5 more minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Pressure cook with 3–4 cups of water. | After the first whistle, reduce the heat and cook for 4–5 more minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 teacup rice | 1 teacup dal (e.g. moong dhal, arhar dal or masoor dal or combination thereof) | Salt to taste | 1 tsp turmeric powder"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:1598486bff52edf8758b361023f753642a3c01d0d46599f6a7d55085e73cb16f",
+      "title": "Lentil Rice Loaf",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Lentil_Rice_Loaf",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "0d2f5f98ee1e192db745e8bf3765f6919103b3e3b2e0ccedd5ea567de4418642",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Lentil Rice Loaf"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. ½ cup lentils | 2½ cups vegetable stock | 1 bay leaf | ½ cup brown rice (not all will be used) | 1 egg, beaten | About 2 tablespoons seasoned bread crumbs | ½ finely-chopped onion | 1 tablespoon olive oil"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. ½ cup lentils | 2½ cups vegetable stock | 1 bay leaf | ½ cup brown rice (not all will be used) | 1 egg, beaten | About 2 tablespoons seasoned bread crumbs | ½ finely-chopped onion | 1 tablespoon olive oil"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. ½ cup lentils | 2½ cups vegetable stock | 1 bay leaf | ½ cup brown rice (not all will be used) | 1 egg, beaten | About 2 tablespoons seasoned bread crumbs | ½ finely-chopped onion | 1 tablespoon olive oil"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Combine the lentils and the bay leaf with 1½ cups of the stock. Cover and simmer for approximately 45 minutes, or until lentils are tender but not falling apart (they should offer slight resistance to the bite). You may need to add additional stock during cooking; the lentils should remain covered. | Meanwhile, cook the brown rice in 1 cup of the stock: bring the stock to a boil, add rice, reduce heat to low, cover, and cook at the lowest heat for 50 minutes. | Place mixture in a small greased baking dish, and bake at 350°F for 35 minutes, or until a crust is formed around the edge. | Allow to cool for at least 10 minutes before cutting and serving."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Combine the lentils and the bay leaf with 1½ cups of the stock. Cover and simmer for approximately 45 minutes, or until lentils are tender but not falling apart (they should offer slight resistance to the bite). You may need to add additional stock during cooking; the lentils should remain covered. | Meanwhile, cook the brown rice in 1 cup of the stock: bring the stock to a boil, add rice, reduce heat to low, cover, and cook at the lowest heat for 50 minutes. | Place mixture in a small greased baking dish, and bake at 350°F for 35 minutes, or until a crust is formed around the edge."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. ½ cup lentils | 2½ cups vegetable stock | 1 bay leaf | ½ cup brown rice (not all will be used) | 1 egg, beaten | About 2 tablespoons seasoned bread crumbs | ½ finely-chopped onion | 1 tablespoon olive oil"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:f0cd4cf2dab872beed2060374b9f6c3054d163293ebc2de51a6679c87cdb2e69",
+      "title": "Denver Omelet",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Denver_Omelet",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e2eedfd802f2cf47d77a940c766bf3b1d32edc3a7e82514e789701ade5e9a660",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Denver Omelet"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 4 large eggs | 1 cup chopped onion | ½ cup chopped red bell peppers | ½ cup chopped green bell peppers | ½ cup diced cooked ham | 8 slices cooked bacon, drained and crumbled | 2 tablespoons butter | ½ teaspoon salt | ½ teaspoon pepper | a couple drops of your favorite hot sauce (optional)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 4 large eggs | 1 cup chopped onion | ½ cup chopped red bell peppers | ½ cup chopped green bell peppers | ½ cup diced cooked ham | 8 slices cooked bacon, drained and crumbled | 2 tablespoons butter | ½ teaspoon salt | ½ teaspoon pepper | a couple drops of your favorite hot sauce (optional)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 4 large eggs | 1 cup chopped onion | ½ cup chopped red bell peppers | ½ cup chopped green bell peppers | ½ cup diced cooked ham | 8 slices cooked bacon, drained and crumbled | 2 tablespoons butter | ½ teaspoon salt | ½ teaspoon pepper | a couple drops of your favorite hot sauce (optional)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Melt butter in a large skillet or on a griddle. | Slowly stir the eggs into the mixture in the skillet."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 4 large eggs | 1 cup chopped onion | ½ cup chopped red bell peppers | ½ cup chopped green bell peppers | ½ cup diced cooked ham | 8 slices cooked bacon, drained and crumbled | 2 tablespoons butter | ½ teaspoon salt | ½ teaspoon pepper | a couple drops of your favorite hot sauce (optional)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:c8690e13447942825b9ebd5d132458670ef30bff8743fd2ff48ba4fabceab21d",
+      "title": "Mapo Tofu",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Mapo_Tofu",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "83c5fed73c729828efab6567f39978beb4b31a624bfaec0289dfa7332ffe6abd",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Mapo Tofu"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 onion, sliced | 1 small piece of ginger, minced (about 2 tsp) | 1–2 tsp crushed dried chile pepper | 200 g (7 oz) minced beef, or pork | 4 cloves of garlic, minced | 500 g (1 lb) silken tofu, cubed | 2 tbsp chili bean paste (la doubanjiang) | 1 tbsp Szechuan pepper, roasted and ground | 1 tbsp soy sauce | 1 tbsp rice wine | 3–4 green onions, cut into 2 cm (1 inch) pieces | 2–3 mushrooms (tree ears preferred; optional)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1 onion, sliced | 1 small piece of ginger, minced (about 2 tsp) | 1–2 tsp crushed dried chile pepper | 200 g (7 oz) minced beef, or pork | 4 cloves of garlic, minced | 500 g (1 lb) silken tofu, cubed | 2 tbsp chili bean paste (la doubanjiang) | 1 tbsp Szechuan pepper, roasted and ground | 1 tbsp soy sauce | 1 tbsp rice wine | 3–4 green onions, cut into 2 cm (1 inch) pieces | 2–3 mushrooms (tree ears preferred; optional)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 1 onion, sliced | 1 small piece of ginger, minced (about 2 tsp) | 1–2 tsp crushed dried chile pepper | 200 g (7 oz) minced beef, or pork | 4 cloves of garlic, minced | 500 g (1 lb) silken tofu, cubed | 2 tbsp chili bean paste (la doubanjiang) | 1 tbsp Szechuan pepper, roasted and ground | 1 tbsp soy sauce | 1 tbsp rice wine | 3–4 green onions, cut into 2 cm (1 inch) pieces | 2–3 mushrooms (tree ears preferred; optional)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: If using dried mushrooms, soak them in hot water for 10 minutes while preparing the rest of the ingredients, then slice before adding later. | Mix in other ingredients (including sliced mushrooms), lower heat, and simmer for 5–10 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Add minced meat and garlic, and fry until brown. | Mix in other ingredients (including sliced mushrooms), lower heat, and simmer for 5–10 minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 onion, sliced | 1 small piece of ginger, minced (about 2 tsp) | 1–2 tsp crushed dried chile pepper | 200 g (7 oz) minced beef, or pork | 4 cloves of garlic, minced | 500 g (1 lb) silken tofu, cubed | 2 tbsp chili bean paste (la doubanjiang) | 1 tbsp Szechuan pepper, roasted and ground | 1 tbsp soy sauce | 1 tbsp rice wine | 3–4 green onions, cut into 2 cm (1 inch) pieces | 2–3 mushrooms (tree ears preferred; optional)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:fa669d307bfbd0170be250b361635b532948cb04af4d191fcc07238bd1338747",
+      "title": "Paneer Butter Masala",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Paneer_Butter_Masala",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e2f27159bcc6b04abe4ca4b325d2bbb9dede45ccdac012d562df876c5b5acc48",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Paneer Butter Masala"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. Ghee or oil | 200 g paneer | 1 onion, diced | 1 tsp ginger paste | 5 tsp garlic paste | 1 capsicum, diced | 2 tomatoes, diced | 1 tsp ghee | 5 tsp hing powder | 1 tsp cardamom | 1 tsp turmeric | 1 tsp garam masala | 1 tsp chilli powder | 1 tsp cumin | 1 tsp lemon juice | 500 g natural (plain) yoghurt"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. Ghee or oil | 200 g paneer | 1 onion, diced | 1 tsp ginger paste | 5 tsp garlic paste | 1 capsicum, diced | 2 tomatoes, diced | 1 tsp ghee | 5 tsp hing powder | 1 tsp cardamom | 1 tsp turmeric | 1 tsp garam masala | 1 tsp chilli powder | 1 tsp cumin | 1 tsp lemon juice | 500 g natural (plain) yoghurt"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. Ghee or oil | 200 g paneer | 1 onion, diced | 1 tsp ginger paste | 5 tsp garlic paste | 1 capsicum, diced | 2 tomatoes, diced | 1 tsp ghee | 5 tsp hing powder | 1 tsp cardamom | 1 tsp turmeric | 1 tsp garam masala | 1 tsp chilli powder | 1 tsp cumin | 1 tsp lemon juice | 500 g natural (plain) yoghurt"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Fry for 2 minutes, then add yoghurt. | Cook on medium heat for five minutes. | Cook on low heat for 15 minutes occasionally stirring."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Fry paneer in ghee or oil, and set aside in a bowl. | In a separate pan combine ghee, hing, cardamom, turmeric, garam masala, chilli powder, lemon juice, and cumin. | Fry for 2 minutes, then add yoghurt. | Cook on medium heat for five minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. Ghee or oil | 200 g paneer | 1 onion, diced | 1 tsp ginger paste | 5 tsp garlic paste | 1 capsicum, diced | 2 tomatoes, diced | 1 tsp ghee | 5 tsp hing powder | 1 tsp cardamom | 1 tsp turmeric | 1 tsp garam masala | 1 tsp chilli powder | 1 tsp cumin | 1 tsp lemon juice | 500 g natural (plain) yoghurt"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:8067b4598909c3cdad2d59955c42aaa87708f6844e9eb357f5d4bf544945ecc6",
+      "title": "Indian Omelet",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Indian_Omelet",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "8ca99bc2bcaeb11624c0298ed1091c1fe47d80243db92fae525cdea8a01d7752",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Indian Omelet"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 4 large eggs | 1 cup finely-chopped onion | ½ cup chopped tomatoes | ½ teaspoon salt | ¼ teaspoon pepper | ½ teaspoon cumin seeds | Finely-chopped coriander leaves, to taste | Finely-chopped hot green chiles, to taste | Red chile powder, to taste | Oil"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 4 large eggs | 1 cup finely-chopped onion | ½ cup chopped tomatoes | ½ teaspoon salt | ¼ teaspoon pepper | ½ teaspoon cumin seeds | Finely-chopped coriander leaves, to taste | Finely-chopped hot green chiles, to taste | Red chile powder, to taste | Oil"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 4 large eggs | 1 cup finely-chopped onion | ½ cup chopped tomatoes | ½ teaspoon salt | ¼ teaspoon pepper | ½ teaspoon cumin seeds | Finely-chopped coriander leaves, to taste | Finely-chopped hot green chiles, to taste | Red chile powder, to taste | Oil"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: none"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Set a skillet on stove, and smear its surface with a thin coat of oil. | Pour the contents of the bowl into the skillet."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 4 large eggs | 1 cup finely-chopped onion | ½ cup chopped tomatoes | ½ teaspoon salt | ¼ teaspoon pepper | ½ teaspoon cumin seeds | Finely-chopped coriander leaves, to taste | Finely-chopped hot green chiles, to taste | Red chile powder, to taste | Oil"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
+      "title": "Red Lentil Soup",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Red_Lentil_Soup",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "2d591edac2fe0f3c944976e53bda4776766cc0ac9a7ca125eccad36597cfc5c0",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "unknown",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Red Lentil Soup"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The source allows unspecified stock; animal origin is not established. 1–2 tablespoons olive oil | 1 onion, diced | 2 carrots, diced | 2 cloves garlic, minced | ½ lb dry red lentils | 6 cups water or stock | 1 bay leaf"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The source allows unspecified stock; vegetarian origin is not established. 1–2 tablespoons olive oil | 1 onion, diced | 2 carrots, diced | 2 cloves garlic, minced | ½ lb dry red lentils | 6 cups water or stock | 1 bay leaf"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1–2 tablespoons olive oil | 1 onion, diced | 2 carrots, diced | 2 cloves garlic, minced | ½ lb dry red lentils | 6 cups water or stock | 1 bay leaf"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Heat the olive oil in a large pan over medium heat. Once oil is hot, add the onion and carrots. Sauté for a few minutes, until the vegetables have started to soften, then add the garlic. | Add the lentils, bay leaf, and water to the pot. Simmer over low-medium heat for 20–30 minutes until lentils are softened."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat the olive oil in a large pan over medium heat. Once oil is hot, add the onion and carrots. Sauté for a few minutes, until the vegetables have started to soften, then add the garlic. | Add the lentils, bay leaf, and water to the pot. Simmer over low-medium heat for 20–30 minutes until lentils are softened."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1–2 tablespoons olive oil | 1 onion, diced | 2 carrots, diced | 2 cloves garlic, minced | ½ lb dry red lentils | 6 cups water or stock | 1 bay leaf"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:f96e969a6f7056969e0c95c2ccbf757524d23d991bd945a31eab1f047f60330e",
+      "title": "Taco Soup",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Taco_Soup",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "66d47c66efceb4f7fadfda3051c9aff8d41d79a14af59ea8e88c24378bdf44a6",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Taco Soup"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 1 pound ground beef or turkey | Vegetable oil | 2 cans (29 ounces) diced tomatoes | 2 cans (30.5 ounces) corn kernels | 2 cans (31 ounces) kidney, black, or pinto beans | 1 package (1 ounce / 3 tbsp) taco mix | 2 cups water | Shredded Mexican-style cheese (optional) | Tortilla chips (optional)"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The original source includes meat, chicken broth, or seafood-derived sauce. 1 pound ground beef or turkey | Vegetable oil | 2 cans (29 ounces) diced tomatoes | 2 cans (30.5 ounces) corn kernels | 2 cans (31 ounces) kidney, black, or pinto beans | 1 package (1 ounce / 3 tbsp) taco mix | 2 cups water | Shredded Mexican-style cheese (optional) | Tortilla chips (optional)"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 pound ground beef or turkey | Vegetable oil | 2 cans (29 ounces) diced tomatoes | 2 cans (30.5 ounces) corn kernels | 2 cans (31 ounces) kidney, black, or pinto beans | 1 package (1 ounce / 3 tbsp) taco mix | 2 cups water | Shredded Mexican-style cheese (optional) | Tortilla chips (optional)"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Bring to a boil, stirring continuously to prevent sticking. Let simmer for 15 minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat a heavy skillet or pot over medium-high heat. Add a few tablespoons of vegetable oil, then the ground meat. | Remove the meat from the heat, and let the excess fat drain away. | In stock pot, combine the tomatoes, corn, beans, taco mix, water, and meat. | Bring to a boil, stirring continuously to prevent sticking. Let simmer for 15 minutes."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 6"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 pound ground beef or turkey | Vegetable oil | 2 cans (29 ounces) diced tomatoes | 2 cans (30.5 ounces) corn kernels | 2 cans (31 ounces) kidney, black, or pinto beans | 1 package (1 ounce / 3 tbsp) taco mix | 2 cups water | Shredded Mexican-style cheese (optional) | Tortilla chips (optional)"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    },
+    {
+      "recipeId": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
+      "title": "Zucchini Pasta Bake",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Zucchini_Pasta_Bake",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "cf2977917f38111cf9528457b0374d5c8694dd984d202e829b6ec54eff085c0b",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Zucchini Pasta Bake"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source includes animal-derived ingredients or a dairy serving direction. 400 g any small pasta | 250 g cheese, grated | 2 eggs | 200 ml milk | 50 g butter | 3 medium zucchini, grated | Vegetable stock base | Salt | Pepper"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 400 g any small pasta | 250 g cheese, grated | 2 eggs | 200 ml milk | 50 g butter | 3 medium zucchini, grated | Vegetable stock base | Salt | Pepper"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The unchanged source lists or serves wheat pasta, bread, flour, or soy sauce; no gluten-free variant was applied. 400 g any small pasta | 250 g cheese, grated | 2 eggs | 200 ml milk | 50 g butter | 3 medium zucchini, grated | Vegetable stock base | Salt | Pepper"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown total: the captured recipe does not establish an explicit complete total time including preparation and any prerequisites. Individual step durations are not promoted to a total. Timed source steps: Bake at 200°C (400°F) for about 30 minutes, or until the pasta bake is firm all the way through."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Bake at 200°C (400°F) for about 30 minutes, or until the pasta bake is firm all the way through."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 400 g any small pasta | 250 g cheese, grated | 2 eggs | 200 ml milk | 50 g butter | 3 medium zucchini, grated | Vegetable stock base | Salt | Pepper"
+          }
+        },
+        "reviewedBy": "Codex review of captured local source text",
+        "reviewedAt": "2026-10-22T11:19:59.588Z"
+      }
+    }
+  ]
+}

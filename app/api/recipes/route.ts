@@ -43,7 +43,7 @@ export async function GET(request: Request): Promise<Response> {
   const query = url.searchParams.get("q")?.trim() ?? "";
   const pantry = readPantry(url.searchParams);
   const allergies = url.searchParams.getAll("allergy").map((item) => item.trim()).filter(Boolean);
-  const constraints = normalizeConstraints({ allergies, diets: url.searchParams.getAll("diet"), dislikes: url.searchParams.getAll("dislike"), equipment: url.searchParams.getAll("equipment"), maxTotalMinutes: Number(url.searchParams.get("maxMinutes")) || undefined });
+  const constraints = normalizeConstraints({ allergies, diets: url.searchParams.getAll("diet"), dislikes: url.searchParams.getAll("dislike"), ...(url.searchParams.has("equipment") ? { equipment: url.searchParams.getAll("equipment") } : {}), maxTotalMinutes: Number(url.searchParams.get("maxMinutes")) || undefined });
   if (allergies.length > 30 || allergies.some((item) => item.length > 100)) return jsonError("Invalid allergy exclusions.", "INVALID_ALLERGIES", 400);
 
   if (query.length > MAX_QUERY_LENGTH) {

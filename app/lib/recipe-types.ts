@@ -49,6 +49,7 @@ export interface RecipeConstraints {
   diets: Diet[];
   dislikes: string[];
   equipment: string[];
+  equipmentSpecified: boolean;
   maxTotalMinutes?: number;
 }
 

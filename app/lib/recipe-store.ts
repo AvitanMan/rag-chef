@@ -50,6 +50,12 @@ export interface CatalogRecipeUpsertResult {
   contentChanged: boolean;
 }
 
+export interface RecipeMetadataReview {
+  recipeId: string;
+  reviewed: true;
+  metadata: RecipeMetadata;
+}
+
 export interface CatalogSyncResult {
   recordsSeen: number;
   recordsUpserted: number;
@@ -430,7 +436,7 @@ export async function listCatalogRecipes(
   if (recipeRows.length === 0) return [];
 
   const ids = recipeRows.map((row) => row.id);
-  const [ingredients, sections, steps] = await Promise.all([
+  const [ingredients, sections, steps, metadata] = await Promise.all([
     rowsForRecipeIds<IngredientRow>(
       db, ids,
       `SELECT recipe_id, position, original_name, original_measure
@@ -449,6 +455,7 @@ export async function listCatalogRecipes(
        FROM recipe_instruction_steps WHERE recipe_id IN`,
       "ORDER BY recipe_id, section_id, position",
     ),
+    listRecipeMetadata(),
   ]);
 
   return recipeRows.map((row) => ({
@@ -483,7 +490,112 @@ export async function listCatalogRecipes(
     version: row.version,
     contentHash: row.normalized_content_sha256,
     searchText: row.search_text,
+    ...(metadata[row.id] ? { metadata: metadata[row.id] } : {}),
   }));
+}
+
+export async function listRecipeMetadata(): Promise<Record<string, RecipeMetadata>> {
+  const db = await catalogDb();
+  let rows: { recipe_id: string; payload_json: string; source_content_sha256: string; revision: number }[];
+  try {
+    rows = await allRows(db.prepare(
+      `SELECT m.recipe_id, m.payload_json, m.source_content_sha256, m.revision FROM recipe_metadata m
+       JOIN recipes r ON r.id = m.recipe_id
+       JOIN recipe_sources s ON s.id = r.source_id
+       WHERE r.status = 'active' AND s.approval_status = 'approved'
+         AND s.allow_display = 1 AND s.allow_index_text = 1
+         AND m.source_content_sha256 = r.normalized_content_sha256
+         AND m.revision = (SELECT MAX(m2.revision) FROM recipe_metadata m2 WHERE m2.recipe_id = m.recipe_id)`,
+    ));
+  } catch (error) {
+    // A pre-migration local installation remains usable with explicit unknowns.
+    if (error instanceof Error && /no such table.*recipe_metadata/i.test(error.message)) return {};
+    throw error;
+  }
+  return Object.fromEntries(rows.flatMap((row) => {
+    try {
+      const metadata = validateRecipeMetadata(JSON.parse(row.payload_json));
+      return metadata.sourceContentHash === row.source_content_sha256 && metadata.revision === row.revision ? [[row.recipe_id, metadata]] : [];
+    }
+    catch { return []; } // Invalid annotations cannot be used as dietary evidence.
+  }));
+}
+
+const METADATA_FIELDS = ["coreDinner", "dinnerRole", "diets.vegan", "diets.vegetarian", "diets.gluten_free", "diets.low_carb", "totalMinutes", "equipment", "servings", "ingredients"];
+const EQUIPMENT = new Set(["oven", "stovetop", "microwave", "blender", "slow cooker", "pressure cooker", "air fryer", "grill"]);
+
+export function validateRecipeMetadata(value: unknown): RecipeMetadata {
+  const object = (item: unknown): Record<string, unknown> => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error("Metadata must be an object.");
+    return item as Record<string, unknown>;
+  };
+  const exact = (item: Record<string, unknown>, names: string[]) => {
+    if (Object.keys(item).some((key) => !names.includes(key)) || names.some((key) => !Object.hasOwn(item, key))) throw new Error("Metadata fields are missing or unsupported.");
+  };
+  const text = (item: unknown, maximum: number) => {
+    if (typeof item !== "string" || !item.trim() || item.length > maximum || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(item)) throw new Error("Metadata evidence must be nonempty bounded text.");
+    return item;
+  };
+  const row = object(value);
+  exact(row, ["revision", "sourceContentHash", "coreDinner", "dinnerRole", "diets", "totalMinutes", "equipment", "provenance", "reviewedBy", "reviewedAt"]);
+  if (!Number.isInteger(row.revision) || Number(row.revision) < 1 || Number(row.revision) > 1_000_000 || !/^[a-f0-9]{64}$/.test(String(row.sourceContentHash))) throw new Error("Metadata requires a revision and source content hash.");
+  if (typeof row.coreDinner !== "boolean" || !["main", "side", "component", "dessert", "unknown"].includes(String(row.dinnerRole))) throw new Error("Invalid dinner classification.");
+  if (row.coreDinner && row.dinnerRole !== "main") throw new Error("A core dinner must be reviewed as a main dish.");
+  const diets = object(row.diets);
+  exact(diets, ["vegan", "vegetarian", "gluten_free", "low_carb"]);
+  if (Object.values(diets).some((x) => !["fits", "conflicts", "unknown"].includes(String(x)))) throw new Error("Diet suitability must be fits, conflicts, or unknown.");
+  if (row.totalMinutes !== null && (typeof row.totalMinutes !== "number" || !Number.isFinite(row.totalMinutes) || row.totalMinutes <= 0 || row.totalMinutes > 20_160)) throw new Error("Invalid total time.");
+  if (row.equipment !== null && (!Array.isArray(row.equipment) || row.equipment.length > 8 || row.equipment.some((x) => typeof x !== "string" || !EQUIPMENT.has(x.toLowerCase())) || new Set(row.equipment).size !== row.equipment.length)) throw new Error("Equipment must use supported appliance names or null.");
+  const provenance = object(row.provenance);
+  exact(provenance, METADATA_FIELDS);
+  for (const field of METADATA_FIELDS) {
+    const evidence = object(provenance[field]);
+    exact(evidence, ["basis", "evidence"]);
+    if (!["source", "curator_assessment", "curator_estimate"].includes(String(evidence.basis))) throw new Error("Invalid evidence basis.");
+    text(evidence.evidence, 6000);
+  }
+  text(row.reviewedBy, 200);
+  if (typeof row.reviewedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(row.reviewedAt) || !Number.isFinite(Date.parse(row.reviewedAt))) throw new Error("Metadata review time must be a UTC ISO timestamp.");
+  return structuredClone(row) as unknown as RecipeMetadata;
+}
+
+/** All entries validate before any write; source recipes and saved meals are untouched. */
+export async function reviewRecipeMetadata(entries: unknown[], preview = false) {
+  if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new Error("Review 1–100 metadata entries at a time.");
+  const catalog = new Map((await listCatalogRecipes(1000)).map((item) => [item.recipe.id, item]));
+  const db = await catalogDb();
+  const seen = new Set<string>();
+  const prepared = [];
+  for (const value of entries) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid metadata review.");
+    const row = value as Record<string, unknown>;
+    if (Object.keys(row).some((x) => !["recipeId", "reviewed", "metadata"].includes(x)) || row.reviewed !== true || typeof row.recipeId !== "string" || seen.has(row.recipeId)) throw new Error("Each unique recipe requires explicit review approval.");
+    seen.add(row.recipeId);
+    const current = catalog.get(row.recipeId);
+    const metadata = validateRecipeMetadata(row.metadata);
+    if (!current || current.contentHash !== metadata.sourceContentHash) throw new Error(`Source changed or is unavailable: ${row.recipeId}. Review again.`);
+    // A source claim must actually occur in the captured source representation.
+    for (const evidence of Object.values(metadata.provenance)) if (evidence.basis === "source" && !current.searchText.includes(evidence.evidence)) throw new Error(`Unsupported source evidence for ${current.recipe.title}.`);
+    const previous = await db.prepare("SELECT revision, payload_json FROM recipe_metadata WHERE recipe_id = ? ORDER BY revision DESC LIMIT 1").bind(row.recipeId).first<{ revision: number; payload_json: string }>();
+    const stable = (item: unknown): string => item && typeof item === "object" ? Array.isArray(item) ? `[${item.map(stable).join(",")}]` : `{${Object.keys(item).sort().map((key) => `${JSON.stringify(key)}:${stable((item as Record<string, unknown>)[key])}`).join(",")}}` : JSON.stringify(item);
+    const compare = (item: RecipeMetadata) => stable({ ...item, revision: 0 });
+    const changed = !previous || compare(validateRecipeMetadata(JSON.parse(previous.payload_json))) !== compare(metadata);
+    const revision = changed ? (previous?.revision ?? 0) + 1 : previous!.revision;
+    prepared.push({ recipeId: row.recipeId, metadata: { ...metadata, revision }, before: current.metadata ?? null, changed, revision });
+  }
+  if (!preview) {
+    const statements = prepared.filter((item) => item.changed).map(({ recipeId, metadata, revision }) => db.prepare(
+      `INSERT INTO recipe_metadata (recipe_id, revision, source_content_sha256, payload_json, reviewed_by, reviewed_at)
+       VALUES ((SELECT r.id FROM recipes r JOIN recipe_sources s ON s.id = r.source_id
+         WHERE r.id = ? AND r.normalized_content_sha256 = ? AND r.status = 'active'
+           AND s.approval_status = 'approved' AND s.allow_display = 1 AND s.allow_index_text = 1), ?, ?, ?, ?, ?)`,
+    ).bind(recipeId, metadata.sourceContentHash, revision, metadata.sourceContentHash, JSON.stringify(metadata), metadata.reviewedBy, metadata.reviewedAt));
+    if (statements.length) {
+      const result = await db.batch(statements);
+      if (result.some((item) => item.meta?.changes === 0)) throw new Error("A source changed during review; refresh the preview before retrying.");
+    }
+  }
+  return prepared.map(({ recipeId, metadata, before, changed, revision }) => ({ recipeId, metadata, before, changed, revision }));
 }
 
 export async function listStoredRecipeEmbeddings(

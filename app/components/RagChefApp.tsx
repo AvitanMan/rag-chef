@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Recipe, RecipeMetadataMap } from "../lib/recipe-types";
+import type { Recipe, RecipeMetadata, RecipeMetadataMap } from "../lib/recipe-types";
 import { evaluateRecipeConstraints, normalizeConstraints } from "../lib/recipe-constraints";
 import { availablePantryNames } from "../lib/kitchen-stock";
 import { parseKitchenBackup, serializeKitchenBackup } from "../lib/kitchen-backup";
@@ -12,7 +12,7 @@ import { mealScale, type KitchenState, type PantryStock, type PlannedMeal } from
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, rankWeeklyCandidates, weekStart } from "../lib/kitchen-state";
 import { buildShoppingList, canonicalIngredient, completeMeal, consumptionPreview, formatMeasure, parseMeasure, plannedIngredientMeasure, undoMeal } from "../lib/quantities";
 import { dateLabel, DurablePlanView, DurableShoppingView, PlanPicker } from "./WeeklyKitchenViews";
-import { browseRecipes, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
+import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
 
 type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
 
@@ -246,6 +246,8 @@ export default function RagChefApp() {
   const [query, setQuery] = useState("");
   const [recipeQuery, setRecipeQuery] = useState("");
   const [recipeLimit, setRecipeLimit] = useState(RECIPE_PAGE_SIZE);
+  const [coreDinnersOnly, setCoreDinnersOnly] = useState(false);
+  const [maxMinutes, setMaxMinutes] = useState("");
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [recipes, setRecipes] = useState<Recipe[]>(LOCAL_RECIPES);
@@ -380,7 +382,11 @@ export default function RagChefApp() {
   }, [hydrated, kitchen.ready]);
 
   const constraints = useMemo(() => normalizeConstraints(profile), [profile]);
-  const eligibilityFor = (recipe: Recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints);
+  const metadataForRecipe = (recipe: Recipe) => {
+    const current = catalogRecipes.find((item) => item.id === recipe.id);
+    return current && JSON.stringify(current) === JSON.stringify(recipe) ? metadataByRecipeId[recipe.id] : undefined;
+  };
+  const eligibilityFor = (recipe: Recipe) => evaluateRecipeConstraints(recipe, metadataForRecipe(recipe), constraints);
   const rankedRecipes = useMemo(() => {
     return recipes
       .filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible)
@@ -391,7 +397,11 @@ export default function RagChefApp() {
   }, [pantry, constraints, metadataByRecipeId, recipes]);
 
   const browseCatalog = useMemo(() => catalogRecipes.filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible), [catalogRecipes, constraints, metadataByRecipeId]);
-  const browserResults = useMemo(() => browseRecipes(browseCatalog, recipeQuery, pantry), [browseCatalog, recipeQuery, pantry]);
+  const browserResults = useMemo(() => browseRecipes(browseCatalog, recipeQuery, pantry).filter((recipe) => {
+    const metadata = metadataByRecipeId[recipe.id];
+    if (coreDinnersOnly && !metadata?.coreDinner) return false;
+    return !maxMinutes || Number(maxMinutes) <= 0 || Boolean(metadata?.provenance.totalMinutes?.basis === "source" && metadata.totalMinutes !== null && metadata.totalMinutes <= Number(maxMinutes));
+  }), [browseCatalog, recipeQuery, pantry, coreDinnersOnly, maxMinutes, metadataByRecipeId]);
 
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDateDays(week, index)), [week]);
   const weekMeals = useMemo(() => weekDates.flatMap((date) => kitchen.state.meals[date] ? [kitchen.state.meals[date]] : []), [kitchen.state.meals, weekDates]);
@@ -654,6 +664,7 @@ export default function RagChefApp() {
             openRecipe={openRecipe}
             detailsFor={(recipe) => pantryDetails(recipe, pantry)}
             eligibilityFor={eligibilityFor}
+            metadataForRecipe={metadataForRecipe}
             generatePlan={generatePlan}
           />
         </>)}
@@ -674,15 +685,15 @@ export default function RagChefApp() {
             {selectionDate && <div className="inline-confirm" role="status"><span>Choosing dinner for {dateLabel(selectionDate, { weekday: "long", month: "long", day: "numeric" })}.</span><button className="secondary-button" onClick={() => navigate("plan")}>Cancel selection</button></div>}
             {selectionNotice && <p role="alert">{selectionNotice}</p>}
             <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => setView("chef")}>Ask Chef</button></div>
-            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div></div>
+            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Core dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label></div>{maxMinutes && <p className="quantity-note">Time filtering includes source-backed total times only. Recipes with unknown times are hidden.</p>}</div>
             {catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
               : catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged. Retry to browse the approved catalog.</p><button className="primary-button" onClick={() => void loadPlanningCatalog()}>Retry recipes</button></div>
               : <>
                 <p className="catalog-count" role="status">{browserResults.length} of {browseCatalog.length} recipes{browserResults.length > recipeLimit ? ` · Showing ${recipeLimit}` : ""}</p>
-                {(profile.allergies.length > 0 || constraints.diets.length > 0) && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved exclusions. Unknown dietary suitability stays visible with a label. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
+                {(profile.allergies.length > 0 || constraints.diets.length > 0 || constraints.equipmentSpecified) && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved diet, allergy or equipment requirements. Unknown dietary suitability stays visible with a label. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
                 {catalogRecipes.length === 0 ? <div className="empty-state"><strong>Your recipe collection is empty.</strong><p>Import approved recipes to start browsing.</p></div>
                   : browserResults.length === 0 ? <div className="empty-state"><strong>No recipes match.</strong><p>{browseCatalog.length === 0 ? "Your saved exclusions hide the available recipes." : "Try fewer words or a different ingredient."}</p></div>
-                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} details={pantryDetails(recipe, pantry)} dietUnknowns={eligibilityFor(recipe).dietUnknowns} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
+                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} metadata={metadataByRecipeId[recipe.id]} details={pantryDetails(recipe, pantry)} dietUnknowns={eligibilityFor(recipe).dietUnknowns} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
                 {browserResults.length > recipeLimit && <div className="catalog-more"><button className="secondary-button" onClick={() => setRecipeLimit((limit) => limit + RECIPE_PAGE_SIZE)}>Show more</button></div>}
               </>}
           </section>
@@ -765,6 +776,7 @@ export default function RagChefApp() {
           setMetric={setMetric}
           chefResult={chefResult}
           eligibility={eligibilityFor(selectedRecipe)}
+          metadata={metadataForRecipe(selectedRecipe)}
           close={() => setSelectedRecipe(null)}
           addToPlan={() => addRecipeToPlan(selectedRecipe)}
           addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"}
@@ -852,6 +864,7 @@ function ChefView({
   openRecipe,
   detailsFor,
   eligibilityFor,
+  metadataForRecipe,
   generatePlan,
 }: {
   pantry: string[];
@@ -873,6 +886,7 @@ function ChefView({
   openRecipe: (recipe: Recipe) => void;
   detailsFor: (recipe: Recipe) => ReturnType<typeof pantryDetails>;
   eligibilityFor: (recipe: Recipe) => ReturnType<typeof evaluateRecipeConstraints>;
+  metadataForRecipe: (recipe: Recipe) => RecipeMetadata | undefined;
   generatePlan: () => void;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -1000,6 +1014,7 @@ function ChefView({
               details={detailsFor(recipe)}
               dietUnknowns={eligibilityFor(recipe).dietUnknowns}
               recommendation={chefResult?.recommendations.find((item) => item.recipeId === recipe.id)}
+              metadata={metadataForRecipe(recipe)}
               featured={index === 0}
               open={() => openRecipe(recipe)}
             />
@@ -1025,6 +1040,7 @@ export function RecipeCard({
   addLabel = "Add to plan",
   dietUnknowns = [],
   recommendation,
+  metadata,
 }: {
   recipe: Recipe;
   details: ReturnType<typeof pantryDetails>;
@@ -1034,7 +1050,9 @@ export function RecipeCard({
   addLabel?: string;
   dietUnknowns?: string[];
   recommendation?: ChefResponse["recommendations"][number];
+  metadata?: RecipeMetadata;
 }) {
+  const completeness = recipeCompleteness(recipe);
   return (
     <article className={`recipe-card ${featured ? "featured" : ""}`}>
       {recipe.image && <button className="recipe-image" onClick={open} aria-label={`Open ${recipe.title}`}><img src={recipe.image} alt="" loading="lazy" /></button>}
@@ -1043,9 +1061,11 @@ export function RecipeCard({
           <span>{recipe.cuisine || recipe.category}</span>
         </div>
         <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
+        {metadata?.coreDinner && <span className="core-badge">Core dinner</span>}
         <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p>
         <small className="coverage-note">Names only · amounts not checked</small>
         {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
+        <small className="recipe-quality">{recipe.servings ? `${recipe.servings} source servings` : "Yield unknown · recipe batches"}{completeness.amountReviewCount ? ` · ${completeness.amountReviewCount} amounts to review` : " · Amounts quantified"}{metadata?.totalMinutes !== null && metadata?.totalMinutes !== undefined ? ` · ${metadata.totalMinutes} min${metadata.provenance.totalMinutes?.basis === "source" ? " total" : " estimated"}` : " · Total time unknown"}</small>
         {recommendation && <div className="recommendation-details"><p>{recommendation.reason}</p><p className="quantity-note">{recommendation.missingIngredients.length ? `Missing ingredient names: ${recommendation.missingIngredients.join(", ")}` : "All ingredient names match your pantry; check quantities before cooking."}</p></div>}
         <div className="recipe-footer">
           <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer" onClick={(event) => event.stopPropagation()}>
@@ -1151,6 +1171,7 @@ function SettingsView({
           <label>Diet<select value={profile.diet} onChange={(event) => setProfile({ ...profile, diet: event.target.value })}><option>No restriction</option><option>Vegetarian</option><option>Vegan</option><option>Gluten-free</option><option>Low-carb</option></select><small>Known conflicts are hidden. Unreviewed recipes stay visible as “Diet not verified.”</small></label>
           <label>Skill level<select value={profile.skillLevel} onChange={(event) => setProfile({ ...profile, skillLevel: event.target.value })}><option>New cook</option><option>Confident beginner</option><option>Experienced home cook</option></select></label>
           <label>Budget<select value={profile.budget} onChange={(event) => setProfile({ ...profile, budget: event.target.value })}><option>Low</option><option>Medium</option><option>Flexible</option></select></label>
+          <fieldset className="equipment-options"><legend>Available equipment</legend>{["Oven", "Stovetop", "Microwave", "Blender", "Slow cooker", "Pressure cooker", "Air fryer", "Grill"].map((equipment) => <label key={equipment}><input type="checkbox" checked={profile.equipment.includes(equipment)} onChange={(event) => setProfile({ ...profile, equipment: event.target.checked ? [...profile.equipment, equipment] : profile.equipment.filter((item) => item !== equipment) })} />{equipment}</label>)}<small>Known required appliances must be selected. Unknown equipment stays visible.</small></fieldset>
           <label className="wide">Allergies<input value={profile.allergies.join(", ")} onChange={(event) => setProfile({ ...profile, allergies: event.target.value.split(",").map(tidyIngredient).filter(Boolean) })} placeholder="peanuts, shellfish" /><small>Use ingredient names separated by commas. Ambiguous matches still receive a warning.</small></label>
           <label className="wide">Dislikes<input value={profile.dislikes.join(", ")} onChange={(event) => setProfile({ ...profile, dislikes: event.target.value.split(",").map(tidyIngredient).filter(Boolean) })} placeholder="mushrooms, cilantro" /></label>
         </div>
@@ -1189,6 +1210,7 @@ export function RecipeDrawer({
   addLabel,
   start,
   eligibility,
+  metadata,
 }: {
   recipe: Recipe;
   plannedMeal?: PlannedMeal;
@@ -1201,6 +1223,7 @@ export function RecipeDrawer({
   addLabel: string;
   start: (steps: string[], method: string) => void;
   eligibility?: ReturnType<typeof evaluateRecipeConstraints>;
+  metadata?: RecipeMetadata;
 }) {
   const details = pantryDetails(recipe, pantry);
   const changes = chefResult?.chefChanges.filter((item) => item.recipeId === recipe.id) ?? [];
@@ -1218,6 +1241,7 @@ export function RecipeDrawer({
         <div className="drawer-content">
           <span className="eyebrow">{recipe.category}</span>
           <h2 id="recipe-title">{recipe.title}</h2>
+          {metadata?.coreDinner && <span className="core-badge">Core dinner · reviewed source record</span>}
           <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry <small className="coverage-note">Names only · amounts not checked</small></p>
           {eligibility && !eligibility.eligible && <p className="diet-note" role="alert">This recipe conflicts with your saved exclusions. Your saved dinner is unchanged. {eligibility.reasons.join(" ")}</p>}
           {Boolean(eligibility?.dietUnknowns.length) && <p className="diet-note">Diet not verified: {eligibility?.dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}

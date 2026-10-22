@@ -1,7 +1,14 @@
 import type { Recipe } from "./recipe-types";
-import { canonicalIngredient } from "./quantities";
+import { canonicalIngredient, normalizePlanningIngredient, parseMeasure } from "./quantities";
 
 export const RECIPE_PAGE_SIZE = 24;
+
+export function recipeCompleteness(recipe: Recipe) {
+  return {
+    knownServings: Boolean(recipe.servings),
+    amountReviewCount: recipe.ingredients.filter((ingredient) => !parseMeasure(normalizePlanningIngredient(ingredient).measure)).length,
+  };
+}
 
 export function normalizeRecipeSearch(value: string): string {
   return value.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase("en")
