@@ -53,6 +53,9 @@ Open [localhost:3000](http://localhost:3000).
 The app opens on **Plan**. Choose a day, select a recipe, then open **Shopping**.
 You can also choose **Add to plan** from Recipes. **Ask Chef** opens from Recipes
 and keeps your recipe search intact during the current session.
+When choosing a day, Chef keeps that date visible and its recipe cards offer
+**Add to [day]** directly. Opening recipe details is optional. Without a selected
+day, **Add to plan** opens the day picker. Replacing a dinner still needs confirmation.
 
 ### Populate a fresh installation
 

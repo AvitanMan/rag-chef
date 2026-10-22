@@ -609,6 +609,7 @@ export default function RagChefApp() {
   const visibleRecipes = chefResult
     ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id) && recipeAllowed(recipe))
     : rankedRecipes;
+  const addDinnerLabel = selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan";
 
   return (
     <div className="app-shell">
@@ -655,6 +656,11 @@ export default function RagChefApp() {
         {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed.</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
+        {(view === "recipes" || view === "chef") && <>
+          {selectionDate && <div className="inline-confirm" role="status"><span>Choosing dinner for {dateLabel(selectionDate, { weekday: "long", month: "long", day: "numeric" })}.</span><button className="secondary-button" onClick={() => { cancelChef(); navigate("plan"); }}>Cancel selection</button></div>}
+          {selectionNotice && <p role="alert">{selectionNotice}</p>}
+        </>}
+
         {view === "chef" && (<>
           <button className="secondary-button flow-back" onClick={() => setView("recipes")}>← Back to Recipes</button>
           <ChefView
@@ -675,10 +681,12 @@ export default function RagChefApp() {
             loadingRecipes={loadingRecipes}
             refreshRecipes={() => void loadRecipes()}
             openRecipe={openRecipe}
+            addRecipeToPlan={addRecipeToPlan}
+            addLabel={addDinnerLabel}
             detailsFor={(recipe) => pantryDetails(recipe, pantry)}
             eligibilityFor={eligibilityFor}
             metadataForRecipe={metadataForRecipe}
-            generatePlan={generatePlan}
+            generatePlan={selectionDate ? undefined : generatePlan}
           />
         </>)}
 
@@ -695,8 +703,6 @@ export default function RagChefApp() {
 
         {view === "recipes" && (
           <section className="recipe-section catalog-browser" aria-label="Recipe collection">
-            {selectionDate && <div className="inline-confirm" role="status"><span>Choosing dinner for {dateLabel(selectionDate, { weekday: "long", month: "long", day: "numeric" })}.</span><button className="secondary-button" onClick={() => navigate("plan")}>Cancel selection</button></div>}
-            {selectionNotice && <p role="alert">{selectionNotice}</p>}
             <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => setView("chef")}>Ask Chef</button></div>
             <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Core dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label></div>{maxMinutes && <p className="quantity-note">Time filtering includes source-backed total times only. Recipes with unknown times are hidden.</p>}</div>
             {catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
@@ -706,7 +712,7 @@ export default function RagChefApp() {
                 {(profile.allergies.length > 0 || constraints.diets.length > 0 || constraints.equipmentSpecified) && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved diet, allergy or equipment requirements. Unknown dietary suitability stays visible with a label. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
                 {catalogRecipes.length === 0 ? <div className="empty-state"><strong>Your recipe collection is empty.</strong><p>Import approved recipes to start browsing.</p></div>
                   : browserResults.length === 0 ? <div className="empty-state"><strong>No recipes match.</strong><p>{browseCatalog.length === 0 ? "Your saved exclusions hide the available recipes." : "Try fewer words or a different ingredient."}</p></div>
-                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} metadata={metadataByRecipeId[recipe.id]} details={pantryDetails(recipe, pantry)} dietUnknowns={eligibilityFor(recipe).dietUnknowns} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
+                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} metadata={metadataByRecipeId[recipe.id]} details={pantryDetails(recipe, pantry)} dietUnknowns={eligibilityFor(recipe).dietUnknowns} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={addDinnerLabel} />)}</div>}
                 {browserResults.length > recipeLimit && <div className="catalog-more"><button className="secondary-button" onClick={() => setRecipeLimit((limit) => limit + RECIPE_PAGE_SIZE)}>Show more</button></div>}
               </>}
           </section>
@@ -795,7 +801,7 @@ export default function RagChefApp() {
           metadata={metadataForRecipe(selectedRecipe)}
           close={() => setSelectedRecipe(null)}
           addToPlan={() => addRecipeToPlan(selectedRecipe)}
-          addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"}
+          addLabel={addDinnerLabel}
           start={(steps, method) => void startCooking(selectedRecipe, steps, method)}
         />
       )}
@@ -876,6 +882,8 @@ function ChefView({
   loadingRecipes,
   refreshRecipes,
   openRecipe,
+  addRecipeToPlan,
+  addLabel,
   detailsFor,
   eligibilityFor,
   metadataForRecipe,
@@ -898,10 +906,12 @@ function ChefView({
   loadingRecipes: boolean;
   refreshRecipes: () => void;
   openRecipe: (recipe: Recipe) => void;
+  addRecipeToPlan: (recipe: Recipe) => void;
+  addLabel: string;
   detailsFor: (recipe: Recipe) => ReturnType<typeof pantryDetails>;
   eligibilityFor: (recipe: Recipe) => ReturnType<typeof evaluateRecipeConstraints>;
   metadataForRecipe: (recipe: Recipe) => RecipeMetadata | undefined;
-  generatePlan: () => void;
+  generatePlan?: () => void;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const prompts = [
@@ -1004,7 +1014,7 @@ function ChefView({
             <p>{chefResult.answer}</p>
             {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
           </div>
-          {chefResult.recommendations.length > 0 && <button className="secondary-button" onClick={generatePlan}>Plan the week</button>}
+          {generatePlan && chefResult.recommendations.length > 0 && <button className="secondary-button" onClick={generatePlan}>Plan the week</button>}
         </section>
       )}
 
@@ -1031,6 +1041,8 @@ function ChefView({
               metadata={metadataForRecipe(recipe)}
               featured={index === 0}
               open={() => openRecipe(recipe)}
+              add={() => addRecipeToPlan(recipe)}
+              addLabel={addLabel}
             />
           ))}
         </div>

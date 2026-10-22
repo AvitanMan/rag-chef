@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { Recipe } from "../../app/lib/recipe-types";
+import type { KitchenState } from "../../app/lib/kitchen-types";
 
 const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL;
 if (!modelURL || new URL(modelURL).hostname !== "127.0.0.1") throw new Error("Use the disposable model stub through pnpm test:e2e.");
@@ -12,6 +13,9 @@ async function ask(page: Page, query: string) {
   await page.goto("/");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  return submitChef(page, query);
+}
+async function submitChef(page: Page, query: string) {
   await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill(query);
   const result = page.waitForResponse((response) => response.url().endsWith("/api/chef") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Find my dinner" }).click();
@@ -154,7 +158,105 @@ test("named vegan adaptations remain separate from unchanged source and respect 
   expect(blocked.outcome).toBe("constraints_unsatisfied");
   expect(blocked.recipes).toEqual([]);
   await expect(page.getByRole("button", { name: "View Cheese Pasta", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add to plan: Cheese Pasta", exact: true })).toHaveCount(0);
   expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(before);
+});
+
+test.describe("planning directly from Chef", () => {
+  const date = "2026-10-23";
+  const emptyKitchen = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
+  const readKitchen = async (request: APIRequestContext) => (await request.get("/api/kitchen")).json();
+  async function saveKitchen(request: APIRequestContext, state: KitchenState) {
+    const current = await readKitchen(request);
+    const response = await request.put("/api/kitchen", { data: { revision: current.revision, state } });
+    expect(response.ok()).toBeTruthy();
+  }
+  async function openSelection(page: Page, change = false) {
+    await page.goto("/");
+    await page.getByRole("button", { name: `${change ? "Change" : "Choose"} dinner Fri, Oct 23`, exact: true }).click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Choosing dinner for Friday, October 23." })).toBeVisible();
+  }
+  test.beforeEach(async ({ page, request }) => {
+    await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });
+    await saveKitchen(request, emptyKitchen());
+  });
+
+  for (const unavailable of [false, true]) {
+    test(`a selected day stays visible and ${unavailable ? "fallback" : "Chef"} results add directly without opening a recipe`, async ({ page, request }) => {
+      await control({ unavailable });
+      await openSelection(page);
+      await page.getByRole("button", { name: "← Back to Recipes", exact: true }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Choosing dinner for Friday, October 23." })).toBeVisible();
+      await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+      const answer = await submitChef(page, "Tomato Rice");
+      expect(answer.generation).toBe(unavailable ? "catalog_fallback" : "ai");
+      await expect(page.getByRole("button", { name: "Plan the week", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Add to Friday: Tomato Rice", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals)).toEqual([date]);
+      const saved = (await readKitchen(request)).state as KitchenState;
+      expect(saved.meals[date].recipe).toEqual(answer.recipes[0]);
+      expect(saved.pantry).toEqual([]);
+      expect(saved.shoppingChecked).toEqual({});
+      await page.reload();
+      await expect(page.locator(".day-card.filled")).toHaveCount(1);
+      await expect(page.locator(".day-card.filled")).toContainText("Tomato Rice");
+    });
+  }
+
+  test("without a selected day, Chef cards open the existing day picker", async ({ page, request }) => {
+    await ask(page, "Tomato Rice");
+    await page.getByRole("button", { name: "Add to plan: Tomato Rice", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Choose dinner day", exact: true });
+    await expect(picker).toBeVisible();
+    expect((await readKitchen(request)).state.meals).toEqual({});
+    await picker.getByRole("combobox", { name: "Dinner date", exact: true }).selectOption(date);
+    await picker.getByRole("button", { name: "Add dinner", exact: true }).click();
+    await expect.poll(async () => (await readKitchen(request)).state.meals[date]?.recipeId).toBe("fixture-tomato-rice");
+  });
+
+  test("canceling a day selection cancels its pending Chef request and clears the target day", async ({ page, request }) => {
+    await control({ mode: "hold" });
+    await openSelection(page);
+    await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+    await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
+    await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
+    const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));
+    await page.getByRole("button", { name: "Cancel selection", exact: true }).click();
+    await aborted;
+    await control({ release: true });
+    await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+    expect((await readKitchen(request)).state.meals).toEqual({});
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Cancel selection", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Add to plan:/ }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Add to Friday:/ })).toHaveCount(0);
+  });
+
+  test("direct Chef replacement still requires confirmation and preserves other dinners", async ({ page, request }) => {
+    const catalog = await (await request.get("/api/recipes/catalog")).json() as { recipes: Recipe[] };
+    const original = catalog.recipes.find((recipe) => recipe.id === "fixture-tomato-rice")!;
+    const kitchen = emptyKitchen();
+    kitchen.meals[date] = { id: "saved-friday", date, recipeId: original.id, recipe: original, title: original.title, baseServings: 2, servings: 2, batches: 1, locked: false, status: "planned", ingredientOverrides: {} };
+    kitchen.meals["2026-10-19"] = { ...kitchen.meals[date], id: "saved-monday", date: "2026-10-19", locked: true };
+    await saveKitchen(request, kitchen);
+    await openSelection(page, true);
+    await submitChef(page, "Cheese Pasta");
+    await page.getByRole("button", { name: "Add to Friday: Cheese Pasta", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Replace dinner", exact: true });
+    await expect(confirmation).toBeVisible();
+    expect((await readKitchen(request)).state).toEqual(kitchen);
+    await confirmation.getByRole("button", { name: "Keep current dinner", exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await page.getByRole("button", { name: "Add to Friday: Cheese Pasta", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Replace dinner", exact: true }).click();
+    await expect.poll(async () => (await readKitchen(request)).state.meals[date]?.recipeId).toBe("fixture-cheese-pasta");
+    expect((await readKitchen(request)).state.meals["2026-10-19"]).toEqual(kitchen.meals["2026-10-19"]);
+    expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(catalog);
+  });
 });
 
 test("a pending Chef request can be canceled without displaying its late answer", async ({ page }) => {
