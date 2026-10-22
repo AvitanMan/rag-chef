@@ -2154,3 +2154,21 @@ img {
     transition-duration: 0.01ms !important;
   }
 }
+.diet-note {
+  color: #76551c;
+  background: #fff4d8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.recovery-panel { padding: 16px 20px; margin-bottom: 18px; }
+.recovery-panel > summary { cursor: pointer; font-weight: 600; }
+.recovery-candidate { border-top: 1px solid var(--line); padding: 14px 0; }
+.recovery-candidate p { margin: 6px 0; }
+.backup-upload { display: grid; gap: 8px; margin-top: 18px; font-weight: 600; }
+.backup-upload input { width: 100%; max-width: 100%; font: inherit; }
+.restore-preview { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.restore-preview p { margin: 8px 0; }
+

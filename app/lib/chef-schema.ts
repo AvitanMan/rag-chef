@@ -1,4 +1,4 @@
-import type { Recipe } from "./recipe-types";
+import type { Recipe, RecipeMetadataMap } from "./recipe-types";
 
 export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
 export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
@@ -102,6 +102,7 @@ export type RankedRecipe = {
 
 export type ChefApiResponse = ChefStructuredAnswer & {
   recipes: Recipe[];
+  metadataByRecipeId: RecipeMetadataMap;
   generation: "ai" | "catalog_fallback";
   provider: ChefProvider;
   model: string;

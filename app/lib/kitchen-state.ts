@@ -69,7 +69,7 @@ export function migrateLegacyKitchen(
 ): KitchenState {
   const pantry = Array.isArray(legacy?.pantry)
     ? legacy.pantry.filter((name): name is string => typeof name === "string" && Boolean(name.trim()))
-    : ["chicken", "rice", "garlic", "tomatoes", "onion"];
+    : [];
   const state: KitchenState = {
     schemaVersion: 2,
     pantry: [...new Set(pantry)].map((name) => ({ id: crypto.randomUUID(), name, measure: "" })),

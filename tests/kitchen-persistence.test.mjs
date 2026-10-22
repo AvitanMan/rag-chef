@@ -22,6 +22,7 @@ after(async () => {
 await writeFile(join(directory, "test-cloudflare.mjs"), "export const env = { DB: undefined };\n");
 for (const [name, sourcePath] of [
   ["kitchen-store", "../app/lib/kitchen-store.ts"],
+  ["kitchen-validation", "../app/lib/kitchen-validation.ts"],
   ["kitchen-route", "../app/api/kitchen/route.ts"],
 ]) {
   const source = await readFile(new URL(sourcePath, import.meta.url), "utf8");
@@ -30,7 +31,8 @@ for (const [name, sourcePath] of [
   }).outputText;
   await writeFile(join(directory, `${name}.mjs`), compiled
     .replaceAll('"cloudflare:workers"', '"./test-cloudflare.mjs"')
-    .replaceAll('"@/app/lib/kitchen-store"', '"./kitchen-store.mjs"'));
+    .replaceAll('"@/app/lib/kitchen-store"', '"./kitchen-store.mjs"')
+    .replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 
 const { env } = await import(pathToFileURL(join(directory, "test-cloudflare.mjs")).href);

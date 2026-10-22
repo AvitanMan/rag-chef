@@ -1,4 +1,4 @@
-import type { Recipe } from "./recipe-types";
+import type { Recipe, RecipeMetadata } from "./recipe-types";
 import { RECIPE_EMBEDDING_KIND } from "./recipe-embeddings";
 import type {
   RecipeEmbeddingRecord,
@@ -40,6 +40,7 @@ export interface StoredCatalogRecipe {
   version: number;
   contentHash: string;
   searchText: string;
+  metadata?: RecipeMetadata;
 }
 
 export interface CatalogRecipeUpsertResult {

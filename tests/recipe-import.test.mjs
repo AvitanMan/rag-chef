@@ -14,7 +14,7 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "chef-schema", "kitchen-store", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
@@ -314,11 +314,30 @@ test("Chef searches all 102 approved recipes rather than a client shortlist and 
 test("allergy exclusions apply before top-K selection and generation context", async () => {
   await route.POST(req([await draft(0, { title: "Peanut noodles", ingredients: [{ name: "peanuts", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
   const contexts = []; mockChef(contexts);
-  const result = await (await chefRoute.POST(chefRequest({ query: "Peanut noodles", profile: { allergies: ["peanut"] } }))).json();
+  const blocked = await (await chefRoute.POST(chefRequest({ query: "Peanut noodles", profile: { allergies: ["peanut"] } }))).json();
+  assert.equal(contexts.length, 0, "An excluded named dish cannot trigger unrelated alternatives or generation");
+  assert.deepEqual(blocked.recommendations, []);
+  assert.ok(blocked.warnings.some((warning) => warning.includes("conflicts with your requirements")));
+  const result = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { allergies: ["peanut"] } }))).json();
   assert.equal(result.retrieval.allergyExcludedCount, 1);
   assert.ok(result.recipes.every((recipe) => recipe.title !== "Peanut noodles"));
   assert.ok(contexts[0].retrievedRecipes.every((recipe) => recipe.title !== "Peanut noodles"));
   assert.ok(result.warnings.some((warning) => warning.includes("cross-contact")));
+});
+
+test("diet constraints filter before generation and fallback, allow labeled unknowns, and retain amount context", async () => {
+  await route.POST(req([await draft(0, { title: "Chicken rice", ingredients: [{ name: "chicken stock", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { diet: "Vegetarian" }, pantry: [{ name: "rice", quantity: "0 g" }, { name: "chicken stock", quantity: 0 }] }))).json();
+  assert.equal(result.recipes.length, 1);
+  assert.equal(result.recipes[0].title, "Rice bowl");
+  assert.deepEqual(result.recommendations[0].pantryMatch, []);
+  assert.equal(contexts[0].pantry[0].quantity, "0 g");
+  assert.ok(result.warnings.some((x) => x.includes("Diet suitability is not verified")));
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  const fallback = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { diet: "Vegetarian" } }))).json();
+  assert.equal(fallback.generation, "catalog_fallback");
+  assert.equal(fallback.recipes.length, 1); assert.equal(fallback.recipes[0].title, "Rice bowl");
 });
 
 test("compact recipe references hydrate facts, changes, citations and pantry data without changing source recipes", async () => {

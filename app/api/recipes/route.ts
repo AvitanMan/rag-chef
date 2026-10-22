@@ -2,6 +2,7 @@ import { searchRecipeCatalog } from "@/app/lib/catalog-search";
 import { DEFAULT_RECIPE_EMBED_MODEL } from "@/app/lib/recipe-embeddings";
 import { RecipeSourceError, searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
 import { isRecipeCatalogConfigured } from "@/app/lib/recipe-store";
+import { evaluateRecipeConstraints, normalizeConstraints } from "@/app/lib/recipe-constraints";
 
 const MAX_QUERY_LENGTH = 120;
 const MAX_PANTRY_ITEMS = 20;
@@ -42,6 +43,7 @@ export async function GET(request: Request): Promise<Response> {
   const query = url.searchParams.get("q")?.trim() ?? "";
   const pantry = readPantry(url.searchParams);
   const allergies = url.searchParams.getAll("allergy").map((item) => item.trim()).filter(Boolean);
+  const constraints = normalizeConstraints({ allergies, diets: url.searchParams.getAll("diet"), dislikes: url.searchParams.getAll("dislike"), equipment: url.searchParams.getAll("equipment"), maxTotalMinutes: Number(url.searchParams.get("maxMinutes")) || undefined });
   if (allergies.length > 30 || allergies.some((item) => item.length > 100)) return jsonError("Invalid allergy exclusions.", "INVALID_ALLERGIES", 400);
 
   if (query.length > MAX_QUERY_LENGTH) {
@@ -67,13 +69,14 @@ export async function GET(request: Request): Promise<Response> {
     if (await isRecipeCatalogConfigured()) {
       try {
         const catalog = await searchRecipeCatalog(
-          { pantry, query, allergies },
+          { pantry, query, constraints },
           embeddingModel(),
         );
         if (catalog.catalogCount > 0 || allergies.length > 0) {
           return Response.json(
             {
               recipes: catalog.recipes,
+              metadataByRecipeId: catalog.metadataByRecipeId,
               meta: {
                 count: catalog.recipes.length,
                 mode: query ? "search" : pantry.length > 0 ? "pantry" : "curated",
@@ -100,12 +103,13 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
 
-    const recipes = await searchRecipes({ pantry, query });
+    const recipes = (await searchRecipes({ pantry, query })).filter((recipe) => evaluateRecipeConstraints(recipe, undefined, constraints).eligible);
     const mode = query ? "search" : pantry.length > 0 ? "pantry" : "curated";
 
     return Response.json(
       {
         recipes,
+        metadataByRecipeId: {},
         meta: {
           count: recipes.length,
           mode,

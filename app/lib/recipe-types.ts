@@ -25,9 +25,37 @@ export interface Recipe {
   servings?: number;
 }
 
+export type Diet = "vegan" | "vegetarian" | "gluten_free" | "low_carb";
+export type DietSuitability = "fits" | "conflicts" | "unknown";
+export interface RecipeMetadata {
+  revision: number;
+  sourceContentHash: string;
+  coreDinner: boolean;
+  dinnerRole: "main" | "side" | "component" | "dessert" | "unknown";
+  diets: Record<Diet, DietSuitability>;
+  totalMinutes: number | null;
+  equipment: string[] | null;
+  provenance: Record<string, {
+    basis: "source" | "curator_assessment" | "curator_estimate";
+    evidence: string;
+  }>;
+  reviewedBy: string;
+  reviewedAt: string;
+}
+export type RecipeMetadataMap = Record<string, RecipeMetadata>;
+
+export interface RecipeConstraints {
+  allergies: string[];
+  diets: Diet[];
+  dislikes: string[];
+  equipment: string[];
+  maxTotalMinutes?: number;
+}
+
 export interface RecipeSearchOptions {
   allergies?: string[];
   pantry?: string[];
   query?: string;
   limit?: number;
+  constraints?: RecipeConstraints;
 }

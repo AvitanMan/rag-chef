@@ -3,7 +3,10 @@
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Recipe } from "../lib/recipe-types";
+import type { Recipe, RecipeMetadataMap } from "../lib/recipe-types";
+import { evaluateRecipeConstraints, normalizeConstraints } from "../lib/recipe-constraints";
+import { availablePantryNames } from "../lib/kitchen-stock";
+import { parseKitchenBackup, serializeKitchenBackup } from "../lib/kitchen-backup";
 import { useKitchen } from "../lib/use-kitchen";
 import { mealScale, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, rankWeeklyCandidates, weekStart } from "../lib/kitchen-state";
@@ -52,6 +55,7 @@ type ChefResponse = {
   }>;
   warnings: string[];
   retrieval?: { method: string; catalogCount: number };
+  metadataByRecipeId?: RecipeMetadataMap;
 };
 
 const DEFAULT_PROFILE: Profile = {
@@ -142,22 +146,6 @@ const STORAGE_KEY = "rag-chef-preferences-v2";
 
 function tidyIngredient(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function ingredientMatches(ingredient: string, pantryItem: string) {
-  const ingredientValue = tidyIngredient(ingredient);
-  const pantryValue = tidyIngredient(pantryItem);
-  return (
-    ingredientValue.includes(pantryValue) || pantryValue.includes(ingredientValue)
-  );
-}
-
-function recipeHasAllergen(recipe: Recipe, allergies: string[]) {
-  return allergies.some((allergy) =>
-    recipe.ingredients.some((ingredient) =>
-      ingredientMatches(ingredient.name, allergy),
-    ),
-  );
 }
 
 function metricMeasure(measure: string, metric: boolean) {
@@ -252,7 +240,7 @@ export default function RagChefApp() {
   const [view, setView] = useState<View>("plan");
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [view]);
   const kitchen = useKitchen(LOCAL_RECIPES);
-  const pantry = useMemo(() => kitchen.state.pantry.map((item) => item.name), [kitchen.state.pantry]);
+  const pantry = useMemo(() => availablePantryNames(kitchen.state.pantry), [kitchen.state.pantry]);
   const [pantryDraft, setPantryDraft] = useState("");
   const [query, setQuery] = useState("");
   const [recipeQuery, setRecipeQuery] = useState("");
@@ -261,6 +249,7 @@ export default function RagChefApp() {
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [recipes, setRecipes] = useState<Recipe[]>(LOCAL_RECIPES);
   const [catalogRecipes, setCatalogRecipes] = useState<Recipe[]>([]);
+  const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [planningNotice, setPlanningNotice] = useState("");
   const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
@@ -360,9 +349,10 @@ export default function RagChefApp() {
     try {
       const response = await fetch("/api/recipes/catalog", { cache: "no-store" });
       if (!response.ok) throw new Error("Catalog unavailable");
-      const data = await response.json() as { recipes: Recipe[] };
+      const data = await response.json() as { recipes: Recipe[]; metadataByRecipeId?: RecipeMetadataMap };
       if (!Array.isArray(data.recipes)) throw new Error("Invalid catalog");
       setCatalogRecipes(data.recipes);
+      setMetadataByRecipeId(data.metadataByRecipeId ?? {});
       setCatalogState("ready");
     } catch {
       setCatalogState("error");
@@ -383,27 +373,25 @@ export default function RagChefApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, kitchen.ready]);
 
+  const constraints = useMemo(() => normalizeConstraints(profile), [profile]);
+  const eligibilityFor = (recipe: Recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints);
   const rankedRecipes = useMemo(() => {
     return recipes
-      .filter((recipe) => !recipeHasAllergen(recipe, profile.allergies))
+      .filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible)
       .sort(
         (a, b) =>
-          pantryDetails(b, pantry).coverage - pantryDetails(a, pantry).coverage,
+          evaluateRecipeConstraints(a, metadataByRecipeId[a.id], constraints).dislikedIngredients.length - evaluateRecipeConstraints(b, metadataByRecipeId[b.id], constraints).dislikedIngredients.length || pantryDetails(b, pantry).coverage - pantryDetails(a, pantry).coverage,
       );
-  }, [pantry, profile.allergies, recipes]);
+  }, [pantry, constraints, metadataByRecipeId, recipes]);
 
-  const browseCatalog = useMemo(() => catalogRecipes.filter((recipe) => !recipeHasAllergen(recipe, profile.allergies)), [catalogRecipes, profile.allergies]);
+  const browseCatalog = useMemo(() => catalogRecipes.filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible), [catalogRecipes, constraints, metadataByRecipeId]);
   const browserResults = useMemo(() => browseRecipes(browseCatalog, recipeQuery, pantry), [browseCatalog, recipeQuery, pantry]);
 
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDateDays(week, index)), [week]);
   const weekMeals = useMemo(() => weekDates.flatMap((date) => kitchen.state.meals[date] ? [kitchen.state.meals[date]] : []), [kitchen.state.meals, weekDates]);
   const shoppingItems = useMemo(() => buildShoppingList(weekMeals, kitchen.state.pantry).map((item) => ({ ...item, key: `${week}:${item.key}` })), [weekMeals, kitchen.state.pantry, week]);
   function recipeAllowed(recipe: Recipe) {
-    if (recipeHasAllergen(recipe, profile.allergies)) return false;
-    const labels = `${recipe.title} ${recipe.category} ${recipe.tags.join(" ")}`.toLowerCase();
-    if (profile.diet === "Vegan") return /\bvegan\b/.test(labels);
-    if (profile.diet === "Vegetarian") return /\bvegan\b|\bvegetarian\b/.test(labels);
-    return true;
+    return eligibilityFor(recipe).eligible;
   }
 
   function addPantryItem(value = pantryDraft) {
@@ -413,8 +401,8 @@ export default function RagChefApp() {
     setPantryDraft("");
   }
 
-  function removePantryItem(value: string) {
-    kitchen.update((state) => ({ ...state, pantry: state.pantry.filter((item) => item.name !== value) }));
+  function removePantryItem(id: string) {
+    kitchen.update((state) => ({ ...state, pantry: state.pantry.filter((item) => item.id !== id) }));
   }
 
   async function askChef(prompt = query) {
@@ -427,7 +415,7 @@ export default function RagChefApp() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           query: finalQuery,
-          pantry,
+          pantry: kitchen.state.pantry.filter((item) => pantry.includes(item.name)).map((item) => ({ name: item.name, quantity: item.measure || undefined })),
           profile,
           provider: settings.provider,
           model:
@@ -439,6 +427,7 @@ export default function RagChefApp() {
       const data = await response.json() as ChefResponse & { error?: { message?: string } };
       if (!response.ok) throw new Error(data.error?.message || "Chef could not load the approved catalog. Please retry.");
       setChefResult(data);
+      if (data.metadataByRecipeId) setMetadataByRecipeId((current) => ({ ...current, ...data.metadataByRecipeId }));
       setRecipeStatus(`${data.retrieval?.catalogCount ?? 0} approved recipes searched · ${data.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}`);
     } catch (error) {
       setChefResult({
@@ -464,7 +453,7 @@ export default function RagChefApp() {
     setPlanningNotice(candidates.length < emptyDays ? `Only ${candidates.length} different eligible recipes are available. Remaining days were left empty.` : "Empty days filled with pantry-first recipes, without repeats.");
     kitchen.update((state) => {
       const meals = { ...state.meals };
-      const available = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), state.pantry.map((item) => item.name), week, state.meals);
+      const available = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), availablePantryNames(state.pantry), week, state.meals);
       let index = 0;
       for (const date of weekDates) {
         if (!meals[date] && index < available.length) meals[date] = createPlannedMeal(date, available[index++]);
@@ -486,7 +475,7 @@ export default function RagChefApp() {
   }
 
   function chooseMeal(date: string, recipe: Recipe, template?: PlannedMeal, expectedId: string | null = null): boolean {
-    if (dinnerSelectionStatus(kitchen.state.meals, date, expectedId) !== "available" || recipeHasAllergen(recipe, profile.allergies)) {
+    if (dinnerSelectionStatus(kitchen.state.meals, date, expectedId) !== "available" || !recipeAllowed(recipe)) {
       setSelectionNotice("This dinner or your exclusions changed. Choose again; the saved dinner is unchanged."); return false;
     }
     kitchen.update((state) => placePlannedDinner(state, date, recipe, expectedId, template));
@@ -519,7 +508,7 @@ export default function RagChefApp() {
   }
 
   function exportBackup() {
-    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), state: kitchen.state }, null, 2)], { type: "application/json" });
+    const blob = new Blob([serializeKitchenBackup(kitchen.state)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); link.href = url; link.download = "rag-chef-kitchen-backup.json"; link.click(); URL.revokeObjectURL(url);
   }
@@ -618,12 +607,14 @@ export default function RagChefApp() {
 
         {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to this Mac."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
         {kitchen.conflict && <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>}
+        {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed.</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
         {view === "chef" && (<>
           <button className="secondary-button flow-back" onClick={() => setView("recipes")}>← Back to Recipes</button>
           <ChefView
             pantry={pantry}
+            pantryItems={kitchen.state.pantry.filter((item) => pantry.includes(item.name))}
             pantryDraft={pantryDraft}
             setPantryDraft={setPantryDraft}
             query={query}
@@ -639,6 +630,7 @@ export default function RagChefApp() {
             refreshRecipes={() => void loadRecipes()}
             openRecipe={openRecipe}
             detailsFor={(recipe) => pantryDetails(recipe, pantry)}
+            eligibilityFor={eligibilityFor}
             generatePlan={generatePlan}
           />
         </>)}
@@ -664,10 +656,10 @@ export default function RagChefApp() {
               : catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged. Retry to browse the approved catalog.</p><button className="primary-button" onClick={() => void loadPlanningCatalog()}>Retry recipes</button></div>
               : <>
                 <p className="catalog-count" role="status">{browserResults.length} of {browseCatalog.length} recipes{browserResults.length > recipeLimit ? ` · Showing ${recipeLimit}` : ""}</p>
-                {profile.allergies.length > 0 && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved allergy exclusions. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
+                {(profile.allergies.length > 0 || constraints.diets.length > 0) && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved exclusions. Unknown dietary suitability stays visible with a label. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
                 {catalogRecipes.length === 0 ? <div className="empty-state"><strong>Your recipe collection is empty.</strong><p>Import approved recipes to start browsing.</p></div>
-                  : browserResults.length === 0 ? <div className="empty-state"><strong>No recipes match.</strong><p>{browseCatalog.length === 0 ? "Your saved allergy exclusions hide the available recipes." : "Try fewer words or a different ingredient."}</p></div>
-                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} details={pantryDetails(recipe, pantry)} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
+                  : browserResults.length === 0 ? <div className="empty-state"><strong>No recipes match.</strong><p>{browseCatalog.length === 0 ? "Your saved exclusions hide the available recipes." : "Try fewer words or a different ingredient."}</p></div>
+                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} details={pantryDetails(recipe, pantry)} dietUnknowns={eligibilityFor(recipe).dietUnknowns} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
                 {browserResults.length > recipeLimit && <div className="catalog-more"><button className="secondary-button" onClick={() => setRecipeLimit((limit) => limit + RECIPE_PAGE_SIZE)}>Show more</button></div>}
               </>}
           </section>
@@ -717,6 +709,10 @@ export default function RagChefApp() {
             connectionStatus={connectionStatus}
             testConnection={() => void testConnection()}
             exportBackup={exportBackup}
+            restoreBackup={kitchen.restoreBackup}
+            canRestore={kitchen.ready && !kitchen.busy}
+            currentKitchen={kitchen.state}
+            sources={[...new Map(catalogRecipes.map((recipe) => [recipe.source.name, recipe.source])).values()]}
           />
         )}
         </fieldset>
@@ -745,6 +741,7 @@ export default function RagChefApp() {
           metric={metric}
           setMetric={setMetric}
           chefResult={chefResult}
+          eligibility={eligibilityFor(selectedRecipe)}
           close={() => setSelectedRecipe(null)}
           addToPlan={() => addRecipeToPlan(selectedRecipe)}
           addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"}
@@ -814,6 +811,7 @@ function viewTitle(view: View) {
 
 function ChefView({
   pantry,
+  pantryItems,
   pantryDraft,
   setPantryDraft,
   query,
@@ -829,9 +827,11 @@ function ChefView({
   refreshRecipes,
   openRecipe,
   detailsFor,
+  eligibilityFor,
   generatePlan,
 }: {
   pantry: string[];
+  pantryItems: PantryStock[];
   pantryDraft: string;
   setPantryDraft: (value: string) => void;
   query: string;
@@ -847,6 +847,7 @@ function ChefView({
   refreshRecipes: () => void;
   openRecipe: (recipe: Recipe) => void;
   detailsFor: (recipe: Recipe) => ReturnType<typeof pantryDetails>;
+  eligibilityFor: (recipe: Recipe) => ReturnType<typeof evaluateRecipeConstraints>;
   generatePlan: () => void;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -933,9 +934,9 @@ function ChefView({
           </form>
         )}
         <div className="chip-row">
-          {pantry.slice(0, 8).map((item) => (
-            <button className="ingredient-chip" key={item} onClick={() => removePantryItem(item)} title="Remove ingredient">
-              <span>{ingredientGlyph(item)}</span>{item}<b>×</b>
+          {pantryItems.slice(0, 8).map((item) => (
+            <button className="ingredient-chip" key={item.id} onClick={() => removePantryItem(item.id)} title="Remove ingredient">
+              <span>{ingredientGlyph(item.name)}</span>{item.name}<b>×</b>
             </button>
           ))}
           {pantry.length > 8 && <span className="more-chip">+{pantry.length - 8} more</span>}
@@ -971,6 +972,7 @@ function ChefView({
               key={recipe.id}
               recipe={recipe}
               details={detailsFor(recipe)}
+              dietUnknowns={eligibilityFor(recipe).dietUnknowns}
               featured={index === 0}
               open={() => openRecipe(recipe)}
             />
@@ -994,6 +996,7 @@ export function RecipeCard({
   open,
   add,
   addLabel = "Add to plan",
+  dietUnknowns = [],
 }: {
   recipe: Recipe;
   details: ReturnType<typeof pantryDetails>;
@@ -1001,6 +1004,7 @@ export function RecipeCard({
   open: () => void;
   add?: () => void;
   addLabel?: string;
+  dietUnknowns?: string[];
 }) {
   return (
     <article className={`recipe-card ${featured ? "featured" : ""}`}>
@@ -1012,6 +1016,7 @@ export function RecipeCard({
         <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
         <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p>
         <small className="coverage-note">Names only · amounts not checked</small>
+        {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
         <div className="recipe-footer">
           <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             Source: {sourceLabel(recipe)}
@@ -1059,7 +1064,7 @@ function PantryView({
                 const measure = event.target.value;
                 update((state) => ({ ...state, pantry: state.pantry.map((stock) => stock.id === item.id ? { ...stock, measure } : stock) }));
               }} />{item.measure && !parseMeasure(item.measure) && <small>Kept as a note; this amount cannot be subtracted automatically.</small>}</label>
-              <button className="text-button" onClick={() => remove(item.name)} aria-label={`Remove ${item.name}`}>Remove</button>
+              <button className="text-button" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
             </div>
           ))}
         </div>
@@ -1077,6 +1082,10 @@ function SettingsView({
   connectionStatus,
   testConnection,
   exportBackup,
+  restoreBackup,
+  canRestore,
+  currentKitchen,
+  sources,
 }: {
   profile: Profile;
   setProfile: (profile: Profile) => void;
@@ -1085,14 +1094,31 @@ function SettingsView({
   connectionStatus: string;
   testConnection: () => void;
   exportBackup: () => void;
+  restoreBackup: (state: KitchenState) => boolean;
+  canRestore: boolean;
+  currentKitchen: KitchenState;
+  sources: Recipe["source"][];
 }) {
+  const [restorePreview, setRestorePreview] = useState<ReturnType<typeof parseKitchenBackup> | null>(null);
+  const [restoreError, setRestoreError] = useState("");
+  async function readBackup(file: File | undefined) {
+    setRestorePreview(null);
+    setRestoreError("");
+    if (!file) return;
+    try {
+      if (file.size > 2_000_000) throw new Error("This backup exceeds the 2 MB kitchen limit.");
+      setRestorePreview(parseKitchenBackup(await file.text()));
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : "This backup could not be read.");
+    }
+  }
   return (
     <div className="settings-grid">
-      <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button></section>
+      <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button><label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label><p className="quantity-note">Restore replaces this kitchen. A recovery copy is preserved first. Recipe catalog and model preferences are separate.</p>{restoreError && <p role="alert">{restoreError}</p>}{restorePreview && <section className="restore-preview" role="region" aria-label="Backup preview"><h3>Review this backup</h3><p>Exported {new Date(restorePreview.exportedAt).toLocaleString()}</p><p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners</p><p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners</p><p>Amounts, cooked records, and shopping checks will be replaced with the backup’s values.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button><button className="primary-button" disabled={!canRestore} onClick={() => { if (restoreBackup(restorePreview.state)) { setRestorePreview(null); setRestoreError(""); } else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying."); }}>Replace kitchen with backup</button></div></section>}</section>
       <section className="panel settings-panel">
         <div className="section-heading"><div><span className="eyebrow">Personalization</span><h2>How you cook</h2><p>Allergies are filtered before a recipe reaches the model.</p></div></div>
         <div className="form-grid">
-          <label>Diet<select value={profile.diet} onChange={(event) => setProfile({ ...profile, diet: event.target.value })}><option>No restriction</option><option>Vegetarian</option><option>Vegan</option><option>Gluten-free</option><option>Low-carb</option></select></label>
+          <label>Diet<select value={profile.diet} onChange={(event) => setProfile({ ...profile, diet: event.target.value })}><option>No restriction</option><option>Vegetarian</option><option>Vegan</option><option>Gluten-free</option><option>Low-carb</option></select><small>Known conflicts are hidden. Unreviewed recipes stay visible as “Diet not verified.”</small></label>
           <label>Skill level<select value={profile.skillLevel} onChange={(event) => setProfile({ ...profile, skillLevel: event.target.value })}><option>New cook</option><option>Confident beginner</option><option>Experienced home cook</option></select></label>
           <label>Budget<select value={profile.budget} onChange={(event) => setProfile({ ...profile, budget: event.target.value })}><option>Low</option><option>Medium</option><option>Flexible</option></select></label>
           <label className="wide">Allergies<input value={profile.allergies.join(", ")} onChange={(event) => setProfile({ ...profile, allergies: event.target.value.split(",").map(tidyIngredient).filter(Boolean) })} placeholder="peanuts, shellfish" /><small>Use ingredient names separated by commas. Ambiguous matches still receive a warning.</small></label>
@@ -1113,8 +1139,8 @@ function SettingsView({
       <section className="panel settings-panel wide-panel">
         <div className="section-heading"><div><span className="eyebrow">Source adapters</span><h2>Where recipes come from</h2></div></div>
         <div className="source-list">
-          <div><span className="source-logo active">T</span><div><strong>TheMealDB</strong><small>Prototype-approved · normalized · attributed</small></div><b>Cataloged</b></div>
-          <div><span className="source-logo ready">RC</span><div><strong>Recipe Commons</strong><small>Ready for CC0 recipe imports</small></div><b>Open source</b></div>
+          {sources.map((source) => <div key={source.name}><span className="source-logo active">{source.name.slice(0, 1)}</span><div><strong>{source.name}</strong><small>{source.licenseId || "Prototype-approved · attributed"}</small></div><b>Cataloged</b></div>)}
+          {!sources.length && <p>Load the recipe collection to see its sources.</p>}
         </div>
       </section>
     </div>
@@ -1132,6 +1158,7 @@ export function RecipeDrawer({
   addToPlan,
   addLabel,
   start,
+  eligibility,
 }: {
   recipe: Recipe;
   plannedMeal?: PlannedMeal;
@@ -1143,6 +1170,7 @@ export function RecipeDrawer({
   addToPlan: () => void;
   addLabel: string;
   start: (steps: string[], method: string) => void;
+  eligibility?: ReturnType<typeof evaluateRecipeConstraints>;
 }) {
   const details = pantryDetails(recipe, pantry);
   const changes = chefResult?.chefChanges.filter((item) => item.recipeId === recipe.id) ?? [];
@@ -1161,6 +1189,8 @@ export function RecipeDrawer({
           <span className="eyebrow">{recipe.category}</span>
           <h2 id="recipe-title">{recipe.title}</h2>
           <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry <small className="coverage-note">Names only · amounts not checked</small></p>
+          {eligibility && !eligibility.eligible && <p className="diet-note" role="alert">This recipe conflicts with your saved exclusions. Your saved dinner is unchanged. {eligibility.reasons.join(" ")}</p>}
+          {Boolean(eligibility?.dietUnknowns.length) && <p className="diet-note">Diet not verified: {eligibility?.dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
           {directions.length > 1 && (
             <div className="method-picker" aria-label="Choose cooking method">
               <span>Choose a method</span>
@@ -1179,7 +1209,7 @@ export function RecipeDrawer({
               </div>
             </div>
           )}
-          <div className="drawer-actions"><button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" onClick={addToPlan}>{addLabel}</button></div>
+          <div className="drawer-actions"><button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
           <div className="source-citation">
             <span>Source citation</span>
             <p>From <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a>.</p>

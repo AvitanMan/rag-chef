@@ -14,6 +14,9 @@ import {
 } from "@/app/lib/chef-schema";
 import { focusedRecipeId, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe } from "@/app/lib/catalog-search";
 import type { Recipe } from "@/app/lib/recipe-types";
+import { normalizeConstraints, type RecipeEligibility } from "@/app/lib/recipe-constraints";
+import { parseMeasure } from "@/app/lib/quantities";
+import type { RecipeMetadataMap } from "@/app/lib/recipe-types";
 
 const MAX_REQUEST_BYTES = 1_500_000;
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
@@ -52,12 +55,15 @@ type RankedCandidate = {
   semanticScore: number | null;
   pantryMatch: string[];
   missingIngredients: string[];
+  eligibility: RecipeEligibility;
 };
 type RetrievalResult = {
   method: CatalogRetrievalMethod;
   ranked: RankedCandidate[];
   catalogCount: number;
   allergyExcludedCount: number;
+  metadataByRecipeId: RecipeMetadataMap;
+  constraintExcludedCount: number;
 };
 
 class ProviderError extends Error {
@@ -88,8 +94,13 @@ export async function POST(request: Request): Promise<Response> {
   let retrieval: RetrievalResult;
   const preWarnings: string[] = [];
   try {
-    const found = await searchRecipeCatalog({ query: input.query, pantry: input.pantry.map((item) => item.name), allergies: input.profile.allergies, limit: topK() }, embedModel);
-    retrieval = { method: found.method, ranked: found.ranked.map(asChefCandidate), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount };
+    const pantryNames = input.pantry.filter((item) => {
+      if (typeof item.quantity === "number") return item.quantity > 0;
+      const amount = item.quantity ? parseMeasure([item.quantity, item.unit].filter(Boolean).join(" ")) : null;
+      return amount === null || amount.quantity > 0;
+    }).map((item) => item.name);
+    const found = await searchRecipeCatalog({ query: input.query, pantry: pantryNames, constraints: normalizeConstraints(input.profile), limit: topK() }, embedModel);
+    retrieval = { method: found.method, ranked: found.ranked.map(asChefCandidate), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount };
     if (found.warning) preWarnings.push(found.warning);
   } catch {
     return jsonError(503, "catalog_unavailable", "The approved recipe catalog is unavailable. Retry when it is running; your kitchen is unchanged.");
@@ -99,6 +110,7 @@ export async function POST(request: Request): Promise<Response> {
   const focus = focusedRecipeId(input.query, retrieval.ranked.map((item) => item.recipe));
   if (focus) retrieval.ranked = retrieval.ranked.filter((item) => item.recipe.id === focus);
   const ranked = retrieval.ranked;
+  if (ranked.some((item) => item.eligibility.dietUnknowns.length)) preWarnings.push("Diet suitability is not verified for some suggestions. Known ingredient conflicts have been excluded.");
   const retrievedAt = performance.now();
   const references = new Map(ranked.map((item, index) => [`R${index + 1}`, item.recipe.id]));
   const allowChanges = /\b(substitut\w*|replac\w*|instead|swap\w*|adapt\w*|chang\w*|without|can i use|could i use)\b/i.test(input.query);
@@ -107,7 +119,7 @@ export async function POST(request: Request): Promise<Response> {
   let generated: ChefStructuredAnswer;
   if (!ranked.length) {
     generation = "catalog_fallback";
-    generated = { answer: retrieval.catalogCount ? "No catalog recipes remain after your allergy exclusions. Keep those exclusions and try adding more approved recipes." : "The approved recipe catalog is empty. Add approved recipes before asking the Chef.", recommendations: [], sourceFacts: [], chefChanges: [], citations: [], warnings: [] };
+    generated = { answer: retrieval.catalogCount ? "No catalog recipes remain after your exclusions and requirements. Keep those requirements and try adding more approved recipes." : "The approved recipe catalog is empty. Add approved recipes before asking the Chef.", recommendations: [], sourceFacts: [], chefChanges: [], citations: [], warnings: [] };
   } else {
     try {
       const prompt = buildUserPrompt(input, ranked, allowChanges);
@@ -135,7 +147,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const answer = sanitizeGeneratedAnswer(generated, ranked, preWarnings);
   const finished = performance.now();
-  return json({ ...answer, recipes: ranked.map((item) => item.recipe), generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs: Math.round(finished - retrievedAt), totalMs: Math.round(finished - started) } } satisfies ChefApiResponse, 200);
+  return json({ ...answer, recipes: ranked.map((item) => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId, generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs: Math.round(finished - retrievedAt), totalMs: Math.round(finished - started) } } satisfies ChefApiResponse, 200);
 }
 
 function asChefCandidate(item: CatalogRankedRecipe): RankedCandidate {

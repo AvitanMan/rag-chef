@@ -30,7 +30,7 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities"]) {
+for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
@@ -45,12 +45,12 @@ after(async () => { runtime.reset(); Object.assign(globalThis, old); await rm(di
 const state = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 const document = (revision = 1, value = state()) => ({ revision, state: value, updatedAt: "2026-10-20T00:00:00.000Z" });
 
-async function setup({ cached, blocked = false, fetch } = {}) {
+async function setup({ cached, blocked = false, fetch, existingLocal, existingSession } = {}) {
   runtime.reset();
   const timers = new Map();
   let nextTimer = 0;
-  const storage = () => ({ values: new Map(), blocked: false, getItem(key) { return this.values.get(key) ?? null; }, setItem(key, value) { if (this.blocked) throw new Error("storage full"); this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } });
-  const local = storage(), session = storage();
+  const storage = () => ({ values: new Map(), blocked: false, get length() { return this.values.size; }, key(index) { return [...this.values.keys()][index] ?? null; }, getItem(key) { return this.values.get(key) ?? null; }, setItem(key, value) { if (this.blocked) throw new Error("storage full"); this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } });
+  const local = existingLocal ?? storage(), session = existingSession ?? storage();
   if (cached) local.setItem(KITCHEN_CACHE_KEY, JSON.stringify(cached));
   local.blocked = blocked;
   const events = new EventTarget();
@@ -68,8 +68,73 @@ async function setup({ cached, blocked = false, fetch } = {}) {
   }
   const tick = async () => { const jobs = [...timers.values()]; timers.clear(); jobs.forEach((fn) => fn()); await pump(); };
   await pump();
-  return { get result() { return runtime.result; }, pump, tick, calls, local, respond: (fn) => { handler = fn; } };
+  return { get result() { return runtime.result; }, pump, tick, calls, local, session, respond: (fn) => { handler = fn; } };
 }
+
+test("offline edits remain recoverable after the original tab closes", async () => {
+  const first = await setup();
+  first.respond(() => { throw new TypeError("Failed to fetch"); });
+  first.result.update((current) => ({ ...current, pantry: [{ ...current.pantry[0], measure: "900 g" }] }));
+  await first.pump(); await first.tick();
+  const reopened = await setup({ existingLocal: first.local, fetch: () => { throw new TypeError("Failed to fetch"); } });
+  assert.equal(reopened.result.state.pantry[0].measure, "1 kg");
+  assert.equal(reopened.result.recoveryCandidates.length, 1);
+  const candidate = reopened.result.recoveryCandidates[0];
+  assert.equal(candidate.differences.pantryChanged, 1);
+  assert.ok(candidate.updatedAt);
+  assert.equal(reopened.result.recoverDraft(candidate.id), true);
+  await reopened.pump(); await reopened.tick();
+  assert.equal(reopened.result.state.pantry[0].measure, "900 g");
+  assert.equal(reopened.result.saveState, "offline");
+  assert.ok(reopened.local.getItem(candidate.id), "the source draft may still belong to another tab");
+});
+
+test("recovery skips malformed records and never discards a changed live draft", async () => {
+  const h = await setup();
+  const id = `${KITCHEN_CACHE_KEY}:draft:other-tab`;
+  const draft = { revision: 1, dirty: true, state: { ...state(), pantry: [] } };
+  h.local.setItem(`${KITCHEN_CACHE_KEY}:draft:damaged`, "{invalid");
+  h.local.setItem(id, JSON.stringify(draft));
+  const reopened = await setup({ existingLocal: h.local });
+  assert.equal(reopened.result.recoveryCandidates.length, 1);
+  assert.equal(reopened.result.recoveryCandidates[0].updatedAt, null, "old envelopes remain supported");
+  h.local.setItem(id, JSON.stringify({ ...draft, revision: 2 }));
+  assert.equal(reopened.result.discardDraft(id), false);
+  assert.ok(h.local.getItem(id));
+  await reopened.pump();
+  assert.equal(reopened.result.discardDraft(id), true);
+  assert.equal(h.local.getItem(id), null);
+});
+
+test("restore preserves the previous kitchen and uses the current CAS revision", async () => {
+  const h = await setup();
+  assert.equal(h.result.restoreBackup({ ...state(), pantry: [] }), true);
+  await h.pump();
+  const preserved = h.result.recoveryCandidates.find((entry) => entry.reason === "before-restore");
+  assert.ok(preserved);
+  h.respond((_url, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(body.revision, 1);
+    assert.equal(body.state.pantry.length, 0);
+    return Response.json({ current: document(2) }, { status: 409 });
+  });
+  await h.tick();
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.state.pantry.length, 0);
+  assert.equal(h.result.conflict.state.pantry.length, 1);
+  assert.ok(h.local.getItem(preserved.id));
+});
+
+test("restore works offline and refuses replacement when preservation is unavailable", async () => {
+  const offline = await setup({ cached: { revision: 1, state: state(), dirty: false }, fetch: () => { throw new TypeError("Failed to fetch"); } });
+  assert.equal(offline.result.restoreBackup({ ...state(), pantry: [] }), true);
+  await offline.pump(); await offline.tick();
+  assert.equal(offline.result.state.pantry.length, 0);
+  assert.equal(offline.result.saveState, "offline");
+  const blocked = await setup({ blocked: true });
+  assert.equal(blocked.result.restoreBackup({ ...state(), pantry: [] }), false);
+  assert.equal(blocked.result.state.pantry.length, 1);
+});
 
 test("save state distinguishes clean, pending, failed and successfully retried writes", async () => {
   const h = await setup();
