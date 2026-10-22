@@ -46,6 +46,7 @@ export type RecipeMetadataMap = Record<string, RecipeMetadata>;
 
 export interface RecipeConstraints {
   allergies: string[];
+  excludedIngredients?: string[];
   diets: Diet[];
   dislikes: string[];
   equipment: string[];

@@ -405,8 +405,62 @@ test("unknown questions may return no recommendations without manufacturing a re
 });
 
 test("adaptation recognition includes scaling and explicit reductions without expanding source permissions", () => {
-  for (const query of ["Make Test rice vegan", "Scale Test rice for 8 people", "For Test rice, halve the salt", "Double Test rice"]) assert.equal(chefRoute.adaptationRequested(query), true, query);
+  for (const query of ["Make Test rice vegan", "Scale Test rice for 8 people", "For Test rice, halve the salt", "Double Test rice"]) assert.equal(chefRoute.adaptationRequested(query, true), true, query);
   assert.equal(chefRoute.adaptationRequested("Recommend rice"), false);
+  assert.equal(chefRoute.adaptationRequested("Dinner without tomatoes"), false);
+  assert.equal(chefRoute.adaptationRequested("Make a vegan dinner"), false);
+});
+
+test("natural-language ingredient exclusions apply to retrieval, provider context and fallback without changing saved preferences", async () => {
+  await route.POST(req([
+    await draft(0, { title: "Cheese Pasta", ingredients: [{ name: "penne", measure: "200 g" }, { name: "mozzarella", measure: "100 g" }] }),
+    await draft(1, { title: "Tomato Rice", ingredients: [{ name: "chopped tomatoes", measure: "2" }, { name: "rice", measure: "100 g" }] }),
+    await draft(2, { title: "Garlic Rice", ingredients: [{ name: "rice", measure: "200 g" }, { name: "garlic", measure: "1 clove" }] }),
+  ]));
+  const before = JSON.stringify((await store.listCatalogRecipes()).map((row) => row.recipe));
+  for (const [query, forbidden] of [["Dinner but no pasta", ["Cheese Pasta"]], ["Rice without tomatoes", ["Tomato Rice"]]]) {
+    const contexts = []; mockChef(contexts);
+    const response = await chefRoute.POST(chefRequest({ query }));
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.generation, "ai");
+    assert.ok(result.recipes.length > 0);
+    assert.ok(result.recipes.every((recipe) => !forbidden.includes(recipe.title)));
+    assert.ok(contexts[0].retrievedRecipes.every((recipe) => !forbidden.includes(recipe.title)));
+    assert.equal(contexts[0].adaptationRequested, false);
+    assert.ok(contexts[0].requestIntent.excludedIngredients.length > 0);
+    const searchResult = await (await searchRoute.GET(new Request(`http://localhost/api/recipes?q=${encodeURIComponent(query)}`))).json();
+    assert.ok(searchResult.recipes.length > 0);
+    assert.ok(searchResult.recipes.every((recipe) => !forbidden.includes(recipe.title)));
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    const fallback = await (await chefRoute.POST(chefRequest({ query }))).json();
+    assert.equal(fallback.generation, "catalog_fallback");
+    assert.ok(fallback.recipes.length > 0);
+    assert.ok(fallback.recipes.every((recipe) => !forbidden.includes(recipe.title)));
+  }
+  assert.equal(JSON.stringify((await store.listCatalogRecipes()).map((row) => row.recipe)), before);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM kitchen_state").get().n, 0);
+});
+
+test("a named vegan adaptation preserves its original source but cannot bypass saved diet or allergy exclusions", async () => {
+  await importOne(await draft(0, { title: "Cheese Pasta", ingredients: [{ name: "penne", measure: "200 g" }, { name: "mozzarella", measure: "100 g" }] }));
+  const before = (await store.listCatalogRecipes())[0].recipe;
+  const contexts = []; mockChef(contexts, (answer) => ({ ...answer, chefChanges: [{ recipeId: "R1", change: "Consider a plant-based cheese substitute.", reason: "Advisory vegan adaptation; source directions are unchanged." }] }));
+  const adapted = await (await chefRoute.POST(chefRequest({ query: "Make Cheese Pasta vegan" }))).json();
+  assert.equal(adapted.outcome, "matches");
+  assert.equal(adapted.generation, "ai");
+  assert.deepEqual(adapted.recipes, [before]);
+  assert.equal(adapted.chefChanges.length, 1);
+  assert.deepEqual(contexts[0].requestIntent.adaptationDiets, ["vegan"]);
+  assert.ok(adapted.warnings.some((warning) => warning.includes("original recipe is unchanged")));
+  for (const profile of [{ diet: "Vegan" }, { allergies: ["dairy"] }]) {
+    const count = contexts.length;
+    const blocked = await (await chefRoute.POST(chefRequest({ query: "Make Cheese Pasta vegan", profile }))).json();
+    assert.equal(blocked.outcome, "constraints_unsatisfied");
+    assert.deepEqual(blocked.recipes, []);
+    assert.equal(contexts.length, count, "A saved exclusion must block generation");
+  }
+  assert.deepEqual((await store.listCatalogRecipes())[0].recipe, before);
 });
 
 test("OpenAI uses the same compact strict schema and rejects incomplete responses without paid calls", async () => {

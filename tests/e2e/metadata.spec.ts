@@ -42,6 +42,15 @@ test("reviewed metadata previews, applies idempotently and drives public constra
   expect(allowed.recipes.map((recipe: { id: string }) => recipe.id)).toContain(entry.recipeId);
   const tooShort = await (await request.get("/api/recipes?q=Eggplant%20Stew&maxMinutes=10")).json();
   expect(tooShort.recipes).toEqual([]);
+  const sideRanking = await (await request.get("/api/recipes?q=Dinner&pantry=rice")).json();
+  expect(sideRanking.recipes.at(-1).id).toBe(entry.recipeId);
+  const mainReview = { ...sourceTimed, dinnerRole: "main" };
+  expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata: mainReview }] } })).ok()).toBeTruthy();
+  const dinnerRanking = await (await request.get("/api/recipes?q=Dinner%20without%20cheese&pantry=rice")).json();
+  expect(dinnerRanking.recipes[0].id).toBe(entry.recipeId);
+  const chefDinner = await (await request.post("/api/chef", { data: { query: "Dinner without cheese", pantry: ["rice"], provider: "ollama" } })).json();
+  expect(chefDinner.recipes[0].id).toBe(entry.recipeId);
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");

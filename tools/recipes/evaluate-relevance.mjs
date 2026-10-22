@@ -26,6 +26,7 @@ export function evaluateRecords(records, thresholds, decide) {
     return { id: item.id, split: item.split, query: item.query, expectedOutcome: item.expectedOutcome ?? "matches", expectedTitles: expected,
       ...(item.constraints ? { constraints: item.constraints } : {}), ...(item.allergies ? { allergies: item.allergies } : {}),
       accepted, outcomePass: accepted === (item.expectedOutcome !== "no_match"), expectedHitAt3: expected.length ? hits > 0 : null,
+      exactTitleTopOnePass: item.exactTitleId ? top3[0]?.recipe.id === item.exactTitleId : null,
       labeledPrecisionAt3: expected.length ? hits / Math.max(top3.length, 1) : null, exclusionsPass,
       top3: top3.map((row) => ({ id: row.recipe.id, title: row.recipe.title, lexicalScore: row.lexicalScore, semanticScore: row.semanticScore })),
       relevantCount: relevant.length, maxLexicalScore: Math.max(0, ...ranked.map((row) => row.lexicalScore)),
@@ -39,9 +40,10 @@ export function evaluateRecords(records, thresholds, decide) {
   const abstention = negative.length ? negative.filter((item) => !item.accepted).length / negative.length : 1;
   const hitAt3 = titled.length ? titled.filter((item) => item.expectedHitAt3).length / titled.length : 1;
   const precision = titled.length ? titled.reduce((sum, item) => sum + item.labeledPrecisionAt3, 0) / titled.length : 1;
+  const exact = results.filter((item) => item.exactTitleTopOnePass !== null);
   return { total: results.length, supported: positive.length, unsupported: negative.length, retention, abstention,
-    expectedTitleCases: titled.length, expectedHitAt3: hitAt3, labeledPrecisionAt3: precision, labeledPrecisionPenalty: 1 - precision,
-    gatesPassed: retention >= TARGET && abstention >= TARGET && results.every((item) => item.exclusionsPass), results };
+    expectedTitleCases: titled.length, expectedHitAt3: hitAt3, exactTitleCases: exact.length, exactTitleTopOne: exact.length ? exact.filter((item) => item.exactTitleTopOnePass).length / exact.length : 1, labeledPrecisionAt3: precision, labeledPrecisionPenalty: 1 - precision,
+    gatesPassed: retention >= TARGET && abstention >= TARGET && results.every((item) => item.exclusionsPass && item.exactTitleTopOnePass !== false), results };
 }
 
 function boundaries(scores) {
@@ -119,7 +121,7 @@ async function localEmbeddings(texts, embeddings, model) {
     ollamaVersion: version.version, dimension, kind: embeddings.RECIPE_EMBEDDING_KIND, newInputs: missing.length, totalInputs: unique.length };
 }
 
-export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/relevance-report.json"), model = "nomic-embed-text" } = {}) {
+export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/relevance-report.json"), model = "nomic-embed-text", calibrate = false } = {}) {
   const fixturePath = join(ROOT, "tools/recipes/fixtures/relevance-catalog.json");
   const corpusText = await readFile(fixturePath, "utf8");
   const { recipes } = JSON.parse(corpusText);
@@ -133,18 +135,20 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
   const pure = await loadPureRanker();
   try {
     const { search, embeddings, constraints } = pure;
-    const queryText = (query) => embeddings.buildRecipeQueryText(query, []);
+    const queryText = (query) => embeddings.buildRecipeQueryText(search.recipeRetrievalQuery(query, Boolean(search.focusedRecipeId(query, recipes))), []);
     const documentTexts = recipes.map(embeddings.buildRecipeEmbeddingText);
     const embeddingRun = await localEmbeddings([...documentTexts, ...qualityCases.map((item) => queryText(item.query)), ...regressionCases.map((item) => queryText(item.query))], embeddings, model);
     const vectors = new Map(recipes.map((recipe, index) => [recipe.id, embeddingRun.vectors.get(documentTexts[index])]));
-    const record = (item, semantic, pantry = item.pantry ?? []) => ({ item, broad: search.recipeQueryIntent(item.query).broad,
+    const record = (item, semantic, pantry = item.pantry ?? []) => ({ item: { ...item, exactTitleId: search.focusedRecipeId(item.query, recipes) }, broad: search.recipeQueryIntent(item.query).broad,
       ranked: search.rankCatalogRecipes(recipes, { query: item.query, pantry,
         constraints: constraints.normalizeConstraints({ ...item.constraints, allergies: [...(item.constraints?.allergies ?? []), ...(item.allergies ?? [])] }) },
       semantic ? vectors : new Map(), semantic ? embeddingRun.vectors.get(queryText(item.query)) : null) });
     const semantic = qualityCases.map((item) => record(item, true));
     const lexical = qualityCases.map((item) => record(item, false));
     const calibrated = calibrateThresholds(semantic, lexical);
-    const thresholds = calibrated.thresholds;
+    // Normal verification tests the deployed configuration. Recalibration is an
+    // explicit experiment and never silently rewrites thresholds or uses held-out labels.
+    const thresholds = calibrate ? calibrated.thresholds : search.catalogRelevanceThresholds;
     const score = (records) => evaluateRecords(records, thresholds, search.queryRelevanceDecision);
     const regression = score(regressionCases.map((item, index) => record({ ...item, id: `regression-${index + 1}`, split: "regression", expectedOutcome: "matches" }, true)));
     const allPantry = [...new Set(recipes.flatMap((recipe) => recipe.ingredients.map((item) => item.name)))];
@@ -165,11 +169,12 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
       ranker: { sourceSha256: hash(await readFile(join(ROOT, "app/lib/catalog-search.ts"), "utf8")),
         embeddingSourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-embeddings.ts"), "utf8")),
         constraintsSourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-constraints.ts"), "utf8")),
+        safetySourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-safety.ts"), "utf8")),
         regressionLabelsSha256: hash(await readFile(join(ROOT, "tools/recipes/evaluation-cases.mjs"), "utf8")) },
       embedding: { ...embeddingRun, vectors: undefined, baseUrl: LOCAL_OLLAMA, queryPantryContext: "empty" },
       thresholds: { ...thresholds, version: search.catalogRelevanceThresholds.version, configured: search.catalogRelevanceThresholds,
         configurationMatchesSelection: thresholds.lexical === search.catalogRelevanceThresholds.lexical && thresholds.semantic === search.catalogRelevanceThresholds.semantic },
-      selection: { split: "calibration", targetRetention: TARGET, targetAbstention: TARGET, searchedPairs: calibrated.searchedPairs,
+      selection: { split: "calibration", mode: calibrate ? "calibration_candidate" : "frozen_configured", calibrationCandidate: calibrated.thresholds, targetRetention: TARGET, targetAbstention: TARGET, searchedPairs: calibrated.searchedPairs,
         objective: "Both semantic and forced-lexical calibration gates, worst classification rate, total classification rates, expected hit@3, labeled precision@3. Equal metrics favor the stricter lexical boundary, then the least restrictive semantic boundary within (0,1]. Held-out labels never select thresholds." },
       precisionDefinition: "Mean precision among returned top-three titles for supported cases with explicit acceptable-title labels. Labels are not exhaustive culinary judgments; unlabeled titles count as a penalty. Broad queries are excluded.",
       semantic: { calibration: score(semantic.filter((row) => row.item.split === "calibration")), heldout: score(semantic.filter((row) => row.item.split === "heldout")) },
@@ -187,8 +192,14 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
-    if (args.length && (args.length !== 2 || args[0] !== "--report" || !args[1])) throw new Error("Usage: evaluate-relevance.mjs [--report PATH]");
-    const report = await runEvaluation({ ...(args.includes("--report") ? { reportPath: resolve(args[args.indexOf("--report") + 1]) } : {}) });
+    let reportPath;
+    let calibrate = false;
+    for (let index = 0; index < args.length; index++) {
+      if (args[index] === "--calibrate") calibrate = true;
+      else if (args[index] === "--report" && args[index + 1] && !args[index + 1].startsWith("--")) reportPath = resolve(args[++index]);
+      else throw new Error("Usage: evaluate-relevance.mjs [--report PATH] [--calibrate]");
+    }
+    const report = await runEvaluation({ ...(reportPath ? { reportPath } : {}), calibrate });
     console.log(JSON.stringify({ gatesPassed: report.gatesPassed, thresholds: report.thresholds,
       semantic: Object.fromEntries(Object.entries(report.semantic).map(([name, metrics]) => [name, metricsOnly(metrics)])),
       forcedLexical: Object.fromEntries(["calibration", "heldout"].map((name) => [name, metricsOnly(report.forcedLexical[name])])),

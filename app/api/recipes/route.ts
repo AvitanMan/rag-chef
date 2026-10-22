@@ -1,4 +1,4 @@
-import { searchRecipeCatalog } from "@/app/lib/catalog-search";
+import { constraintsForRecipeQuery, searchRecipeCatalog } from "@/app/lib/catalog-search";
 import { DEFAULT_RECIPE_EMBED_MODEL } from "@/app/lib/recipe-embeddings";
 import { RecipeSourceError, searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
 import { isRecipeCatalogConfigured } from "@/app/lib/recipe-store";
@@ -104,7 +104,8 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
 
-    const recipes = (await searchRecipes({ pantry, query })).filter((recipe) => evaluateRecipeConstraints(recipe, undefined, constraints).eligible);
+    const requestConstraints = constraintsForRecipeQuery(query, constraints);
+    const recipes = (await searchRecipes({ pantry, query })).filter((recipe) => evaluateRecipeConstraints(recipe, undefined, requestConstraints).eligible);
     const mode = query ? "search" : pantry.length > 0 ? "pantry" : "curated";
 
     return Response.json(

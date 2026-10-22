@@ -42,6 +42,14 @@ test("precision reports unlabeled returned recipes and excludes broad cases", ()
   assert.ok(Math.abs(scored.labeledPrecisionPenalty - 2 / 3) < 1e-12);
 });
 
+test("an exact-title case must return the requested recipe first even when it appears in the top three", () => {
+  const item = record("dinner", "matches", [row("other", 1), row("dinner", 0.9)], { exactTitleId: "dinner" });
+  const scored = evaluateRecords([item], { lexical: 0.5, semantic: 0.9 });
+  assert.equal(scored.expectedHitAt3, 1);
+  assert.equal(scored.results[0].exactTitleTopOnePass, false);
+  assert.equal(scored.gatesPassed, false);
+});
+
 test("missing embeddings force lexical scores and pantry boosts cannot approve gibberish", async () => {
   const pure = await loadPureRanker();
   after(pure.dispose);

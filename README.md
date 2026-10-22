@@ -167,6 +167,22 @@ changing the pantry, profile or current date hides results from the old context
 and cancels any pending request. Returning to the app refreshes the current date
 so stock that has passed its entered use-by date is excluded from new requests.
 
+Requests such as **no pasta**, **without tomatoes**, **avoid eggs**, and **don't
+use onions** filter ingredients before ranking or generation. Comma-separated
+lists and `and`/`or` lists are supported. Excluded words are removed from the
+positive retrieval query. These are request-specific rules; saved preferences
+are unchanged. This parser handles explicit English clauses rather than general
+conversational reasoning.
+Broad meal requests prefer reviewed main dinners, then recipes with unknown
+roles, then reviewed sides/components/desserts. Specific searches keep their
+relevance ranking and exact-title priority.
+
+**Make Baked Ziti vegan** is an advisory adaptation of the named source;
+**find a vegan dinner** filters source recipes instead. A named adaptation never
+relaxes a saved diet or allergy exclusion. Original ingredients and directions
+stay intact, with an explicit warning that the source has not become verified
+for the adaptation target.
+
 Exact title requests and explicit positive questions such as
 `For Zucchini Pasta Bake, can I use olive oil instead of butter?`
 stay focused on that dish. This is deliberately narrow, not a general intent
@@ -363,9 +379,14 @@ entry and never selects a paid cloud provider. These small regression checks
 do not certify culinary correctness or allergy safety.
 
 `recipes:relevance-eval` uses the attributed frozen 166-recipe evaluation corpus
-and local Ollama embeddings, without database access or paid generation. It
-calibrates thresholds on 40 fixed labeled queries and evaluates 40 held-out
-queries plus the original 20 retrieval cases, including forced lexical fallback.
+and local Ollama embeddings, without database access or paid generation. Normal
+verification evaluates the deployed, frozen thresholds on 40 calibration queries,
+40 held-out queries and the original 20 retrieval cases, including forced lexical
+fallback. Exact named recipes must rank first. Query embeddings use the same
+parsed positive query as production. Add `--calibrate --report NEW_PATH` to
+evaluate a threshold candidate selected only from calibration cases; this never
+rewrites deployed thresholds. Calibration candidates are reported separately
+from the configuration being verified.
 The committed report records corpus/source hashes, model version, outcomes and
 strict labeled precision. Held-out retention/abstention gates are 95%; the report
 also discloses imperfect precision and the calibration false positive for Beef

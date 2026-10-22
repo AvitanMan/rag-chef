@@ -1,8 +1,9 @@
 import type { Diet, Recipe, RecipeConstraints, RecipeMetadata } from "./recipe-types";
-import { matchedRecipeAllergies, normalizeIngredientText, containsIngredientTerm } from "./recipe-safety";
+import { matchedRecipeAllergies, matchedRecipeIngredientExclusions, normalizeIngredientText, containsIngredientTerm } from "./recipe-safety";
 
 type ConstraintInput = {
   allergies?: string[];
+  excludedIngredients?: string[];
   diet?: string | string[];
   diets?: string[];
   dislikes?: string[];
@@ -20,6 +21,7 @@ export function normalizeConstraints(input: ConstraintInput = {}): RecipeConstra
   const diets = input.diets ?? (typeof input.diet === "string" ? [input.diet] : input.diet ?? []);
   return {
     allergies: [...new Set((input.allergies ?? []).map((x) => x.trim()).filter(Boolean))],
+    excludedIngredients: [...new Set((input.excludedIngredients ?? []).map(normalizeIngredientText).filter(Boolean))],
     diets: [...new Set(diets.map((x) => DIETS[normalizeIngredientText(x)]).filter((x): x is Diet => Boolean(x)))],
     dislikes: [...new Set((input.dislikes ?? []).map(normalizeIngredientText).filter(Boolean))],
     equipment: [...new Set((input.equipment ?? []).map((x) => normalizeIngredientText(x).replace(/^stove top$|^hob$/, "stovetop")).filter(Boolean))],
@@ -49,6 +51,7 @@ export function ingredientDietConflicts(recipe: Pick<Recipe, "ingredients">, die
 export interface RecipeEligibility {
   eligible: boolean;
   allergyMatches: string[];
+  excludedIngredientMatches: string[];
   dietConflicts: Diet[];
   dietUnknowns: Diet[];
   dislikedIngredients: string[];
@@ -58,6 +61,7 @@ export interface RecipeEligibility {
 
 export function evaluateRecipeConstraints(recipe: Recipe, metadata: RecipeMetadata | undefined, constraints: RecipeConstraints): RecipeEligibility {
   const allergyMatches = matchedRecipeAllergies(recipe, constraints.allergies);
+  const excludedIngredientMatches = matchedRecipeIngredientExclusions(recipe, constraints.excludedIngredients ?? []);
   const dietConflicts = constraints.diets.filter((diet) => ingredientDietConflicts(recipe, diet) || metadata?.diets[diet] === "conflicts");
   const dietUnknowns = constraints.diets.filter((diet) => !dietConflicts.includes(diet) && metadata?.diets[diet] !== "fits");
   const dislikedIngredients = recipe.ingredients.filter((ingredient) => constraints.dislikes.some((term) => containsIngredientTerm(normalizeIngredientText(ingredient.name), term))).map((x) => x.name);
@@ -65,10 +69,11 @@ export function evaluateRecipeConstraints(recipe: Recipe, metadata: RecipeMetada
   const establishedTotal = metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source" ? metadata.totalMinutes : null;
   const reasons = [
     ...allergyMatches.map((x) => `Excluded ingredient allergy: ${x}.`),
+    ...excludedIngredientMatches.map((x) => `Contains an ingredient excluded by this request: ${x}.`),
     ...dietConflicts.map((x) => `Known conflict with ${x.replaceAll("_", " ")} diet.`),
     ...equipmentMissing.map((x) => `Requires unavailable equipment: ${x}.`),
     ...(constraints.maxTotalMinutes !== undefined && (establishedTotal === null || establishedTotal > constraints.maxTotalMinutes)
       ? [establishedTotal === null ? "A complete source total time is not verified." : `Total time exceeds ${constraints.maxTotalMinutes} minutes.`] : []),
   ];
-  return { eligible: !reasons.length, allergyMatches, dietConflicts, dietUnknowns, dislikedIngredients, equipmentMissing, reasons };
+  return { eligible: !reasons.length, allergyMatches, excludedIngredientMatches, dietConflicts, dietUnknowns, dislikedIngredients, equipmentMissing, reasons };
 }

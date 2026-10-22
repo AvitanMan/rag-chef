@@ -65,6 +65,52 @@ test("provider failure preserves relevant recipe suggestions without changing sa
   expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
 });
 
+test("request exclusions filter source recipes before Chef sees them and stay enforced during fallback", async ({ page, request }) => {
+  const before = await (await request.get("/api/recipes/catalog")).json();
+  for (const [query, forbidden] of [["Dinner but no pasta", ["Cheese Pasta", "Peanut Noodles"]], ["Rice without tomatoes", ["Tomato Rice", "Eggplant Stew"]]] as const) {
+    const answer = await ask(page, query);
+    expect(answer.recipes.length).toBeGreaterThan(0);
+    for (const recipe of answer.recipes) expect(forbidden).not.toContain(recipe.title);
+    const found = await (await request.get(`/api/recipes?q=${encodeURIComponent(query)}`)).json();
+    expect(found.recipes.length).toBeGreaterThan(0);
+    for (const recipe of found.recipes) expect(forbidden).not.toContain(recipe.title);
+    const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string; body: { messages?: Array<{ role: string; content: string }> } }> };
+    const chats = status.calls.filter((call) => call.path === "/api/chat");
+    const prompt = chats.at(-1)!.body.messages!.find((message) => message.role === "user")!.content;
+    const context = JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2));
+    expect(context.adaptationRequested).toBe(false);
+    for (const recipe of context.retrievedRecipes) expect(forbidden).not.toContain(recipe.title);
+    await control({ unavailable: true });
+    const fallback = await (await request.post("/api/chef", { data: { query, provider: "ollama" } })).json();
+    expect(fallback.generation).toBe("catalog_fallback");
+    expect(fallback.recipes.length).toBeGreaterThan(0);
+    for (const recipe of fallback.recipes) expect(forbidden).not.toContain(recipe.title);
+    await control({ resetCalls: true });
+  }
+  expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(before);
+});
+
+test("named vegan adaptations remain separate from unchanged source and respect saved exclusions", async ({ page, request }) => {
+  const before = await (await request.get("/api/recipes/catalog")).json();
+  const original = before.recipes.find((recipe: { id: string }) => recipe.id === "fixture-cheese-pasta");
+  const answer = await ask(page, "Make Cheese Pasta vegan");
+  expect(answer.recipes).toEqual([original]);
+  expect(answer.chefChanges).toHaveLength(1);
+  await expect(page.locator(".chef-answer")).toContainText("original recipe is unchanged");
+  await page.getByRole("button", { name: "View Cheese Pasta", exact: true }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toContainText("plant-based cheese substitute");
+  await expect(drawer).toContainText("Stir in the cheese.");
+  await page.getByRole("button", { name: "Close recipe", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
+  const blocked = await ask(page, "Make Cheese Pasta vegan");
+  expect(blocked.outcome).toBe("constraints_unsatisfied");
+  expect(blocked.recipes).toEqual([]);
+  await expect(page.getByRole("button", { name: "View Cheese Pasta", exact: true })).toHaveCount(0);
+  expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(before);
+});
+
 test("a pending Chef request can be canceled without displaying its late answer", async ({ page }) => {
   await control({ mode: "hold" });
   await page.goto("/");

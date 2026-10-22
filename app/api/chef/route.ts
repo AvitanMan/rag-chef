@@ -12,7 +12,7 @@ import {
   type ChefStructuredAnswer,
   type RecipeCandidate,
 } from "@/app/lib/chef-schema";
-import { focusedRecipeId, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
+import { focusedRecipeId, recipeQueryIntent, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
 import type { Recipe } from "@/app/lib/recipe-types";
 import { normalizeConstraints, type RecipeEligibility } from "@/app/lib/recipe-constraints";
 import { parseMeasure } from "@/app/lib/quantities";
@@ -116,7 +116,9 @@ export async function POST(request: Request): Promise<Response> {
   if (ranked.some((item) => item.eligibility.dietUnknowns.length)) preWarnings.push("Diet suitability is not verified for some suggestions. Known ingredient conflicts have been excluded.");
   const retrievedAt = performance.now();
   const references = new Map(ranked.map((item, index) => [`R${index + 1}`, item.recipe]));
-  const allowChanges = adaptationRequested(input.query);
+  const intent = recipeQueryIntent(input.query, Boolean(focus));
+  const allowChanges = intent.mode === "adaptation";
+  if (intent.adaptationDiets.length) preWarnings.push(`Requested ${intent.adaptationDiets.map((diet) => diet.replaceAll("_", " ")).join(", ")} changes are advisory. The original recipe is unchanged and is not verified as meeting that target.`);
   const generationSchema = { ...CHEF_RESPONSE_JSON_SCHEMA, properties: { ...CHEF_RESPONSE_JSON_SCHEMA.properties, chefChanges: { ...CHEF_RESPONSE_JSON_SCHEMA.properties.chefChanges, maxItems: allowChanges ? 3 : 0 } } };
   let generation: ChefApiResponse["generation"] = "ai";
   let generated: ChefStructuredAnswer;
@@ -154,10 +156,8 @@ export async function POST(request: Request): Promise<Response> {
   return json({ ...answer, recipes: ranked.map((item) => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId, outcome: retrieval.outcome, generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs: Math.round(finished - retrievedAt), totalMs: Math.round(finished - started) } } satisfies ChefApiResponse, 200);
 }
 
-export function adaptationRequested(query: string): boolean {
-  return /\b(substitut\w*|replac\w*|instead|swap\w*|adapt\w*|chang\w*|without|can i use|could i use|scal(?:e|ing)|halv(?:e|ing)|doubl(?:e|ing))\b/i.test(query)
-    || /\bmake\b.+\b(?:vegan|vegetarian|gluten[ -]free|dairy[ -]free)\b/i.test(query)
-    || /\b(?:halve|reduce|cut)\b.+\b(?:salt|sugar|butter|oil|amount)\b/i.test(query);
+export function adaptationRequested(query: string, hasRecipeFocus = false): boolean {
+  return recipeQueryIntent(query, hasRecipeFocus).mode === "adaptation";
 }
 
 function asChefCandidate(item: CatalogRankedRecipe): RankedCandidate {
@@ -305,6 +305,7 @@ function buildUserPrompt(input: ChefRequest, ranked: RankedCandidate[], allowCha
     pantry: input.pantry,
     profile: input.profile,
     adaptationRequested: allowChanges,
+    requestIntent: recipeQueryIntent(input.query, Boolean(focusedRecipeId(input.query, ranked.map((item) => item.recipe)))),
     retrievedRecipes: ranked.map((item, index) => ({
       recipeId: `R${index + 1}`,
       title: item.candidate.title,
