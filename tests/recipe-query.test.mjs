@@ -9,6 +9,66 @@ const constraints = (value) => pure.constraints.normalizeConstraints(value);
 const recipe = (id, title, names) => ({ id, title, ingredients: names.map((name) => ({ name, measure: "1" })), instructions: ["Use the source directions."], tags: [], image: null, category: "Dinner", cuisine: "Test", source: { name: "Test", url: "https://example.com/" }, sourceUrl: "https://example.com/" });
 const recipes = [recipe("pasta", "Cheese Pasta", ["penne", "mozzarella"]), recipe("tomato", "Tomato Rice", ["rice", "chopped tomatoes"]), recipe("plain", "Garlic Rice", ["rice", "garlic"]), recipe("beans", "Bean Stew", ["beans", "onions"]), recipe("eggplant", "Eggplant Bowl", ["eggplant", "rice"]), recipe("egg", "Egg Rice", ["eggs", "rice"])];
 
+test("common dietary wording becomes constraints rather than positive search words", () => {
+  for (const query of ["Meatless dinner", "MEAT-FREE dinner", "a meat free meal"]) {
+    const intent = recipeQueryIntent(query);
+    assert.equal(intent.broad, true, query);
+    assert.deepEqual(intent.diets, ["vegetarian"], query);
+  }
+  for (const query of ["dairy free rice", "dairy-free rice"]) {
+    const intent = recipeQueryIntent(query);
+    assert.equal(intent.topic, "rice");
+    assert.deepEqual(intent.excludedIngredients, ["dairy"]);
+    assert.equal(pure.search.recipeRetrievalQuery(query), "rice");
+  }
+  assert.deepEqual(recipeQueryIntent("not meatless dinner").diets, []);
+  assert.ok(!recipeQueryIntent("not dairy free").excludedIngredients.includes("dairy"));
+});
+
+test("equipment exclusions are separate from food exclusions and leave the positive dish intact", () => {
+  for (const query of ["Rice without an oven", "Rice with no oven", "Rice, don't use the oven", "Rice, I don't have an oven", "Rice without using the oven"]) {
+    const intent = recipeQueryIntent(query);
+    assert.equal(intent.topic, "rice", query);
+    assert.deepEqual(intent.excludedIngredients, [], query);
+    assert.deepEqual(intent.excludedEquipment, ["oven"], query);
+    assert.equal(pure.search.recipeRetrievalQuery(query), "rice", query);
+  }
+  assert.equal(recipeQueryIntent("No oven dinner").broad, true);
+  const mixed = recipeQueryIntent("Rice without eggs, an oven or a hob");
+  assert.deepEqual(mixed.excludedIngredients, ["eggs"]);
+  assert.deepEqual(mixed.excludedEquipment, ["oven", "stovetop"]);
+  assert.equal(recipeQueryIntent("oven roasted rice").excludedEquipment, undefined);
+});
+
+test("request constraints tighten saved requirements without changing them", () => {
+  const saved = constraints({ diet: "Vegan", allergies: ["peanut"], equipment: ["Oven", "Stovetop"], excludedEquipment: ["blender"] });
+  const before = structuredClone(saved);
+  const parsed = constraintsForRecipeQuery("Meatless rice without an oven or dairy", saved);
+  assert.deepEqual(parsed.diets, ["vegan", "vegetarian"]);
+  assert.deepEqual(parsed.excludedIngredients, ["dairy"]);
+  assert.deepEqual(parsed.excludedEquipment, ["blender", "oven"]);
+  assert.deepEqual(parsed.allergies, ["peanut"]);
+  assert.deepEqual(parsed.equipment, ["oven", "stovetop"]);
+  assert.deepEqual(saved, before);
+  assert.deepEqual(constraintsForRecipeQuery("Meatless rice without an oven or dairy", parsed), parsed);
+});
+
+test("dietary aliases and equipment exclusions apply before either lexical or semantic ranking", () => {
+  const sources = [...recipes, recipe("chicken", "Chicken Rice", ["rice", "chicken stock"]), recipe("bake", "Rice Bake", ["rice", "coconut milk"])];
+  const metadata = Object.fromEntries(sources.filter((row) => row.id !== "eggplant").map((row) => [row.id, { diets: {}, equipment: [row.id === "bake" ? "Oven" : "Stovetop"] }]));
+  for (const semantic of [false, true]) {
+    const vectors = semantic ? new Map(sources.map((row) => [row.id, [1, 0]])) : new Map();
+    const search = (query) => rankCatalogRecipes(sources, { query }, vectors, semantic ? [1, 0] : null, metadata);
+    assert.ok(search("meatless dinner").every((row) => row.recipe.id !== "chicken"));
+    const dairyFree = search("dairy free dinner");
+    assert.ok(dairyFree.every((row) => row.recipe.id !== "pasta"));
+    assert.ok(dairyFree.some((row) => row.recipe.id === "bake"), "Plant milk is not treated as dairy");
+    const noOven = search("dinner without an oven");
+    assert.ok(noOven.length > 0);
+    assert.ok(noOven.every((row) => !["bake", "eggplant"].includes(row.recipe.id)), "Known conflicts and unreviewed equipment are excluded");
+  }
+});
+
 test("explicit exclusion clauses become ingredient requirements rather than positive search terms", () => {
   for (const [query, excluded, topic] of [
     ["Recommend dinner but no pasta", ["pasta"], ""],
@@ -74,6 +134,12 @@ test("named adaptation targets stay advisory while saved exclusions remain manda
   assert.deepEqual(constraintsForRecipeQuery("Find a gluten-free dinner", constraints({ diet: "Vegan" })).diets, ["vegan", "gluten_free"]);
   assert.deepEqual(recipeQueryIntent("For Cheese Pasta, leave out cheese", true).excludedIngredients, []);
   assert.equal(recipeQueryIntent("For Cheese Pasta, leave out cheese", true).mode, "adaptation");
+  const dairyFree = recipeQueryIntent("Make Cheese Pasta dairy-free", true);
+  assert.deepEqual(dairyFree.excludedIngredients, []);
+  assert.deepEqual(dairyFree.adaptationDiets, ["dairy_free"]);
+  assert.equal(rankCatalogRecipes(recipes, { query: "Make Cheese Pasta dairy-free" })[0]?.recipe.id, "pasta");
+  assert.ok(rankCatalogRecipes(recipes, { query: "Make Cheese Pasta dairy-free", constraints: constraints({ allergies: ["milk"] }) }).every((row) => row.recipe.id !== "pasta"));
+  assert.deepEqual(recipeQueryIntent("Make Cheese Pasta meatless", true).adaptationDiets, ["vegetarian"]);
 });
 
 test("broad dinners prefer reviewed mains while specific searches retain relevance and exact-title priority", () => {

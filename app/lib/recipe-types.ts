@@ -51,6 +51,7 @@ export interface RecipeConstraints {
   dislikes: string[];
   equipment: string[];
   equipmentSpecified: boolean;
+  excludedEquipment?: string[];
   maxTotalMinutes?: number;
 }
 

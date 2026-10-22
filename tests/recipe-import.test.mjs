@@ -547,6 +547,60 @@ test("natural-language ingredient exclusions apply to retrieval, provider contex
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM kitchen_state").get().n, 0);
 });
 
+test("dietary wording and equipment requests filter search, Chef context and provider fallback consistently", async () => {
+  await route.POST(req([
+    await draft(0, { title: "Stovetop Rice", ingredients: [{ name: "rice", measure: "200 g" }], instructions: ["Simmer the rice on the stovetop until tender."] }),
+    await draft(1, { title: "Baked Rice", ingredients: [{ name: "rice", measure: "200 g" }, { name: "milk", measure: "200 ml" }], instructions: ["Bake the rice and milk in the oven until cooked."] }),
+    await draft(2, { title: "Unknown Rice", ingredients: [{ name: "rice", measure: "200 g" }] }),
+    await draft(3, { title: "Cheese Pasta", ingredients: [{ name: "pasta", measure: "200 g" }, { name: "mozzarella", measure: "100 g" }] }),
+    await draft(4, { title: "Chicken Rice", ingredients: [{ name: "rice", measure: "200 g" }, { name: "chicken stock", measure: "500 ml" }] }),
+  ]));
+  const template = await metadataReview();
+  const sources = await store.listCatalogRecipes();
+  const reviews = sources.filter((item) => ["Stovetop Rice", "Baked Rice"].includes(item.recipe.title)).map((item) => ({
+    ...template, recipeId: item.recipe.id, metadata: { ...template.metadata, sourceContentHash: item.contentHash,
+      diets: { vegan: "unknown", vegetarian: "unknown", gluten_free: "unknown", low_carb: "unknown" },
+      equipment: [item.recipe.title === "Baked Rice" ? "Oven" : "Stovetop"],
+    },
+  }));
+  assert.equal((await metadataRoute.POST(metadataRequest(reviews))).status, 200);
+  const before = await store.listCatalogRecipes();
+  for (const offline of [false, true]) {
+    for (const [query, forbidden] of [
+      ["Meatless dinner", ["Chicken Rice"]], ["Meat-free dinner", ["Chicken Rice"]],
+      ["Dairy free dinner", ["Baked Rice", "Cheese Pasta"]], ["Dairy-free rice", ["Baked Rice", "Cheese Pasta"]],
+      ["Dinner without an oven", ["Baked Rice", "Unknown Rice", "Cheese Pasta", "Chicken Rice"]],
+      ["Rice, I don't have an oven", ["Baked Rice", "Unknown Rice", "Cheese Pasta", "Chicken Rice"]],
+    ]) {
+      const contexts = []; mockChef(contexts);
+      if (offline) globalThis.fetch = async () => { throw new Error("offline"); };
+      const found = await (await searchRoute.GET(new Request(`http://localhost/api/recipes?q=${encodeURIComponent(query)}&equipment=Oven&equipment=Stovetop`))).json();
+      const result = await (await chefRoute.POST(chefRequest({ query, profile: { equipment: ["Oven", "Stovetop"] } }))).json();
+      assert.equal(found.outcome, "matches", query);
+      assert.equal(result.generation, offline ? "catalog_fallback" : "ai", query);
+      assert.ok(result.recipes.length > 0, query);
+      assert.deepEqual(result.recipes.map((recipe) => recipe.id).sort(), found.recipes.map((recipe) => recipe.id).sort(), query);
+      assert.ok(result.recipes.every((recipe) => !forbidden.includes(recipe.title)), query);
+      if (!offline) {
+        assert.ok(contexts[0].retrievedRecipes.every((recipe) => !forbidden.includes(recipe.title)), query);
+        assert.deepEqual(contexts[0].profile.equipment, ["Oven", "Stovetop"]);
+      }
+      if (/dairy/i.test(query)) {
+        assert.match(found.meta.retrieval.warning, /Diet not verified: dairy free/);
+        assert.ok(result.warnings.some((warning) => warning.includes("Diet not verified: dairy free")));
+        if (offline && /rice/i.test(query)) assert.match(found.meta.retrieval.warning, /Meaning-based search is unavailable/);
+      }
+      if (/oven/i.test(query)) assert.deepEqual(result.recipes.map((recipe) => recipe.title), ["Stovetop Rice"]);
+    }
+  }
+  const contexts = []; mockChef(contexts);
+  const blocked = await (await chefRoute.POST(chefRequest({ query: "Make Baked Rice without an oven" }))).json();
+  assert.equal(blocked.outcome, "constraints_unsatisfied");
+  assert.deepEqual(blocked.recipes, []);
+  assert.equal(contexts.length, 0);
+  assert.deepEqual(await store.listCatalogRecipes(), before);
+});
+
 test("a named vegan adaptation preserves its original source but cannot bypass saved diet or allergy exclusions", async () => {
   await importOne(await draft(0, { title: "Cheese Pasta", ingredients: [{ name: "penne", measure: "200 g" }, { name: "mozzarella", measure: "100 g" }] }));
   const before = (await store.listCatalogRecipes())[0].recipe;

@@ -9,6 +9,7 @@ type ConstraintInput = {
   dislikes?: string[];
   equipment?: string[];
   equipmentSpecified?: boolean;
+  excludedEquipment?: string[];
   maxTotalMinutes?: number;
 };
 
@@ -17,15 +18,22 @@ const MEAT_TERMS = ["meat", "beef", "veal", "pork", "bacon", "ham", "chicken", "
 const DAIRY_TERMS = ["milk", "cream", "butter", "cheese", "whey", "casein", "yogurt", "yoghurt", "ghee", "lactose", "mozzarella", "parmesan", "parmigiano", "pecorino", "feta", "ricotta", "cheddar", "paneer", "buttermilk", "mascarpone", "brie", "gorgonzola"];
 const GLUTEN_TERMS = ["gluten", "wheat", "flour", "barley", "rye", "spelt", "semolina", "couscous", "breadcrumbs", "bread crumbs", "bread", "pasta", "farfalle", "ziti", "penne", "macaroni", "spaghetti", "fettuccine", "lasagne", "lasagna", "orzo", "soy sauce", "seitan", "bulgur", "udon"];
 
+export function normalizeEquipmentName(value: string): string {
+  const name = normalizeIngredientText(value);
+  return /^(?:stove|stove top|hob)$/.test(name) ? "stovetop" : name;
+}
+
 export function normalizeConstraints(input: ConstraintInput = {}): RecipeConstraints {
   const diets = input.diets ?? (typeof input.diet === "string" ? [input.diet] : input.diet ?? []);
+  const excludedEquipment = [...new Set((input.excludedEquipment ?? []).map(normalizeEquipmentName).filter(Boolean))];
   return {
     allergies: [...new Set((input.allergies ?? []).map((x) => x.trim()).filter(Boolean))],
     excludedIngredients: [...new Set((input.excludedIngredients ?? []).map(normalizeIngredientText).filter(Boolean))],
     diets: [...new Set(diets.map((x) => DIETS[normalizeIngredientText(x)]).filter((x): x is Diet => Boolean(x)))],
     dislikes: [...new Set((input.dislikes ?? []).map(normalizeIngredientText).filter(Boolean))],
-    equipment: [...new Set((input.equipment ?? []).map((x) => normalizeIngredientText(x).replace(/^stove top$|^hob$/, "stovetop")).filter(Boolean))],
+    equipment: [...new Set((input.equipment ?? []).map(normalizeEquipmentName).filter(Boolean))],
     equipmentSpecified: input.equipmentSpecified ?? Object.hasOwn(input, "equipment"),
+    ...(excludedEquipment.length ? { excludedEquipment } : {}),
     ...(Number.isFinite(input.maxTotalMinutes) && input.maxTotalMinutes! > 0 ? { maxTotalMinutes: input.maxTotalMinutes } : {}),
   };
 }
@@ -65,13 +73,14 @@ export function evaluateRecipeConstraints(recipe: Recipe, metadata: RecipeMetada
   const dietConflicts = constraints.diets.filter((diet) => ingredientDietConflicts(recipe, diet) || metadata?.diets[diet] === "conflicts");
   const dietUnknowns = constraints.diets.filter((diet) => !dietConflicts.includes(diet) && metadata?.diets[diet] !== "fits");
   const dislikedIngredients = recipe.ingredients.filter((ingredient) => constraints.dislikes.some((term) => containsIngredientTerm(normalizeIngredientText(ingredient.name), term))).map((x) => x.name);
-  const equipmentMissing = constraints.equipmentSpecified && metadata?.equipment ? metadata.equipment.filter((item) => !constraints.equipment.includes(normalizeIngredientText(item))) : [];
+  const equipmentMissing = metadata?.equipment?.filter((item) => constraints.equipmentSpecified && !constraints.equipment.includes(normalizeEquipmentName(item)) || constraints.excludedEquipment?.includes(normalizeEquipmentName(item))) ?? [];
   const establishedTotal = metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source" ? metadata.totalMinutes : null;
   const reasons = [
     ...allergyMatches.map((x) => `Excluded ingredient allergy: ${x}.`),
     ...excludedIngredientMatches.map((x) => `Contains an ingredient excluded by this request: ${x}.`),
     ...dietConflicts.map((x) => `Known conflict with ${x.replaceAll("_", " ")} diet.`),
     ...equipmentMissing.map((x) => `Requires unavailable equipment: ${x}.`),
+    ...(constraints.excludedEquipment?.length && metadata?.equipment == null ? ["A complete equipment list is not verified for this request."] : []),
     ...(constraints.maxTotalMinutes !== undefined && (establishedTotal === null || establishedTotal > constraints.maxTotalMinutes)
       ? [establishedTotal === null ? "A complete source total time is not verified." : `Total time exceeds ${constraints.maxTotalMinutes} minutes.`] : []),
   ];

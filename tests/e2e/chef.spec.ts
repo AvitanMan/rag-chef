@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import type { Recipe } from "../../app/lib/recipe-types";
+import type { Recipe, RecipeMetadata } from "../../app/lib/recipe-types";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 
 const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL;
@@ -138,6 +138,70 @@ test("request exclusions filter source recipes before Chef sees them and stay en
     await control({ resetCalls: true });
   }
   expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(before);
+});
+
+test("meatless and dairy-free requests work in Chef and fallback without changing kitchen or sources", async ({ page, request }) => {
+  const kitchenBefore = await (await request.get("/api/kitchen")).json();
+  const catalogBefore = await (await request.get("/api/recipes/catalog")).json();
+  for (const unavailable of [false, true]) {
+    for (const [query, forbidden] of [["Meatless dinner", ["Beef Stew", "Salmon Bowl"]], ["Dairy-free dinner", ["Cheese Pasta"]]] as const) {
+      await control({ unavailable, resetCalls: true });
+      const answer = await ask(page, query);
+      expect(answer.generation).toBe(unavailable ? "catalog_fallback" : "ai");
+      expect(answer.recipes.length).toBeGreaterThan(0);
+      for (const recipe of answer.recipes) expect(forbidden).not.toContain(recipe.title);
+      const found = await (await request.get(`/api/recipes?q=${encodeURIComponent(query)}`)).json();
+      expect(found.recipes.length).toBeGreaterThan(0);
+      for (const recipe of found.recipes) expect(forbidden).not.toContain(recipe.title);
+      if (query === "Dairy-free dinner") await expect(page.locator(".chef-answer")).toContainText("Diet not verified: dairy free");
+    }
+  }
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
+  expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(catalogBefore);
+});
+
+test("no-oven requests use reviewed equipment and reject unknown requirements before generation", async ({ page, request }) => {
+  const kitchenBefore = await (await request.get("/api/kitchen")).json();
+  const endpoint = "/api/admin/recipes/metadata";
+  const reviewCatalog = await (await request.get(endpoint)).json();
+  // Keep equipment reviews on the dedicated metadata fixture so shared catalog
+  // state cannot change the baseline Tomato Rice equipment checks in other tests.
+  const entry = reviewCatalog.entries.find((row: { recipeId: string }) => row.recipeId === "fixture-eggplant");
+  const fields = ["coreDinner", "dinnerRole", "diets.vegan", "diets.vegetarian", "diets.gluten_free", "diets.low_carb", "totalMinutes", "equipment", "servings", "ingredients"];
+  const metadata: RecipeMetadata = {
+    revision: 1, sourceContentHash: entry.contentHash, coreDinner: false, dinnerRole: "unknown",
+    diets: { vegan: "unknown", vegetarian: "unknown", gluten_free: "unknown", low_carb: "unknown" },
+    totalMinutes: null, equipment: ["Stovetop"],
+    provenance: Object.fromEntries(fields.map((field) => [field, { basis: "curator_assessment", evidence: "Synthetic fixture review: eggplant and tomatoes simmer on the stovetop; unsupported facts remain unknown." }])),
+    reviewedBy: "Automated request-parser fixture review", reviewedAt: "2026-10-22T09:00:00.000Z",
+  };
+  expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata }] } })).ok()).toBeTruthy();
+  const catalogBefore = await (await request.get("/api/recipes/catalog")).json();
+  for (const unavailable of [false, true]) {
+    await control({ unavailable, resetCalls: true });
+    const answer = await ask(page, "Dinner without an oven");
+    expect(answer.generation).toBe(unavailable ? "catalog_fallback" : "ai");
+    expect(answer.recipes.length).toBeGreaterThan(0);
+    expect(answer.recipes.some((recipe: Recipe) => recipe.id === entry.recipeId)).toBe(true);
+    for (const recipe of answer.recipes) {
+      const equipment = answer.metadataByRecipeId[recipe.id]?.equipment;
+      expect(equipment).not.toBeNull();
+      expect(Array.isArray(equipment)).toBe(true);
+      expect(equipment.map((name: string) => name.toLowerCase())).not.toContain("oven");
+    }
+    await expect(page.locator(".chef-answer")).toContainText("Recipes without reviewed equipment requirements were excluded");
+    const found = await (await request.get("/api/recipes?q=Dinner%20without%20an%20oven")).json();
+    expect(found.recipes.map((recipe: Recipe) => recipe.id).sort()).toEqual(answer.recipes.map((recipe: Recipe) => recipe.id).sort());
+  }
+  await control({ resetCalls: true });
+  const unknown = await ask(page, "Make Cheese Pasta without an oven");
+  expect(unknown.outcome).toBe("constraints_unsatisfied");
+  expect(unknown.recipes).toEqual([]);
+  await expect(page.locator(".chef-answer")).toContainText("equipment list is not verified");
+  const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string }> };
+  expect(status.calls.filter((call) => call.path === "/api/chat")).toHaveLength(0);
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
+  expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(catalogBefore);
 });
 
 test("named vegan adaptations remain separate from unchanged source and respect saved exclusions", async ({ page, request }) => {

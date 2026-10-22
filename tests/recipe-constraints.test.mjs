@@ -63,3 +63,16 @@ test("omitted appliances are unspecified; an explicit empty selection means no a
   assert.equal(decide(["rice"], { equipment: [] }).eligible, true, "Unknown recipe equipment remains eligible");
   assert.equal(decide(["rice"], { equipment: [] }, { diets: {}, equipment: [] }).eligible, true, "A reviewed no-appliance recipe is compatible with none available");
 });
+
+test("explicit equipment exclusions override availability and require a reviewed equipment list", () => {
+  const restrictions = { equipment: ["Oven", "Stovetop"], excludedEquipment: ["OVEN"] };
+  assert.equal(decide(["rice"], restrictions, { diets: {}, equipment: ["Oven"] }).eligible, false);
+  assert.equal(decide(["rice"], restrictions, { diets: {}, equipment: ["Stovetop"] }).eligible, true);
+  assert.equal(decide(["rice"], restrictions).eligible, false);
+  assert.equal(decide(["rice"], restrictions, { diets: {}, equipment: null }).eligible, false);
+  assert.equal(decide(["rice"], restrictions, { diets: {}, equipment: [] }).eligible, true);
+  assert.ok(decide(["rice"], restrictions).reasons.some((reason) => reason.includes("equipment list is not verified")));
+  const aliases = normalizeConstraints({ equipment: ["hob"], excludedEquipment: ["stove", "stove top"] });
+  assert.deepEqual(aliases.excludedEquipment, ["stovetop"]);
+  assert.equal(evaluateRecipeConstraints(recipe("rice"), { diets: {}, equipment: ["Stovetop"] }, aliases).eligible, false);
+});

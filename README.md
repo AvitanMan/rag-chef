@@ -185,6 +185,19 @@ lists and `and`/`or` lists are supported. Excluded words are removed from the
 positive retrieval query. These are request-specific rules; saved preferences
 are unchanged. This parser handles explicit English clauses rather than general
 conversational reasoning.
+**Meatless** and **meat-free** are treated as vegetarian requests. **Dairy free**
+and **dairy-free** use the dairy ingredient-family exclusion, with a visible
+**Diet not verified: dairy free** notice. Named requests such as **Make Cheese
+Pasta dairy-free** remain advisory adaptations and retain saved exclusions.
+
+Explicit appliance exclusions, such as **dinner without an oven**, **no oven
+dinner**, and **I don't have an oven**, filter reviewed equipment requirements
+before ranking or generation. Recipes without a reviewed equipment list are
+left out of these requests, with an explanation. Mixed requests such as **rice
+without eggs or an oven** keep food and equipment exclusions separate. Appliance
+exclusions remain hard requirements for named recipes too. Saved preferences,
+source recipes and embeddings are unchanged.
+
 Broad meal requests prefer reviewed main dinners, then recipes with unknown
 roles, then reviewed sides/components/desserts. Specific searches keep their
 relevance ranking and exact-title priority.
