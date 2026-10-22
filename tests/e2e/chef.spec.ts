@@ -102,3 +102,20 @@ test("a new pantry context and request replace an older pending Chef result", as
   await expect(page.getByRole("button", { name: "View Garlic Beans", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "View Tomato Rice", exact: true })).toHaveCount(0);
 });
+
+test("expired and depleted same-name pantry rows never enter the Chef request or model prompt", async ({ page, request }) => {
+  await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });
+  const current = await (await request.get("/api/kitchen")).json();
+  const pantry = [{ id: "expired-rice", name: "rice", measure: "500 g", useBy: "2026-10-21" }, { id: "available-rice", name: "rice", measure: "100 g", useBy: "2026-10-23" }, { id: "depleted-rice", name: "rice", measure: "0 g" }];
+  expect((await request.put("/api/kitchen", { data: { revision: current.revision, state: { schemaVersion: 2, pantry, meals: {}, shoppingChecked: {}, migratedLegacy: false } } })).ok()).toBeTruthy();
+  const outgoing = page.waitForRequest((request) => request.url().endsWith("/api/chef") && request.method() === "POST");
+  const answer = await ask(page, "Tomato Rice");
+  expect(answer.generation).toBe("ai");
+  expect((await outgoing).postDataJSON().pantry).toEqual([{ name: "rice", quantity: "100 g" }]);
+  const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string; body: { messages?: Array<{ role: string; content: string }> } }> };
+  const chat = status.calls.find((call) => call.path === "/api/chat");
+  expect(chat).toBeTruthy();
+  const prompt = chat!.body.messages!.find((message) => message.role === "user")!.content;
+  expect(JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2)).pantry).toEqual([{ name: "rice", quantity: "100 g" }]);
+  expect((await (await request.get("/api/kitchen")).json()).state.pantry).toEqual(pantry);
+});

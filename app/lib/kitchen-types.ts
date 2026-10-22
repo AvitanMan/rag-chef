@@ -4,6 +4,8 @@ export interface PantryStock {
   id: string;
   name: string;
   measure: string;
+  /** User-entered planning date, inclusive; absence means the date is unknown. */
+  useBy?: string;
 }
 
 export interface PantryDeduction {
@@ -11,6 +13,7 @@ export interface PantryDeduction {
   name?: string;
   before: string;
   after: string;
+  useBy?: string;
 }
 
 export interface PlannedMeal {

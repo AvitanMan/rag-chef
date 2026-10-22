@@ -66,7 +66,8 @@ test("allergy aliases and diet conflicts agree across browsing, planning and Che
   const chef = await request.post("/api/chef", { data: { query: "Tomato Rice", pantry: [], provider: "ollama", profile: { diet: ["Vegan"], allergies: ["milk", "peanut"], equipment: [] } } });
   expect(chef.ok()).toBeTruthy();
   const answer = await chef.json();
-  expect(answer.recipes.map((recipe: { title: string }) => recipe.title)).not.toEqual(expect.arrayContaining(["Cheese Pasta", "Peanut Noodles", "Salmon Bowl"]));
+  const chefTitles = answer.recipes.map((recipe: { title: string }) => recipe.title);
+  for (const excluded of ["Cheese Pasta", "Peanut Noodles", "Salmon Bowl"]) expect(chefTitles).not.toContain(excluded);
   expect(answer.recipes[0].title).toBe("Tomato Rice");
 });
 
@@ -119,4 +120,42 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
   await page.getByRole("button", { name: "Retry catalog" }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await expect(page.locator(".recipe-card")).toHaveCount(7);
+});
+
+test("offline pantry edits survive closing the tab and can be explicitly recovered after reconnecting", async ({ page, context, request }) => {
+  await page.goto("/");
+  await navigate(page, "Pantry");
+  await context.setOffline(true);
+  await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
+  await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+  await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("400 g");
+  await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((row: { name: string; measure: string }) => row.name === "beans" && row.measure === "400 g")))).toBeTruthy();
+  await page.close();
+  await context.setOffline(false);
+  const reopened = await context.newPage();
+  await reopened.goto("/");
+  await reopened.getByText(/Unsaved kitchens found/).click();
+  await reopened.getByRole("button", { name: "Recover this draft", exact: true }).first().click();
+  await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string; measure: string }) => ({ name: stock.name, measure: stock.measure }))).toEqual([{ name: "beans", measure: "400 g" }]);
+  await navigate(reopened, "Pantry");
+  await expect(reopened.getByRole("textbox", { name: "Available beans", exact: true })).toHaveValue("400 g");
+});
+
+test("two tabs expose a revision conflict and keep server and browser versions until a choice", async ({ page, context, request }) => {
+  await page.goto("/");
+  const other = await context.newPage();
+  await other.goto("/");
+  await navigate(page, "Pantry");
+  await navigate(other, "Pantry");
+  await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
+  await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+  await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+  await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
+  await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
+  await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();
+  expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+  expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
+  await other.getByRole("button", { name: "Load saved version", exact: true }).click();
+  await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
+  await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
 });

@@ -255,9 +255,10 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
       .forEach((deduction, index) => {
         const deductionPath = `${path}.completion.deductions[${index}]`;
         const entry = record(deduction, deductionPath);
-        fields(entry, ["pantryId", "before", "after"], ["name"], deductionPath);
+        fields(entry, ["pantryId", "before", "after"], ["name", "useBy"], deductionPath);
         string(entry.pantryId, `${deductionPath}.pantryId`, 200);
         if (Object.hasOwn(entry, "name")) string(entry.name, `${deductionPath}.name`, 200);
+        if (Object.hasOwn(entry, "useBy")) date(entry.useBy, `${deductionPath}.useBy`);
         if (pantryIds.has(entry.pantryId)) invalid(deductionPath, "duplicates a pantry deduction");
         pantryIds.add(entry.pantryId);
         measure(entry.before, `${deductionPath}.before`);
@@ -277,12 +278,13 @@ export function validateKitchenState(value: unknown): asserts value is KitchenSt
   array(state.pantry, "state.pantry", MAX_PANTRY_ITEMS).forEach((stock, index) => {
     const path = `state.pantry[${index}]`;
     const item = record(stock, path);
-    fields(item, ["id", "name", "measure"], [], path);
+    fields(item, ["id", "name", "measure"], ["useBy"], path);
     string(item.id, `${path}.id`, 200);
     if (pantryIds.has(item.id)) invalid(path, "duplicates a pantry id");
     pantryIds.add(item.id);
     string(item.name, `${path}.name`, 200);
     measure(item.measure, `${path}.measure`);
+    if (Object.hasOwn(item, "useBy")) date(item.useBy, `${path}.useBy`);
   });
   const meals = record(state.meals, "state.meals");
   if (Object.keys(meals).length > MAX_MEALS) invalid("state.meals", `accepts at most ${MAX_MEALS} meals`);
@@ -326,4 +328,3 @@ export function validateKitchenWrite(value: unknown): {
   }
   return { revision: input.revision, state: input.state };
 }
-

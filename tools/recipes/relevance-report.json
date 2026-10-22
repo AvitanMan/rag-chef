@@ -1,6 +1,6 @@
 {
   "reportVersion": 1,
-  "generatedAt": "2026-10-22T11:24:55.823Z",
+  "generatedAt": "2026-10-22T16:26:56.459Z",
   "evaluatorSha256": "30c6788bdcc840e452f72f27c2b19d7352a3e3a74f911633b41e0446d1736467",
   "corpus": {
     "file": "tools/recipes/fixtures/relevance-catalog.json",
@@ -17,7 +17,7 @@
   "ranker": {
     "sourceSha256": "2ea720a38bc1edd7c826dafcb7e13d6840ed8165e534ca9fbd62d7c9a67ee5ef",
     "embeddingSourceSha256": "404181d7e696ceb0b9226c553a59fefeb1b6ff2793b54a91517d18ea806aabda",
-    "constraintsSourceSha256": "8a377c0227c3cf011e2fc9e4affe0ddef841819e376fd6785e0ad41f0565ebb3",
+    "constraintsSourceSha256": "f2b47739296bfb572f6b46e79beb99203597387aaeb3a87ed00bbadb66221e7e",
     "regressionLabelsSha256": "e37785e55af61c58f2f53a5306e1f0782efc09a4eb7aeb4ba3bd7f92ac391d30"
   },
   "embedding": {

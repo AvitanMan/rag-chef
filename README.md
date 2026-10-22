@@ -21,6 +21,12 @@ service or an allergy-safety certification tool.
 - **Cook:** step-by-step guidance, timers, optional wake lock, pantry deductions,
   and undo for completed dinners.
 
+Reviewed **Core dinners**, source-backed time filters, and visible quantity gaps
+distinguish reviewed meals from recipes that still need checking. Saved diets
+hide known conflicts; unknown suitability stays visible with a **Diet not
+verified** label. Allergy, diet and equipment rules are shared across browsing,
+Chef and planning. Dislikes affect ranking rather than excluding meals.
+
 Recipes, pantry amounts, plans, and shopping checks persist locally. Browsing,
 planning, and shopping do not require an AI model.
 
@@ -94,7 +100,8 @@ pnpm start
 ```
 
 This still runs locally; it does not deploy the app. Stop `pnpm start` before
-rebuilding or running `pnpm test`, since both replace the build it is serving.
+running a direct `pnpm build`, which replaces its served files. Tests build
+disposable copies and leave this preview and its database untouched.
 
 ## Planning and shopping rules
 
@@ -102,6 +109,14 @@ Recipe search ignores case, accents, and punctuation. Every search word must
 appear in the title or ingredient names. Exact names lead, then pantry coverage
 and alphabetical ties. **Show more** reveals another 24 cards. Pantry matches
 count ingredient names, not whether you have enough to cook the meal.
+
+Fresh installations start with an empty pantry. Known zero stock and stock past
+its optional entered **Use by** date do not count as available. The entered date
+is inclusive. Unknown amounts remain uncertain and are never treated as enough.
+Automatic planning reserves measured stock for saved dinners, then fills upcoming
+empty days in date order without spending the same stock twice. Stock due within
+three days leads, followed by quantity coverage, ingredient reuse and stable ties.
+Past days remain manually editable; locked, cooked and saved dinners stay intact.
 
 Use **Cook for** when the source provides an explicit serving count. Unknown
 yields remain **Recipe batches**. **Adjust amounts** corrects a particular dinner
@@ -118,6 +133,16 @@ dinner can deduct confirmed stock; **Undo cooked** restores that deduction.
 Saved meals retain independent recipe snapshots, so catalog updates do not
 silently rewrite existing dinners or historical quantities.
 
+Cooking mode shows the same final amounts and overrides as the dinner details.
+Custom timers accept 1 second to 24 hours and use a saved deadline, so time does
+not depend on background interval ticks. Single explicit source-step durations
+offer shortcuts; ranges and ambiguous durations require a custom timer. Sound is
+optional and requires browser audio support. Timer completion never marks dinner
+cooked. **Exit cooking** preserves progress; **Resume cooking** or **Discard
+cooking session** appears after reopening. Starting another dinner asks before
+replacing progress. Changed meal identities or quantities require reopening the
+current dinner before completion and pantry deduction.
+
 ## How Chef works
 
 Chef searches the full approved database catalog, not the on-screen shortlist or
@@ -129,6 +154,14 @@ The model receives complete directions for the selected records and returns a
 small, validated JSON response. The server supplies canonical recipe IDs,
 citations, and pantry lists. Proposed substitutions appear separately from
 source facts and unchanged original directions.
+
+Source facts use request-local ingredient/step evidence IDs; the server copies
+their original text rather than accepting model-written factual claims. Recipe
+citations remain server-owned. Unsupported requests can return `no_match` without
+calling a generation provider. Empty catalogs and unsatisfied constraints have
+separate outcomes. Pantry coverage cannot turn an unrelated query into a match.
+Canceling or superseding a request prevents its late response from appearing;
+changing the pantry or profile hides results from the old context.
 
 Exact title requests and explicit positive questions such as
 `For Zucchini Pasta Bake, can I use olive oil instead of butter?`
@@ -231,6 +264,44 @@ recipe catalog or embedding index. Profile and model preferences are browser-loc
 Each tab has its own recoverable draft; conflicting saves require an explicit
 choice rather than silently overwriting another tab's kitchen.
 
+**Settings → Restore backup** accepts original exports and version 1 exports.
+It validates the file and previews counts before replacement, preserves the
+current kitchen as a recoverable draft, and uses the current revision when saving.
+Replacement is blocked if the recovery copy cannot be written. Catalog data and
+model preferences are not restored. **Unsaved kitchens found** lets you review
+closed-tab drafts with dates, counts and differences; recovery copies a draft
+without deleting another tab's work. Offline restores stay pending until saved.
+
+### Reviewed recipe metadata
+
+Apply migrations before using reviewed metadata. Reviews live in a separate,
+versioned table bound to the source content hash. Stale reviews become unknown;
+metadata changes do not rewrite source recipes, embeddings or saved dinners.
+
+With the local app running, inspect and load the attributed 30-dinner review:
+
+```bash
+pnpm recipes:curate -- validate tools/recipes/core-dinners.v1.json
+pnpm recipes:curate -- preview tools/recipes/core-dinners.v1.json
+pnpm recipes:curate -- import tools/recipes/core-dinners.v1.json
+pnpm recipes:curate -- report recipe-runs/quality-report.json
+pnpm recipes:curate -- export recipe-runs/review-worksheet.json
+```
+
+Preview verifies source hashes and field provenance without writing. Repeated
+imports are idempotent. Reports classify unresolved amounts and retain source
+links; worksheets require explicit review before import. Use a new output path
+for each report/worksheet. Add `--app http://localhost:PORT` for another local
+preview. The checked-in core annotates existing catalog records; it is not a seed
+dataset. Import the matching source recipes first on a fresh installation.
+
+All 30 reviews retain explicit source servings. Total cooking time and low-carb
+suitability remain unknown where the captured source cannot establish them.
+**Maximum total minutes** includes only complete, source-backed totals, never
+step durations or curator estimates. Consequently the initial core has no time
+filter matches until source-backed totals are reviewed. All other recipes remain
+available with explicit unknowns.
+
 The production-style preview can cache the app shell after an online visit.
 Cached kitchen data and unsaved edits can survive a temporary server outage and
 sync when the server returns. The service worker does not cache recipe API
@@ -259,19 +330,25 @@ app instead of port 3000. The collector uses its separate `--app` option.
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm test:e2e
 pnpm recipes:test
 ```
 
-`pnpm test` builds the app and tests storage, conflicts, imports, retrieval,
-quantity arithmetic, recipe snapshots, cooking undo, AI boundaries, and rendered
-UI. Collector tests need the Python environment above. Stop the production
-preview before running a build or app tests.
+`pnpm test:source` runs source/SQL/hook tests without building. `pnpm test` runs
+those checks followed by `pnpm test:integration`, which builds and renders a
+disposable project. `pnpm test:e2e` builds another isolated copy, migrates a
+separate D1 database, seeds synthetic recipes, and tests desktop/mobile flows on
+an ephemeral loopback port. AI providers are mocked; personal data and `.env`
+files are not copied. Browser artifacts live in ignored `output/playwright/`.
+Collector tests need the Python environment above. Only a direct app build needs
+the production preview stopped.
 
 With the app running and the relevant recipes imported:
 
 ```bash
 pnpm recipes:eval
 pnpm recipes:chef-eval
+pnpm recipes:relevance-eval
 ```
 
 `recipes:eval` runs 20 fixed retrieval checks, targeting at least 16 expected
@@ -280,6 +357,15 @@ three local Ollama answers, latency, recipe references, requested changes, and
 unchanged kitchen/catalog data. It requires the **Zucchini Pasta Bake** catalog
 entry and never selects a paid cloud provider. These small regression checks
 do not certify culinary correctness or allergy safety.
+
+`recipes:relevance-eval` uses the attributed frozen 166-recipe evaluation corpus
+and local Ollama embeddings, without database access or paid generation. It
+calibrates thresholds on 40 fixed labeled queries and evaluates 40 held-out
+queries plus the original 20 retrieval cases, including forced lexical fallback.
+The committed report records corpus/source hashes, model version, outcomes and
+strict labeled precision. Held-out retention/abstention gates are 95%; the report
+also discloses imperfect precision and the calibration false positive for Beef
+Wellington. This corpus is a test fixture, not an application seed.
 
 ### Project layout
 
@@ -309,6 +395,8 @@ in an isolated Python environment. No separate vector database is required.
 | `GET /api/admin/catalog` | Catalog and embedding status |
 | `POST /api/admin/catalog` | Source sync; `{"embeddingsOnly":true}` refreshes only vectors |
 | `POST /api/admin/recipes/import` | Import up to 20 reviewed Wikibooks recipes |
+| `GET /api/admin/recipes/metadata` | Hash-bound source review worksheet and quality summary |
+| `POST /api/admin/recipes/metadata` | Preview or atomically import reviewed metadata |
 
 ## Attribution and prototype limits
 

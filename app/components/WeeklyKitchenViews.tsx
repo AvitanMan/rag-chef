@@ -15,11 +15,12 @@ export function dateLabel(date: string, options: Intl.DateTimeFormatOptions = { 
   return new Date(`${date}T12:00:00`).toLocaleDateString("en", options);
 }
 
-export function DurablePlanView({ week, today, setWeek, meals, update, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice }: {
+export function DurablePlanView({ week, today, setWeek, meals, update, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {} }: {
   today?: string;
   catalogState: "loading" | "ready" | "error";
   retryCatalog: () => void;
   planningNotice: string;
+  planningReasons?: Record<string, string>;
   week: string;
   setWeek: (week: string) => void;
   meals: Record<string, PlannedMeal>;
@@ -82,6 +83,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, chooseMea
             <div className="day-heading"><span className="day-name">{dateLabel(date)}</span>{date === today && <span className="today-badge">Today</span>}{meal && <span className={`meal-status ${meal.status}`}>{meal.status === "cooked" ? "Cooked" : meal.locked ? "Locked" : "Planned"}</span>}</div>
             {recipe ? <>{recipe.image && <button className="day-image" onClick={() => openMeal(date)} aria-label={`View photo of ${meal.title}`}><img src={recipe.image} alt="" /></button>}<button className="day-recipe-title" onClick={() => openMeal(date)} aria-label={`Open ${meal.title} on ${dateLabel(date)}`}>{meal.title}</button></> : meal ? <div className="missing-recipe"><strong>{meal.title}</strong><p>Recipe unavailable. Choose a replacement to recover its shopping amounts.</p></div> : null}
             {!immutable && <button className={meal ? "text-button" : "primary-button"} onClick={() => chooseDay(date)} aria-label={`${meal ? "Change dinner" : "Choose dinner"} ${dateLabel(date)}`}>{meal ? "Change dinner" : "Choose dinner"}</button>}
+            {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
             {meal && <>
               <div className="meal-amounts">
                 {meal.baseServings ? <label>Cook for<input type="number" min="1" max="100" aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onChange={(event) => { const value = Number(event.target.value); if (value > 0) patchMeal(date, { servings: value }); }} /><span>servings</span></label> : <label>Recipe batches<input type="number" min="0.25" max="20" step="0.25" aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onChange={(event) => { const value = Number(event.target.value); if (value > 0) patchMeal(date, { batches: value }); }} /></label>}

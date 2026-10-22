@@ -14,8 +14,8 @@ const directory = await mkdtemp(join(tmpdir(), "jff-recipe-presentation-"));
 after(() => rm(directory, { recursive: true, force: true }));
 const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
-  ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"],
-  ...["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "kitchen-backup", "kitchen-stock", "recipe-constraints", "recipe-safety"].map((name) => ["lib", name, "ts"]),
+  ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
+  ...["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "kitchen-planning", "recipe-constraints", "recipe-safety"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText

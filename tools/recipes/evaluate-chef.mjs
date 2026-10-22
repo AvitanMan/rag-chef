@@ -23,12 +23,23 @@ for (const item of cases) {
   });
   const data = await response.json();
   const titles = (data.recommendations ?? []).map((rec) => data.recipes?.find((recipe) => recipe.id === rec.recipeId)?.title);
+  const adaptedTitles = (data.chefChanges ?? []).map((change) => data.recipes?.find((recipe) => recipe.id === change.recipeId)?.title);
   const knownIds = new Set((data.recipes ?? []).map((r) => r.id));
   const referencesValid = [...(data.recommendations ?? []), ...(data.sourceFacts ?? []), ...(data.chefChanges ?? []), ...(data.citations ?? [])].every((value) => knownIds.has(value.recipeId));
+  const evidenceValid = (data.sourceFacts ?? []).every((fact) => {
+    const recipe = data.recipes?.find((recipe) => recipe.id === fact.recipeId);
+    const match = fact.evidenceId?.match(/^([IS])([1-9]\d{0,2})$/);
+    if (!recipe || !match) return false;
+    const index = Number(match[2]) - 1;
+    const ingredient = recipe.ingredients[index];
+    const original = match[1] === "I" ? ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ") : recipe.instructions[index];
+    return fact.fact === original;
+  });
   const changesMatchRequest = item.adaptation ? data.chefChanges?.length > 0 : data.chefChanges?.length === 0;
   const noInternalReferences = !/\bR[1-8]\b/.test(JSON.stringify([data.answer, data.warnings, ...(data.sourceFacts ?? []).map((x) => x.fact), ...(data.chefChanges ?? []).map((x) => [x.change, x.reason])]));
-  const ok = response.ok && data.generation === "ai" && referencesValid && (!item.expected || titles[0] === item.expected) && changesMatchRequest && noInternalReferences;
-  results.push({ name: item.name, query: item.query, ok, milliseconds: Math.round(performance.now() - started), generation: data.generation, titles, referencesValid, changesMatchRequest, noInternalReferences, timings: data.timings, answer: data.answer, sourceFacts: data.sourceFacts, chefChanges: data.chefChanges, warnings: data.warnings });
+  const expectedRecipePresent = !item.expected || (item.adaptation ? adaptedTitles.includes(item.expected) : titles[0] === item.expected);
+  const ok = response.ok && data.generation === "ai" && referencesValid && evidenceValid && expectedRecipePresent && changesMatchRequest && noInternalReferences;
+  results.push({ name: item.name, query: item.query, ok, milliseconds: Math.round(performance.now() - started), generation: data.generation, titles, adaptedTitles, referencesValid, evidenceValid, expectedRecipePresent, changesMatchRequest, noInternalReferences, timings: data.timings, answer: data.answer, sourceFacts: data.sourceFacts, chefChanges: data.chefChanges, warnings: data.warnings });
   console.error(`${item.name}: ${results.at(-1).milliseconds} ms · ${data.generation} · ${ok ? "pass" : "FAIL"}`);
 }
 const unchanged = kitchenBefore === await get("/api/kitchen") && catalogBefore === await get("/api/recipes/catalog");

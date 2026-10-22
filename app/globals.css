@@ -2179,3 +2179,22 @@ img {
 .recipe-quality { display: block; color: var(--ink-soft); margin: 10px 0; font-size: 0.8rem; line-height: 1.6; }
 .equipment-options { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
 .equipment-options label { display: flex; align-items: center; gap: 6px; }
+.pantry-use-by { max-width: 200px; }
+.pantry-use-by input { width: 100%; }
+.cook-ingredients { width: 100%; text-align: left; padding: 16px; margin-bottom: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+.cook-ingredients > summary { cursor: pointer; font-weight: 600; }
+.cook-ingredients .ingredient-list { max-height: 220px; overflow-y: auto; }
+.cook-timer { max-width: 100%; width: 100%; min-width: 0; }
+.cook-timer label { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; margin: 12px 0; }
+.cook-timer input[type="number"] { max-width: 100px; padding: 8px; font: inherit; border: 1px solid var(--line); border-radius: 8px; }
+.cook-timer div { flex-wrap: wrap; }
+.cook-timer button { min-height: 40px; font-size: 0.85rem; }
+.cooking-mode { grid-template-rows: auto 4px minmax(0, 1fr) auto; height: 100dvh; overflow: hidden; }
+.cooking-mode > main { justify-content: flex-start; width: 100%; min-height: 0; height: 100%; overflow-y: auto; margin: 0 auto; }
+.cooking-mode > footer { position: sticky; bottom: 0; gap: 10px; }
+@media (max-width: 650px) {
+  .unified-pantry-item { flex-wrap: wrap; gap: 12px; }
+  .pantry-use-by { flex-basis: 160px; }
+  .cooking-mode > main { padding: 20px 16px; }
+  .cooking-mode > footer > span { display: none; }
+}

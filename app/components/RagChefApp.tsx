@@ -7,10 +7,13 @@ import type { Recipe, RecipeMetadata, RecipeMetadataMap } from "../lib/recipe-ty
 import { evaluateRecipeConstraints, normalizeConstraints } from "../lib/recipe-constraints";
 import { availablePantryNames } from "../lib/kitchen-stock";
 import { parseKitchenBackup, serializeKitchenBackup } from "../lib/kitchen-backup";
+import { CookingWorkspace } from "./CookingWorkspace";
+import { COOKING_SESSION_KEY, canCompleteCookingSession, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
 import { useKitchen } from "../lib/use-kitchen";
 import { mealScale, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
-import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, rankWeeklyCandidates, weekStart } from "../lib/kitchen-state";
-import { buildShoppingList, canonicalIngredient, completeMeal, consumptionPreview, formatMeasure, parseMeasure, plannedIngredientMeasure, undoMeal } from "../lib/quantities";
+import { addDateDays, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, weekStart } from "../lib/kitchen-state";
+import { fillEmptyDays } from "../lib/kitchen-planning";
+import { buildShoppingList, canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal } from "../lib/quantities";
 import { dateLabel, DurablePlanView, DurableShoppingView, PlanPicker } from "./WeeklyKitchenViews";
 import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
 
@@ -239,9 +242,14 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
 
 export default function RagChefApp() {
   const [view, setView] = useState<View>("plan");
+  const [today, setToday] = useState(localDate);
+  useEffect(() => {
+    const id = window.setInterval(() => setToday(localDate()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [view]);
   const kitchen = useKitchen(LOCAL_RECIPES);
-  const pantry = useMemo(() => availablePantryNames(kitchen.state.pantry), [kitchen.state.pantry]);
+  const pantry = useMemo(() => availablePantryNames(kitchen.state.pantry, today), [kitchen.state.pantry, today]);
   const [pantryDraft, setPantryDraft] = useState("");
   const [query, setQuery] = useState("");
   const [recipeQuery, setRecipeQuery] = useState("");
@@ -255,6 +263,7 @@ export default function RagChefApp() {
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [planningNotice, setPlanningNotice] = useState("");
+  const [planningReasons, setPlanningReasons] = useState<Record<string, string>>({});
   const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
   const [loadingRecipes, setLoadingRecipes] = useState(false);
   const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, settings });
@@ -273,14 +282,15 @@ export default function RagChefApp() {
   const [reviewDate, setReviewDate] = useState<string | null>(null);
   const [cookingMealDate, setCookingMealDate] = useState<string | null>(null);
   const [completionDate, setCompletionDate] = useState<string | null>(null);
+  const [completionMealId, setCompletionMealId] = useState<string | null>(null);
+  const [completionFingerprint, setCompletionFingerprint] = useState<string | null>(null);
   const [deductStock, setDeductStock] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [cooking, setCooking] = useState(false);
-  const [cookingStep, setCookingStep] = useState(0);
-  const [cookingSteps, setCookingSteps] = useState<string[]>([]);
-  const [cookingMethod, setCookingMethod] = useState("");
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const [cookingSession, setCookingSession] = useState<CookingSession | null>(null);
+  const [cookingStorageNotice, setCookingStorageNotice] = useState("");
+  const [pendingCookingStart, setPendingCookingStart] = useState<CookingSession | null>(null);
+  const [backupExportError, setBackupExportError] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("");
   useEffect(() => () => chefRequest.current.controller?.abort(), []);
 
@@ -297,6 +307,8 @@ export default function RagChefApp() {
       } catch {
         // A corrupt local draft should never prevent the app from opening.
       }
+      try { setCookingSession(parseCookingSession(window.localStorage.getItem(COOKING_SESSION_KEY))); }
+      catch { /* Cooking recovery never prevents the kitchen from opening. */ }
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(id);
@@ -308,20 +320,6 @@ export default function RagChefApp() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, settings }));
     } catch { /* Kitchen recovery is managed separately from preferences. */ }
   }, [hydrated, profile, settings]);
-
-  useEffect(() => {
-    if (!timerRunning || timerSeconds <= 0) return;
-    const id = window.setInterval(() => {
-      setTimerSeconds((seconds) => {
-        if (seconds <= 1) {
-          setTimerRunning(false);
-          return 0;
-        }
-        return seconds - 1;
-      });
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [timerRunning, timerSeconds]);
 
   const loadRecipes = useCallback(
     async (search = query) => {
@@ -437,7 +435,7 @@ export default function RagChefApp() {
         signal: controller.signal,
         body: JSON.stringify({
           query: finalQuery,
-          pantry: kitchen.state.pantry.filter((item) => pantry.includes(item.name)).map((item) => ({ name: item.name, quantity: item.measure || undefined })),
+          pantry: kitchen.state.pantry.filter((item) => availablePantryNames([item], today).length > 0).map((item) => ({ name: item.name, quantity: item.measure || undefined })),
           profile,
           provider: settings.provider,
           model:
@@ -480,18 +478,12 @@ export default function RagChefApp() {
       setPlanningNotice("Load the full catalog before filling empty days. Your saved dinners are unchanged.");
       return;
     }
-    const candidates = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), pantry, week, kitchen.state.meals);
-    const emptyDays = weekDates.filter((date) => !kitchen.state.meals[date]).length;
-    setPlanningNotice(candidates.length < emptyDays ? `Only ${candidates.length} different eligible recipes are available. Remaining days were left empty.` : "Empty days filled with pantry-first recipes, without repeats.");
-    kitchen.update((state) => {
-      const meals = { ...state.meals };
-      const available = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), availablePantryNames(state.pantry), week, state.meals);
-      let index = 0;
-      for (const date of weekDates) {
-        if (!meals[date] && index < available.length) meals[date] = createPlannedMeal(date, available[index++]);
-      }
-      return { ...state, meals };
-    });
+    const candidates = catalogRecipes.filter(recipeAllowed);
+    const proposed = fillEmptyDays(candidates, kitchen.state.pantry, week, kitchen.state.meals, today);
+    const emptyDays = weekDates.filter((date) => date >= today && !kitchen.state.meals[date]).length;
+    setPlanningReasons(proposed.reasons);
+    setPlanningNotice(emptyDays === 0 ? "No upcoming empty days in this week. Past dinners can be added manually." : proposed.additions.length < emptyDays ? `Added ${proposed.additions.length} different eligible dinners. Remaining days were left empty.` : "Upcoming empty days filled without repeats. Saved dinners reserve their pantry stock first.");
+    kitchen.update((state) => ({ ...state, meals: fillEmptyDays(candidates, state.pantry, week, state.meals, today).meals }));
   }
 
   function addRecipeToPlan(recipe: Recipe) {
@@ -536,13 +528,16 @@ export default function RagChefApp() {
     setCookingMealDate(date);
     const methods = instructionSections(meal.recipe);
     if (methods.length > 1) { setSelectedRecipe(meal.recipe); return; }
-    void startCooking(meal.recipe, methods[0]?.steps ?? meal.recipe.instructions, methods[0]?.title ?? "Source directions");
+    startCooking(meal.recipe, methods[0]?.steps ?? meal.recipe.instructions, methods[0]?.title ?? "Source directions", meal);
   }
 
   function exportBackup() {
-    const blob = new Blob([serializeKitchenBackup(kitchen.state)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a"); link.href = url; link.download = "rag-chef-kitchen-backup.json"; link.click(); URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([serializeKitchenBackup(kitchen.state)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url; link.download = "rag-chef-kitchen-backup.json"; link.click(); URL.revokeObjectURL(url);
+      setBackupExportError("");
+    } catch (error) { setBackupExportError(error instanceof Error ? error.message : "The backup could not be exported."); }
   }
 
   function openRecipe(recipe: Recipe) {
@@ -550,24 +545,28 @@ export default function RagChefApp() {
     setSelectedRecipe(recipe);
   }
 
-  async function startCooking(
+  function persistCookingSession(next: CookingSession | null) {
+    setCookingSession(next);
+    try {
+      if (next) window.localStorage.setItem(COOKING_SESSION_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(COOKING_SESSION_KEY);
+      setCookingStorageNotice("");
+    } catch { setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it."); }
+  }
+
+  function startCooking(
     recipe: Recipe,
     steps: string[],
     method: string,
+    plannedDinner?: PlannedMeal,
   ) {
-    setSelectedRecipe(recipe);
-    setCookingSteps(steps);
-    setCookingMethod(method);
-    setCookingStep(0);
+    if (!steps.length) return;
+    const meal = plannedDinner ?? (cookingMealDate ? kitchen.state.meals[cookingMealDate] : undefined);
+    const next = createCookingSession(recipe, steps, method, meal?.recipeId === recipe.id ? meal : undefined);
+    if (cookingSession) { setPendingCookingStart(next); return; }
+    persistCookingSession(next);
+    setSelectedRecipe(null);
     setCooking(true);
-    try {
-      const nav = navigator as Navigator & {
-        wakeLock?: { request: (type: "screen") => Promise<unknown> };
-      };
-      await nav.wakeLock?.request("screen");
-    } catch {
-      // Wake lock is a progressive enhancement.
-    }
   }
 
   async function testConnection() {
@@ -639,6 +638,8 @@ export default function RagChefApp() {
 
         {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to this Mac."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
         {kitchen.conflict && <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>}
+        {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
+        {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{cookingSession.timer.status === "finished" ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
         {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed.</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
@@ -646,7 +647,7 @@ export default function RagChefApp() {
           <button className="secondary-button flow-back" onClick={() => setView("recipes")}>← Back to Recipes</button>
           <ChefView
             pantry={pantry}
-            pantryItems={kitchen.state.pantry.filter((item) => pantry.includes(item.name))}
+            pantryItems={kitchen.state.pantry.filter((item) => availablePantryNames([item], today).length > 0)}
             pantryDraft={pantryDraft}
             setPantryDraft={setPantryDraft}
             query={query}
@@ -704,9 +705,10 @@ export default function RagChefApp() {
             catalogState={catalogState}
             retryCatalog={() => void loadPlanningCatalog()}
             planningNotice={planningNotice}
+            planningReasons={planningReasons}
             week={week}
-            today={hydrated ? localDate() : undefined}
-            setWeek={(value) => { setWeek(value); setPlanningNotice(""); setReviewDate(null); }}
+            today={hydrated ? today : undefined}
+            setWeek={(value) => { setWeek(value); setPlanningNotice(""); setPlanningReasons({}); setReviewDate(null); }}
             meals={kitchen.state.meals}
             update={kitchen.update}
             chooseMeal={chooseMeal}
@@ -716,7 +718,7 @@ export default function RagChefApp() {
             setReviewDate={setReviewDate}
             generatePlan={generatePlan}
             openMeal={(date) => { const meal = kitchen.state.meals[date]; if (meal?.recipe) { setCookingMealDate(date); setSelectedRecipe(meal.recipe); } }}
-            markCooked={(date) => { setCompletionDate(date); setDeductStock(false); }}
+            markCooked={(date) => { setCompletionMealId(kitchen.state.meals[date]?.id ?? null); setCompletionFingerprint(plannedDinnerFingerprint(kitchen.state.meals[date])); setCompletionDate(date); setDeductStock(false); }}
             undoCooked={(date) => kitchen.update((state) => undoMeal(state, date))}
             goShopping={() => setView("shop")}
           />
@@ -743,6 +745,7 @@ export default function RagChefApp() {
             connectionStatus={connectionStatus}
             testConnection={() => void testConnection()}
             exportBackup={exportBackup}
+            backupExportError={backupExportError}
             restoreBackup={kitchen.restoreBackup}
             canRestore={kitchen.ready && !kitchen.busy}
             currentKitchen={kitchen.state}
@@ -763,8 +766,9 @@ export default function RagChefApp() {
       {planPicker && <PlanPicker key={planPicker.id} recipe={planPicker} week={week} meals={kitchen.state.meals} close={() => setPlanPicker(null)} choose={(date, recipe, expectedId) => chooseMeal(date, recipe, undefined, expectedId)} />}
       {completionDate && kitchen.state.meals[completionDate] && (() => {
         const meal = kitchen.state.meals[completionDate];
+        const unchanged = meal.id === completionMealId && plannedDinnerFingerprint(meal) === completionFingerprint;
         const preview = consumptionPreview(meal, kitchen.state.pantry);
-        return <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Complete dinner"><span className="eyebrow">Dinner finished</span><h2>{meal.title}</h2><p>Mark this dinner cooked to remove its remaining needs from shopping. You can undo this in the plan.</p><label className="deduct-checkbox"><input type="checkbox" checked={deductStock} onChange={(event) => setDeductStock(event.target.checked)} />Deduct the matching pantry amounts shown below</label><ul>{preview.deductions.map((item) => <li key={item.pantryId}>{kitchen.state.pantry.find((stock) => stock.id === item.pantryId)?.name}: {item.before} → {item.after}</li>)}</ul>{preview.notes.map((note, index) => <p className="quantity-note" key={index}>{note}</p>)}{!preview.deductions.length && <p>No compatible, measured pantry stock to deduct.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setCompletionDate(null)}>Cancel</button><button className="primary-button" onClick={() => { kitchen.update((state) => completeMeal(state, completionDate, deductStock)); setCompletionDate(null); setSelectedRecipe(null); setView("plan"); }}>Confirm cooked</button></div></section></div>;
+        return <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Complete dinner"><span className="eyebrow">Dinner finished</span><h2>{meal.title}</h2><p>Mark this dinner cooked to remove its remaining needs from shopping. You can undo this in the plan.</p>{!unchanged && <p role="alert">This dinner changed. Cancel and open the current dinner before completing it.</p>}<label className="deduct-checkbox"><input type="checkbox" checked={deductStock} onChange={(event) => setDeductStock(event.target.checked)} />Deduct the matching pantry amounts shown below</label><ul>{preview.deductions.map((item) => <li key={item.pantryId}>{kitchen.state.pantry.find((stock) => stock.id === item.pantryId)?.name}: {item.before} → {item.after}</li>)}</ul>{preview.notes.map((note, index) => <p className="quantity-note" key={index}>{note}</p>)}{!preview.deductions.length && <p>No compatible, measured pantry stock to deduct.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setCompletionDate(null)}>Cancel</button><button className="primary-button" disabled={!unchanged} onClick={() => { kitchen.update((state) => state.meals[completionDate]?.id === completionMealId && plannedDinnerFingerprint(state.meals[completionDate]) === completionFingerprint ? completeMeal(state, completionDate, deductStock) : state); setCompletionDate(null); setSelectedRecipe(null); setView("plan"); }}>Confirm cooked</button></div></section></div>;
       })()}
 
       {selectedRecipe && !cooking && (
@@ -784,29 +788,27 @@ export default function RagChefApp() {
         />
       )}
 
-      {selectedRecipe && cooking && (
-        <CookingMode
-          recipe={selectedRecipe}
-          instructions={cookingSteps}
-          method={cookingMethod}
-          step={cookingStep}
-          setStep={setCookingStep}
-          seconds={timerSeconds}
-          setSeconds={setTimerSeconds}
-          running={timerRunning}
-          setRunning={setTimerRunning}
+      {cookingSession && (
+        <CookingWorkspace
+          key={cookingSession.id}
+          session={cookingSession}
+          visible={cooking}
+          onChange={persistCookingSession}
           finish={() => {
-            setCooking(false); setTimerRunning(false);
-            if (cookingMealDate && kitchen.state.meals[cookingMealDate]?.status === "planned") { setCompletionDate(cookingMealDate); setDeductStock(false); }
+            setCooking(false);
+            const saved = cookingSession.plannedMeal;
+            if (saved && canCompleteCookingSession(cookingSession, kitchen.state.meals[saved.date])) { setCompletionMealId(saved.id); setCompletionFingerprint(plannedDinnerFingerprint(saved)); setCompletionDate(saved.date); setDeductStock(false); }
+            else if (saved) setPlanningNotice("The saved dinner changed while cooking. Open the current dinner to complete it.");
+            persistCookingSession(null);
             setSelectedRecipe(null);
           }}
           close={() => {
             setCooking(false);
             setSelectedRecipe(null);
-            setTimerRunning(false);
           }}
         />
       )}
+      {pendingCookingStart && <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Replace cooking session"><h2>Keep your current cooking session?</h2><p>{cookingSession?.recipe.title} has saved progress{cookingSession?.timer.status === "running" ? " and a running timer" : ""}. Starting {pendingCookingStart.recipe.title} will replace that progress and timer.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setPendingCookingStart(null)}>Keep current session</button><button className="primary-button" onClick={() => { persistCookingSession(pendingCookingStart); setPendingCookingStart(null); setSelectedRecipe(null); setCooking(true); }}>Replace cooking session</button></div></section></div>}
     </div>
   );
 }
@@ -893,7 +895,7 @@ function ChefView({
   const prompts = [
     "A quick dinner under 30 minutes",
     "Something cozy and one-pot",
-    "Use my most perishable ingredients",
+    "Use my pantry ingredients",
   ];
 
   return (
@@ -1114,6 +1116,15 @@ function PantryView({
                 const measure = event.target.value;
                 update((state) => ({ ...state, pantry: state.pantry.map((stock) => stock.id === item.id ? { ...stock, measure } : stock) }));
               }} />{item.measure && !parseMeasure(item.measure) && <small>Kept as a note; this amount cannot be subtracted automatically.</small>}</label>
+              <label className="pantry-use-by">Use by<input type="date" aria-label={`Use by ${item.name}`} value={item.useBy ?? ""} onChange={(event) => {
+                const useBy = event.target.value;
+                update((state) => ({ ...state, pantry: state.pantry.map((stock) => {
+                  if (stock.id !== item.id) return stock;
+                  const next = { ...stock };
+                  if (useBy) next.useBy = useBy; else delete next.useBy;
+                  return next;
+                }) }));
+              }} />{item.useBy && item.useBy < localDate() && <small>Past entered use-by date; excluded from availability.</small>}</label>
               <button className="text-button" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
             </div>
           ))}
@@ -1132,6 +1143,7 @@ function SettingsView({
   connectionStatus,
   testConnection,
   exportBackup,
+  backupExportError,
   restoreBackup,
   canRestore,
   currentKitchen,
@@ -1144,6 +1156,7 @@ function SettingsView({
   connectionStatus: string;
   testConnection: () => void;
   exportBackup: () => void;
+  backupExportError: string;
   restoreBackup: (state: KitchenState) => boolean;
   canRestore: boolean;
   currentKitchen: KitchenState;
@@ -1164,7 +1177,7 @@ function SettingsView({
   }
   return (
     <div className="settings-grid">
-      <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button><label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label><p className="quantity-note">Restore replaces this kitchen. A recovery copy is preserved first. Recipe catalog and model preferences are separate.</p>{restoreError && <p role="alert">{restoreError}</p>}{restorePreview && <section className="restore-preview" role="region" aria-label="Backup preview"><h3>Review this backup</h3><p>Exported {new Date(restorePreview.exportedAt).toLocaleString()}</p><p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners</p><p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners</p><p>Amounts, cooked records, and shopping checks will be replaced with the backup’s values.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button><button className="primary-button" disabled={!canRestore} onClick={() => { if (restoreBackup(restorePreview.state)) { setRestorePreview(null); setRestoreError(""); } else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying."); }}>Replace kitchen with backup</button></div></section>}</section>
+      <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button>{backupExportError && <p role="alert">{backupExportError}</p>}<label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label><p className="quantity-note">Restore replaces this kitchen. A recovery copy is preserved first. Recipe catalog and model preferences are separate.</p>{restoreError && <p role="alert">{restoreError}</p>}{restorePreview && <section className="restore-preview" role="region" aria-label="Backup preview"><h3>Review this backup</h3><p>Exported {new Date(restorePreview.exportedAt).toLocaleString()}</p><p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners</p><p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners</p><p>Amounts, cooked records, and shopping checks will be replaced with the backup’s values.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button><button className="primary-button" disabled={!canRestore} onClick={() => { if (restoreBackup(restorePreview.state)) { setRestorePreview(null); setRestoreError(""); } else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying."); }}>Replace kitchen with backup</button></div></section>}</section>
       <section className="panel settings-panel">
         <div className="section-heading"><div><span className="eyebrow">Personalization</span><h2>How you cook</h2><p>Allergies are filtered before a recipe reaches the model.</p></div></div>
         <div className="form-grid">
@@ -1275,9 +1288,8 @@ export function RecipeDrawer({
               </ul>
             )}
           </div>
-          {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{(plannedMeal.planningIngredients ?? recipe.ingredients).map((ingredient, index) => {
-            const parsed = plannedIngredientMeasure(plannedMeal, index, ingredient);
-            const amount = plannedMeal.ingredientOverrides[String(index)] ?? (parsed ? formatMeasure(parsed.quantity * mealScale(plannedMeal), parsed.unit) : `${ingredient.measure || "Amount needs review"}${mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`);
+          {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{resolvedMealIngredients(plannedMeal).map((ingredient, index) => {
+            const amount = `${ingredient.measure || "Amount needs review"}${ingredient.needsReview && mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`;
             return <li key={index}><strong>{ingredient.name}</strong><small>{amount}</small></li>;
           })}</ul><details className="original-ingredients"><summary>Original recipe quantities</summary>{originalIngredients}</details></section> : originalIngredients}
           <div className="directions-heading">
@@ -1292,51 +1304,6 @@ export function RecipeDrawer({
           {changes.length > 0 && <section className="changes-panel"><span className="eyebrow">Chef’s changes</span><h3>Adapted for your kitchen</h3>{changes.map((change, index) => <div key={`${change.change}-${index}`}><strong>{change.change}</strong><p>{change.reason}</p></div>)}</section>}
         </div>
       </article>
-    </div>
-  );
-}
-
-function CookingMode({
-  recipe,
-  instructions,
-  method,
-  step,
-  setStep,
-  seconds,
-  setSeconds,
-  running,
-  setRunning,
-  finish,
-  close,
-}: {
-  recipe: Recipe;
-  instructions: string[];
-  method: string;
-  step: number;
-  setStep: (value: number) => void;
-  seconds: number;
-  setSeconds: (value: number) => void;
-  running: boolean;
-  setRunning: (value: boolean) => void;
-  finish: () => void;
-  close: () => void;
-}) {
-  const total = instructions.length;
-  const minutes = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  return (
-    <div className="cooking-mode" role="dialog" aria-modal="true" aria-label={`Cooking ${recipe.title}`}>
-      <header><button onClick={close}>← Exit cooking</button><div><span>Cooking now{method && method !== "Main method" ? ` · ${method}` : ""}</span><strong>{recipe.title}</strong></div><span>{step + 1} / {total}</span></header>
-      <div className="cook-progress"><span style={{ width: `${((step + 1) / total) * 100}%` }} /></div>
-      <main>
-        <div className="cook-step-number">Step {step + 1}</div>
-        <p>{instructions[step]}</p>
-        <div className="cook-timer">
-          <span>Timer</span><strong>{minutes}:{secs}</strong>
-          <div><button onClick={() => { setSeconds(300); setRunning(true); }}>5 min</button><button onClick={() => { setSeconds(600); setRunning(true); }}>10 min</button><button onClick={() => setRunning(!running)} disabled={!seconds}>{running ? "Pause" : "Start"}</button></div>
-        </div>
-      </main>
-      <footer><button className="secondary-button" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Previous</button><span>Screen stays awake where supported</span><button className="primary-button" onClick={() => step === total - 1 ? finish() : setStep(step + 1)}>{step === total - 1 ? "Finish cooking" : "Next step →"}</button></footer>
     </div>
   );
 }

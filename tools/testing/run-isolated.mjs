@@ -28,7 +28,6 @@ const env = {
   TMPDIR: process.env.TMPDIR ?? tmpdir(),
   SYSTEMROOT: process.env.SYSTEMROOT,
   CI: "1",
-  NO_COLOR: "1",
   WRANGLER_SEND_METRICS: "false",
   WRANGLER_WRITE_LOGS: "false",
   WRANGLER_LOG_PATH: join(directory, "wrangler.log"),
