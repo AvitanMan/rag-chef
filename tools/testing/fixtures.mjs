@@ -9,6 +9,7 @@ export const fixtureRecipes = [
   { id: "fixture-vegan-beans", title: "Garlic Beans", ingredients: [{ name: "beans", measure: "400 g" }, { name: "garlic", measure: "2 cloves" }], tags: ["vegan", "vegetarian"], servings: 2, instructions: ["Warm the beans.", "Add garlic and simmer for 5 minutes."] },
   { id: "fixture-unknown-soup", title: "Garden Soup", ingredients: [{ name: "vegetable stock", measure: "500 ml" }, { name: "carrot", measure: "200 g" }], tags: [], instructions: ["Simmer the carrots in stock until tender."] },
   { id: "fixture-eggplant", title: "Eggplant Stew", ingredients: [{ name: "eggplant", measure: "300 g" }, { name: "tomato", measure: "2" }], tags: ["vegan", "vegetarian"], servings: 2, instructions: ["Total time: 20 minutes. Dice the eggplant.", "Simmer with tomato for 15 minutes."] },
+  { id: "fixture-beef-stew", title: "Beef Stew", ingredients: [{ name: "beef", measure: "200 g" }, { name: "onion", measure: "1" }], tags: [], servings: 2, instructions: ["Prepare the beef and onion.", "Simmer the stew until cooked."] },
 ];
 
 const quote = (value) => value === null || value === undefined ? "NULL" : typeof value === "number" ? String(value) : `'${String(value).replaceAll("'", "''")}'`;

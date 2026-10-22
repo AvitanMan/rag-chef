@@ -13,10 +13,47 @@ const TARGET = 0.95;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const metricsOnly = (metrics) => Object.fromEntries(Object.entries(metrics).filter(([key]) => key !== "results"));
 
+/** Compare the actual context shape, including the previous Chef's exact-title filtering. */
+export function compareRetrievalReports(baseline, current) {
+  if (baseline.corpus?.sha256 !== current.corpus?.sha256 || baseline.labels?.sha256 !== current.labels?.sha256
+    || baseline.embedding?.digest !== current.embedding?.digest || baseline.embedding?.dimension !== current.embedding?.dimension) {
+    throw new Error("Compare only reports with matching corpus, labels and embedding model.");
+  }
+  const metrics = {};
+  for (const mode of ["semantic", "forcedLexical"]) {
+    metrics[mode] = {};
+    for (const split of ["calibration", "heldout"]) {
+      const before = baseline[mode][split];
+      const after = current[mode][split];
+      const matching = new Map(after.results.map((row) => [row.id, row]));
+      if (before.results.length !== after.results.length || before.results.some((row) => matching.get(row.id)?.query !== row.query
+        || JSON.stringify(matching.get(row.id)?.expectedTitles) !== JSON.stringify(row.expectedTitles))) throw new Error("Report query labels differ.");
+      const titled = before.results.filter((row) => row.expectedTitles.length);
+      let precisionBefore = 0, precisionAfter = 0, sizeBefore = 0, sizeAfter = 0;
+      for (const row of titled) {
+        if (row.exactTitleTopOnePass === false) throw new Error("The baseline cannot reconstruct its old exact-title context.");
+        const oldContext = row.exactTitleTopOnePass === true ? row.top3.slice(0, 1) : row.top3;
+        const newContext = matching.get(row.id).top3;
+        precisionBefore += oldContext.filter((item) => row.expectedTitles.includes(item.title)).length / Math.max(oldContext.length, 1);
+        precisionAfter += newContext.filter((item) => row.expectedTitles.includes(item.title)).length / Math.max(newContext.length, 1);
+        sizeBefore += oldContext.length;
+        sizeAfter += newContext.length;
+      }
+      const count = Math.max(titled.length, 1);
+      metrics[mode][split] = { labeledCases: titled.length,
+        baselineRawRankerPrecisionAt3: before.labeledPrecisionAt3,
+        baselineChefContextPrecisionAt3: precisionBefore / count, currentChefContextPrecisionAt3: precisionAfter / count,
+        meanContextSizeBefore: sizeBefore / count, meanContextSizeAfter: sizeAfter / count,
+        retentionBefore: before.retention, retentionAfter: after.retention, abstentionBefore: before.abstention, abstentionAfter: after.abstention };
+    }
+  }
+  return { definition: "Candidate-context precision under the same non-exhaustive title labels, not generated-answer accuracy. Baseline Chef exact-title filtering is accounted for.", metrics };
+}
+
 /** Strict labeled precision uses listed acceptable titles, not inferred relevance. */
-export function evaluateRecords(records, thresholds, decide) {
+export function evaluateRecords(records, thresholds, decide, select) {
   const results = records.map(({ item, ranked, broad }) => {
-    const relevant = ranked.filter((row) => decide ? decide(row, item.query, thresholds) : broad || row.exactTitle || row.lexicalScore >= thresholds.lexical || row.semanticScore !== null && row.semanticScore >= thresholds.semantic);
+    const relevant = select ? select(ranked, item.query, 3, thresholds) : ranked.filter((row) => decide ? decide(row, item.query, thresholds) : broad || row.exactTitle || row.lexicalScore >= thresholds.lexical || row.semanticScore !== null && row.semanticScore >= thresholds.semantic);
     const top3 = relevant.slice(0, 3);
     const accepted = relevant.length > 0;
     const expected = item.expectedTitles ?? item.expected ?? [];
@@ -28,7 +65,7 @@ export function evaluateRecords(records, thresholds, decide) {
       accepted, outcomePass: accepted === (item.expectedOutcome !== "no_match"), expectedHitAt3: expected.length ? hits > 0 : null,
       exactTitleTopOnePass: item.exactTitleId ? top3[0]?.recipe.id === item.exactTitleId : null,
       labeledPrecisionAt3: expected.length ? hits / Math.max(top3.length, 1) : null, exclusionsPass,
-      top3: top3.map((row) => ({ id: row.recipe.id, title: row.recipe.title, lexicalScore: row.lexicalScore, semanticScore: row.semanticScore })),
+      top3: top3.map((row) => ({ id: row.recipe.id, title: row.recipe.title, lexicalScore: row.lexicalScore, semanticScore: row.semanticScore, queryCoverage: row.queryCoverage, matchedQueryTerms: row.matchedQueryTerms, missingQueryTerms: row.missingQueryTerms })),
       relevantCount: relevant.length, maxLexicalScore: Math.max(0, ...ranked.map((row) => row.lexicalScore)),
       maxSemanticScore: ranked.some((row) => row.semanticScore !== null) ? Math.max(...ranked.map((row) => row.semanticScore ?? -1)) : null,
       broad };
@@ -51,7 +88,7 @@ function boundaries(scores) {
 }
 
 /** Held-out records are discarded here, even if a caller supplies them. */
-export function calibrateThresholds(semanticRecords, lexicalRecords) {
+export function calibrateThresholds(semanticRecords, lexicalRecords, { decide, select } = {}) {
   const calibration = semanticRecords.filter((row) => row.item.split === "calibration");
   const fallback = lexicalRecords.filter((row) => row.item.split === "calibration");
   if (!calibration.length || !fallback.length) throw new Error("Calibration requires its fixed calibration split.");
@@ -60,9 +97,9 @@ export function calibrateThresholds(semanticRecords, lexicalRecords) {
   const sem = boundaries(candidateRows(calibration).flatMap((row) => row.semanticScore === null ? [] : [row.semanticScore]));
   let best = null;
   for (const lexical of lex) {
-    const lexicalMetrics = evaluateRecords(fallback, { lexical, semantic: 1.000001 });
+    const lexicalMetrics = evaluateRecords(fallback, { lexical, semantic: 1.000001 }, decide, select);
     for (const semantic of sem) {
-      const metrics = evaluateRecords(calibration, { lexical, semantic });
+      const metrics = evaluateRecords(calibration, { lexical, semantic }, decide, select);
       const score = [Number(metrics.gatesPassed && lexicalMetrics.gatesPassed),
         Math.min(metrics.retention, metrics.abstention, lexicalMetrics.retention, lexicalMetrics.abstention),
         metrics.retention + metrics.abstention + lexicalMetrics.retention + lexicalMetrics.abstention,
@@ -121,7 +158,7 @@ async function localEmbeddings(texts, embeddings, model) {
     ollamaVersion: version.version, dimension, kind: embeddings.RECIPE_EMBEDDING_KIND, newInputs: missing.length, totalInputs: unique.length };
 }
 
-export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/relevance-report.json"), model = "nomic-embed-text", calibrate = false } = {}) {
+export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/relevance-report.json"), model = "nomic-embed-text", calibrate = false, baselinePath } = {}) {
   const fixturePath = join(ROOT, "tools/recipes/fixtures/relevance-catalog.json");
   const corpusText = await readFile(fixturePath, "utf8");
   const { recipes } = JSON.parse(corpusText);
@@ -145,11 +182,11 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
       semantic ? vectors : new Map(), semantic ? embeddingRun.vectors.get(queryText(item.query)) : null) });
     const semantic = qualityCases.map((item) => record(item, true));
     const lexical = qualityCases.map((item) => record(item, false));
-    const calibrated = calibrateThresholds(semantic, lexical);
+    const calibrated = calibrate ? calibrateThresholds(semantic, lexical, { decide: search.queryRelevanceDecision, select: search.selectCatalogShortlist }) : null;
     // Normal verification tests the deployed configuration. Recalibration is an
     // explicit experiment and never silently rewrites thresholds or uses held-out labels.
-    const thresholds = calibrate ? calibrated.thresholds : search.catalogRelevanceThresholds;
-    const score = (records) => evaluateRecords(records, thresholds, search.queryRelevanceDecision);
+    const thresholds = calibrated ? calibrated.thresholds : search.catalogRelevanceThresholds;
+    const score = (records) => evaluateRecords(records, thresholds, search.queryRelevanceDecision, search.selectCatalogShortlist);
     const regression = score(regressionCases.map((item, index) => record({ ...item, id: `regression-${index + 1}`, split: "regression", expectedOutcome: "matches" }, true)));
     const allPantry = [...new Set(recipes.flatMap((recipe) => recipe.ingredients.map((item) => item.name)))];
     const guards = [];
@@ -174,8 +211,9 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
       embedding: { ...embeddingRun, vectors: undefined, baseUrl: LOCAL_OLLAMA, queryPantryContext: "empty" },
       thresholds: { ...thresholds, version: search.catalogRelevanceThresholds.version, configured: search.catalogRelevanceThresholds,
         configurationMatchesSelection: thresholds.lexical === search.catalogRelevanceThresholds.lexical && thresholds.semantic === search.catalogRelevanceThresholds.semantic },
-      selection: { split: "calibration", mode: calibrate ? "calibration_candidate" : "frozen_configured", calibrationCandidate: calibrated.thresholds, targetRetention: TARGET, targetAbstention: TARGET, searchedPairs: calibrated.searchedPairs,
-        objective: "Both semantic and forced-lexical calibration gates, worst classification rate, total classification rates, expected hit@3, labeled precision@3. Equal metrics favor the stricter lexical boundary, then the least restrictive semantic boundary within (0,1]. Held-out labels never select thresholds." },
+      shortlist: { ...search.catalogShortlistPolicy, countDefinition: "Returned shortlist capped at three for evaluation; the same selector is used by production." },
+      selection: { split: "calibration", mode: calibrate ? "calibration_candidate" : "frozen_configured", calibrationCandidate: calibrated?.thresholds ?? null, targetRetention: TARGET, targetAbstention: TARGET, searchedPairs: calibrated?.searchedPairs ?? 0,
+        objective: calibrate ? "Both semantic and forced-lexical calibration gates, worst classification rate, total classification rates, expected hit@3, labeled precision@3. Equal metrics favor the stricter lexical boundary, then the least restrictive semantic boundary within (0,1]. Held-out labels never select thresholds." : "Verify configured thresholds and shortlist policy without searching parameters. Held-out labels never select thresholds." },
       precisionDefinition: "Mean precision among returned top-three titles for supported cases with explicit acceptable-title labels. Labels are not exhaustive culinary judgments; unlabeled titles count as a penalty. Broad queries are excluded.",
       semantic: { calibration: score(semantic.filter((row) => row.item.split === "calibration")), heldout: score(semantic.filter((row) => row.item.split === "heldout")) },
       forcedLexical: { method: "All document/query embeddings deliberately absent", calibration: score(lexical.filter((row) => row.item.split === "calibration")), heldout: score(lexical.filter((row) => row.item.split === "heldout")) },
@@ -183,6 +221,10 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
     report.gatesPassed = [report.semantic.calibration, report.semantic.heldout, report.forcedLexical.calibration, report.forcedLexical.heldout].every((item) => item.gatesPassed)
       && regression.results.every((item) => item.expectedHitAt3 && item.exclusionsPass) && guards.every((item) => item.guardPass)
       && report.thresholds.configurationMatchesSelection;
+    if (baselinePath) {
+      const baselineText = await readFile(baselinePath, "utf8");
+      report.comparison = { baselineReportSha256: hash(baselineText), ...compareRetrievalReports(JSON.parse(baselineText), report) };
+    }
     await mkdir(dirname(reportPath), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
     return report;
@@ -193,13 +235,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const args = process.argv.slice(2);
     let reportPath;
+    let baselinePath;
     let calibrate = false;
     for (let index = 0; index < args.length; index++) {
       if (args[index] === "--calibrate") calibrate = true;
       else if (args[index] === "--report" && args[index + 1] && !args[index + 1].startsWith("--")) reportPath = resolve(args[++index]);
-      else throw new Error("Usage: evaluate-relevance.mjs [--report PATH] [--calibrate]");
+      else if (args[index] === "--baseline" && args[index + 1] && !args[index + 1].startsWith("--")) baselinePath = resolve(args[++index]);
+      else throw new Error("Usage: evaluate-relevance.mjs [--report PATH] [--baseline PATH] [--calibrate]");
     }
-    const report = await runEvaluation({ ...(reportPath ? { reportPath } : {}), calibrate });
+    const report = await runEvaluation({ ...(reportPath ? { reportPath } : {}), ...(baselinePath ? { baselinePath } : {}), calibrate });
     console.log(JSON.stringify({ gatesPassed: report.gatesPassed, thresholds: report.thresholds,
       semantic: Object.fromEntries(Object.entries(report.semantic).map(([name, metrics]) => [name, metricsOnly(metrics)])),
       forcedLexical: Object.fromEntries(["calibration", "heldout"].map((name) => [name, metricsOnly(report.forcedLexical[name])])),

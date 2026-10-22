@@ -7,12 +7,16 @@ import type { Recipe, RecipeConstraints, RecipeMetadataMap, RecipeSearchOptions 
 export type CatalogRetrievalMethod = "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
 export type CatalogSearchOutcome = "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
 export const catalogRelevanceThresholds = { lexical: 0.333333, semantic: 0.82855, version: "recipe-relevance-v1" } as const;
+export const catalogShortlistPolicy = { version: "recipe-shortlist-v1", lexicalQueryCoverage: 2 / 3, secondaryQueryCoverage: 1, maximumTargetedResults: 3 } as const;
 export interface CatalogRankedRecipe {
   recipe: Recipe;
   score: number;
   pantryScore: number;
   lexicalScore: number;
   semanticScore: number | null;
+  queryCoverage: number;
+  matchedQueryTerms: string[];
+  missingQueryTerms: string[];
   pantryMatch: string[];
   missingIngredients: string[];
   exactTitle: boolean;
@@ -91,8 +95,43 @@ export function recipeRetrievalQuery(query: string, hasRecipeFocus = false): str
 }
 
 /** Pantry coverage orders relevant recipes, but cannot make an unrelated dish relevant. */
-export function queryRelevanceDecision(item: Pick<CatalogRankedRecipe, "exactTitle" | "lexicalScore" | "semanticScore">, query: string, thresholds: { lexical: number; semantic: number } = catalogRelevanceThresholds): boolean {
-  return recipeQueryIntent(query).broad || item.exactTitle || item.lexicalScore >= thresholds.lexical || (item.semanticScore !== null && item.semanticScore >= thresholds.semantic);
+export function queryRelevanceDecision(item: Pick<CatalogRankedRecipe, "exactTitle" | "lexicalScore" | "semanticScore" | "queryCoverage">, query: string, thresholds: { lexical: number; semantic: number } = catalogRelevanceThresholds): boolean {
+  return recipeQueryIntent(query).broad || item.exactTitle || item.lexicalScore >= thresholds.lexical && item.queryCoverage >= catalogShortlistPolicy.lexicalQueryCoverage || (item.semanticScore !== null && item.semanticScore >= thresholds.semantic);
+}
+
+// Search-only normalization. These aliases never change cooking amounts,
+// ingredient identity, allergy rules or the original recipe text.
+const QUERY_FORMS: Record<string, string> = {
+  mushrooms: "mushroom", tomatoes: "tomato", onions: "onion", eggs: "egg", lentils: "lentil", beans: "bean", chickpeas: "chickpea", garbanzo: "chickpea", garbanzos: "chickpea",
+  potatoes: "potato", carrots: "carrot", crepes: "crepe", pancakes: "pancake", muffins: "muffin", omelette: "omelet", omelettes: "omelet", omelets: "omelet", curries: "curry", curried: "curry", creamy: "cream",
+};
+const QUERY_DESCRIPTORS = new Set("cozy comforting warming warm made cooked served breakfast lunch brunch supper bowl based style people person".split(" "));
+
+function searchTerms(text: string): string[] {
+  return normalizeRecipeSearch(text).replace(/\bblack eyed peas?\b/g, "bean").split(" ").filter(Boolean).map((word) => QUERY_FORMS[word] ?? word);
+}
+
+export function recipeQueryEvidence(query: string, recipe: Recipe): Pick<CatalogRankedRecipe, "queryCoverage" | "matchedQueryTerms" | "missingQueryTerms"> {
+  const terms = [...new Set(searchTerms(recipeQueryIntent(query).topic).filter((word) => !QUERY_DESCRIPTORS.has(word)))];
+  const content = new Set(searchTerms([recipe.title, recipe.category, recipe.cuisine, ...recipe.ingredients.map((item) => item.name), ...recipe.tags].join(" ")));
+  const matchedQueryTerms = terms.filter((term) => content.has(term));
+  const missingQueryTerms = terms.filter((term) => !content.has(term));
+  return { queryCoverage: terms.length ? matchedQueryTerms.length / terms.length : 0, matchedQueryTerms, missingQueryTerms };
+}
+
+/** The same final selection is used by production retrieval and evaluation. */
+export function selectCatalogShortlist(ranked: CatalogRankedRecipe[], query: string, limit = 8, thresholds: { lexical: number; semantic: number } = catalogRelevanceThresholds): CatalogRankedRecipe[] {
+  const maximum = Math.min(Math.max(Math.floor(limit), 1), 20);
+  const relevant = ranked.filter((item) => queryRelevanceDecision(item, query, thresholds));
+  const focus = relevant.find((item) => item.exactTitle);
+  if (focus) return [focus];
+  if (recipeQueryIntent(query).broad) return relevant.slice(0, maximum);
+  relevant.sort((a, b) => Number(b.queryCoverage === 1) - Number(a.queryCoverage === 1)
+    || (b.semanticScore ?? b.lexicalScore) - (a.semanticScore ?? a.lexicalScore)
+    || b.lexicalScore - a.lexicalScore || b.score - a.score
+    || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
+  return relevant.filter((item, index) => index === 0 || item.queryCoverage >= catalogShortlistPolicy.secondaryQueryCoverage)
+    .slice(0, Math.min(maximum, catalogShortlistPolicy.maximumTargetedResults));
 }
 
 /** Only explicit positive named-dish requests; not a general intent classifier. */
@@ -132,7 +171,7 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
     const semanticScore = queryVector && isValidEmbeddingVector(vector, queryVector.length) ? (cosineSimilarity(queryVector, vector) + 1) / 2 : null;
     const baseScore = query ? semanticScore === null ? 0.7 * lexicalScore + 0.3 * details.coverage : 0.74 * semanticScore + 0.21 * details.coverage + 0.05 * lexicalScore : details.coverage;
     const score = baseScore - 0.1 * eligibility.dislikedIngredients.length / Math.max(recipe.ingredients.length, 1);
-    return { recipe, score, lexicalScore, semanticScore, pantryScore: details.coverage, pantryMatch: details.matched, missingIngredients: details.missing, exactTitle: recipe.id === focus, eligibility };
+    return { recipe, score, lexicalScore, semanticScore, ...recipeQueryEvidence(query, recipe), pantryScore: details.coverage, pantryMatch: details.matched, missingIngredients: details.missing, exactTitle: recipe.id === focus, eligibility };
   }).filter((item) => item.eligibility.eligible).sort((a, b) => Number(b.exactTitle) - Number(a.exactTitle) || dinnerPriority(a.recipe) - dinnerPriority(b.recipe) || b.score - a.score || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
 }
 
@@ -172,7 +211,7 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
   }
   const limit = Math.min(Math.max(Math.floor(options.limit ?? 8), 1), 20);
   const ranked = rankCatalogRecipes(eligible, { ...options, constraints }, vectors, queryVector, metadataByRecipeId);
-  result.ranked = ranked.filter((item) => queryRelevanceDecision(item, options.query ?? "")).slice(0, limit);
+  result.ranked = selectCatalogShortlist(ranked, options.query ?? "", limit);
   result.outcome = result.ranked.length ? "matches" : "no_match";
   result.recipes = result.ranked.map((item) => item.recipe);
   result.method = queryVector ? "precomputed_embeddings" : options.query?.trim() || options.pantry?.length ? "lexical_pantry" : "catalog_order";

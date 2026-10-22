@@ -396,6 +396,44 @@ test("unrelated requests abstain even with complete pantry coverage, and broad r
   assert.equal(broad.outcome, "matches"); assert.equal(broad.recipes.length, 1);
 });
 
+test("missing compound dishes abstain before generation even when their shared ingredient fills the pantry", async () => {
+  await route.POST(req([
+    await draft(0, { title: "Beef Stew", ingredients: [{ name: "beef", measure: "200 g" }, { name: "onion", measure: "1" }] }),
+    await draft(1, { title: "Beef Fajitas", ingredients: [{ name: "beef", measure: "200 g" }] }),
+  ]));
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(String(url)); throw new Error("offline"); };
+  const response = await chefRoute.POST(chefRequest({ query: "Beef Wellington", pantry: ["beef", "onion"] }));
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.outcome, "no_match");
+  assert.deepEqual(result.recipes, []);
+  assert.deepEqual(result.recommendations, []);
+  assert.ok(calls.every((url) => url.endsWith("/api/embed")), "No generation provider is called for a terminal no-match");
+  const searchResult = await (await searchRoute.GET(new Request("http://localhost/api/recipes?q=Beef%20Wellington&pantry=beef,onion"))).json();
+  assert.equal(searchResult.outcome, "no_match");
+  assert.deepEqual(searchResult.recipes, []);
+  const broad = await (await searchRoute.GET(new Request("http://localhost/api/recipes?q=beef%20dinner"))).json();
+  assert.equal(broad.outcome, "matches");
+  assert.equal(broad.recipes.length, 2);
+});
+
+test("the public search and Chef share a focused shortlist and prune incomplete secondary matches", async () => {
+  await route.POST(req([
+    await draft(0, { title: "Creamy Mushroom Pasta", ingredients: [{ name: "pasta", measure: "200 g" }, { name: "mushrooms", measure: "100 g" }, { name: "cream", measure: "100 ml" }] }),
+    await draft(1, { title: "Cheese Pasta", ingredients: [{ name: "pasta", measure: "200 g" }, { name: "cheese", measure: "100 g" }] }),
+    await draft(2, { title: "Mushroom Soup", ingredients: [{ name: "mushrooms", measure: "100 g" }, { name: "water", measure: "100 ml" }] }),
+  ]));
+  const contexts = []; mockChef(contexts);
+  for (const query of ["Creamy Mushroom Pasta", "pasta with mushrooms"]) {
+    const found = await (await searchRoute.GET(new Request(`http://localhost/api/recipes?q=${encodeURIComponent(query)}`))).json();
+    assert.deepEqual(found.recipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
+    const answer = await (await chefRoute.POST(chefRequest({ query, pantry: ["pasta", "cheese"] }))).json();
+    assert.deepEqual(answer.recipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
+    assert.deepEqual(contexts.at(-1).retrievedRecipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
+  }
+});
+
 test("unknown questions may return no recommendations without manufacturing a recipe card", async () => {
   await route.POST(req([await draft()]));
   mockChef([], (answer) => ({ ...answer, answer: "Nutrition is not provided by the source.", recommendations: [] }));

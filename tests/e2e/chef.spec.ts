@@ -46,6 +46,32 @@ test("unrelated requests abstain without invoking model generation", async ({ pa
   await expect(page.locator(".recipe-card")).toHaveCount(0);
 });
 
+test("a missing compound dish abstains instead of recommending a dish sharing only one ingredient", async ({ page, request }) => {
+  const answer = await ask(page, "Beef Wellington");
+  expect(answer.outcome).toBe("no_match");
+  expect(answer.recipes).toEqual([]);
+  expect(answer.recommendations).toEqual([]);
+  await expect(page.locator(".chef-answer")).toContainText("could not find a relevant recipe");
+  await expect(page.locator(".recipe-card")).toHaveCount(0);
+  const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string }> };
+  expect(status.calls.filter((call) => call.path === "/api/chat")).toHaveLength(0);
+  const search = await (await request.get("/api/recipes?q=Beef%20Wellington&pantry=beef,onion")).json();
+  expect(search.outcome).toBe("no_match");
+  expect(search.recipes).toEqual([]);
+  const supported = await (await request.get("/api/recipes?q=beef%20dinner")).json();
+  expect(supported.recipes.map((recipe: { title: string }) => recipe.title)).toEqual(["Beef Stew"]);
+});
+
+test("named searches and ingredient requests use the same concise shortlist in search and Chef", async ({ page, request }) => {
+  for (const query of ["Cheese Pasta", "pasta with cheese"]) {
+    const answer = await ask(page, query);
+    expect(answer.recipes.map((recipe: { title: string }) => recipe.title)).toEqual(["Cheese Pasta"]);
+    await expect(page.locator(".recipe-card")).toHaveCount(1);
+    const found = await (await request.get(`/api/recipes?q=${encodeURIComponent(query)}`)).json();
+    expect(found.recipes).toEqual(answer.recipes);
+  }
+});
+
 test("invalid evidence IDs produce a labeled fallback rather than invented facts", async ({ page }) => {
   await control({ mode: "invalid_evidence", resetCalls: true });
   const answer = await ask(page, "Tomato Rice");

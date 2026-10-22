@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { calibrateThresholds, evaluateRecords, loadPureRanker } from "../tools/recipes/evaluate-relevance.mjs";
+import { calibrateThresholds, compareRetrievalReports, evaluateRecords, loadPureRanker } from "../tools/recipes/evaluate-relevance.mjs";
 import { qualityCases } from "../tools/recipes/quality-cases.mjs";
 
 const row = (title, lexicalScore, semanticScore = null, extra = {}) => ({ recipe: { id: title, title }, lexicalScore, semanticScore, exactTitle: false, eligibility: { allergyMatches: [] }, ...extra });
@@ -48,6 +48,21 @@ test("an exact-title case must return the requested recipe first even when it ap
   assert.equal(scored.expectedHitAt3, 1);
   assert.equal(scored.results[0].exactTitleTopOnePass, false);
   assert.equal(scored.gatesPassed, false);
+});
+
+test("context comparisons account for legacy exact-title filtering and reject mismatched corpora", () => {
+  const rows = [{ id: "exact", query: "dinner", expectedTitles: ["dinner"], exactTitleTopOnePass: true, top3: [{ title: "dinner" }, { title: "other" }] },
+    { id: "general", query: "a dinner", expectedTitles: ["dinner"], exactTitleTopOnePass: null, top3: [{ title: "dinner" }, { title: "other" }, { title: "third" }] }];
+  const baseline = { corpus: { sha256: "corpus" }, labels: { sha256: "labels" }, embedding: { digest: "model", dimension: 3 } };
+  for (const mode of ["semantic", "forcedLexical"]) baseline[mode] = Object.fromEntries(["calibration", "heldout"].map((split) => [split, { results: rows, retention: 1, abstention: 1 }]));
+  const current = structuredClone(baseline);
+  for (const mode of ["semantic", "forcedLexical"]) for (const split of ["calibration", "heldout"]) current[mode][split].results = rows.map((row) => ({ ...row, top3: [{ title: "dinner" }] }));
+  const compared = compareRetrievalReports(baseline, current).metrics.semantic.heldout;
+  assert.ok(Math.abs(compared.baselineChefContextPrecisionAt3 - 2 / 3) < 1e-12);
+  assert.equal(compared.currentChefContextPrecisionAt3, 1);
+  assert.equal(compared.meanContextSizeBefore, 2);
+  assert.equal(compared.meanContextSizeAfter, 1);
+  assert.throws(() => compareRetrievalReports(baseline, { ...current, corpus: { sha256: "different" } }), /matching corpus/);
 });
 
 test("missing embeddings force lexical scores and pantry boosts cannot approve gibberish", async () => {

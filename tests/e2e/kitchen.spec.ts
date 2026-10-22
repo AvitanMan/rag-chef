@@ -119,7 +119,7 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Retry catalog" })).toBeVisible();
   await page.getByRole("button", { name: "Retry catalog" }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
-  await expect(page.locator(".recipe-card")).toHaveCount(7);
+  await expect(page.locator(".recipe-card")).toHaveCount(8);
 });
 
 test("offline pantry edits survive closing the tab and can be explicitly recovered after reconnecting", async ({ page, context, request }) => {
