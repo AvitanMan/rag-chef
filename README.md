@@ -53,6 +53,10 @@ Open [localhost:3000](http://localhost:3000).
 The app opens on **Plan**. Choose a day, select a recipe, then open **Shopping**.
 You can also choose **Add to plan** from Recipes. **Ask Chef** opens from Recipes
 and keeps your recipe search intact during the current session.
+Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pantry
+is empty, using the loaded catalog without a model call. Saved exclusions and
+dislikes still apply. Use **Find my dinner** for a specific request, or leave it
+blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
 When choosing a day, Chef keeps that date visible and its recipe cards offer
 **Add to [day]** directly. Opening recipe details is optional. Without a selected
 day, **Add to plan** opens the day picker. Replacing a dinner still needs confirmation.

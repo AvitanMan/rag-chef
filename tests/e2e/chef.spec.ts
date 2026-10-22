@@ -27,6 +27,138 @@ async function submitChef(page: Page, query: string) {
 test.beforeEach(async () => { await control({ resetCalls: true }); });
 test.afterEach(async () => { await control({ resetCalls: true, release: true }); });
 
+test.describe("instant dinner picks", () => {
+  const emptyKitchen = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
+  async function saveKitchen(request: APIRequestContext, state: KitchenState) {
+    const current = await (await request.get("/api/kitchen")).json();
+    expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+  }
+  async function openChef(page: Page) {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  }
+  async function expectNoModelCalls() {
+    const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: unknown[] };
+    expect(status.calls).toEqual([]);
+  }
+  test.beforeEach(async ({ request }) => { await saveKitchen(request, emptyKitchen()); });
+
+  test("opening Chef shows three catalog picks without searching or calling a model", async ({ page, request }, testInfo) => {
+    const state = { ...emptyKitchen(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }] };
+    await saveKitchen(request, state);
+    const kitchenBefore = await (await request.get("/api/kitchen")).json();
+    const catalogBefore = await (await request.get("/api/recipes/catalog")).json();
+    const searches: string[] = [];
+    page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/recipes") searches.push(request.url()); });
+    await openChef(page);
+    await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    await expect(page.locator(".recipe-card").first()).toContainText("Tomato Rice");
+    await expect(page.locator(".recipe-card").first()).toContainText("2 of 2 ingredients in pantry");
+    await expect(page.locator(".recipe-card").first()).toContainText("Names only · amounts not checked");
+    await expect(page.getByRole("button", { name: "Find my dinner", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh matches", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Plan the week", exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Quick prompts", { exact: true })).toHaveCount(0);
+    await expectNoModelCalls();
+    expect(searches).toEqual([]);
+    expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
+    expect(await (await request.get("/api/recipes/catalog")).json()).toEqual(catalogBefore);
+    await page.screenshot({ path: testInfo.outputPath("instant-picks.png"), fullPage: true });
+  });
+
+  test("an empty pantry still has dinner ideas and the empty request uses the existing default", async ({ page, request }) => {
+    const before = await (await request.get("/api/kitchen")).json();
+    await openChef(page);
+    await expect(page.getByRole("heading", { name: "Dinner ideas", exact: true })).toBeVisible();
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    await expect(page.locator(".chef-composer")).toContainText("No pantry items yet — you can still choose dinner.");
+    await expectNoModelCalls();
+    const outgoing = page.waitForRequest((request) => request.url().endsWith("/api/chef"));
+    await submitChef(page, "");
+    expect((await outgoing).postDataJSON()).toMatchObject({ query: "What can I cook with what I have?", pantry: [] });
+    await expect(page.locator(".chef-answer")).toBeVisible();
+    expect(await page.locator(".recipe-card").count()).toBeLessThanOrEqual(3);
+    expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
+  });
+
+  test("loading and catalog failure show no starter picks and retry restores catalog choices", async ({ page }) => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let reads = 0;
+    await page.route("**/api/recipes/catalog", async (route) => {
+      if (++reads === 1) { await pending; await route.fulfill({ status: 503, json: { error: "Test catalog unavailable" } }); }
+      else await route.continue();
+    });
+    try {
+      await openChef(page);
+      await expect(page.getByRole("status").filter({ hasText: "Loading your recipe collection…" })).toBeVisible();
+      await expect(page.locator(".recipe-card")).toHaveCount(0);
+    } finally { release(); }
+    await expect(page.getByRole("alert")).toContainText("The recipe collection could not load.");
+    await expect(page.locator(".recipe-card")).toHaveCount(0);
+    await page.getByRole("button", { name: "Retry recipes", exact: true }).click();
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    expect(reads).toBe(2);
+    await expectNoModelCalls();
+  });
+
+  for (const empty of [true, false]) {
+    test(`${empty ? "an empty collection" : "saved exclusions hiding every recipe"} has its own explanation`, async ({ page }) => {
+      if (empty) await page.route("**/api/recipes/catalog", (route) => route.fulfill({ json: { recipes: [], metadataByRecipeId: {} } }));
+      await openChef(page);
+      if (!empty) {
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
+        await page.getByLabel("Allergies", { exact: false }).fill("rice, cheese, groundnuts, garlic, carrot, eggplant, beef");
+        await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+        await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+      }
+      await expect(page.locator(".empty-state")).toContainText(empty ? "Your recipe collection is empty." : "Your saved exclusions hide the available recipes.");
+      await expect(page.locator(".recipe-card")).toHaveCount(0);
+      await expectNoModelCalls();
+    });
+  }
+
+  test("saved allergies and diet filter instant picks while dislikes reduce their priority", async ({ page, request }) => {
+    await saveKitchen(request, { ...emptyKitchen(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }, { id: "beans", name: "beans", measure: "400 g" }, { id: "garlic", name: "garlic", measure: "2 cloves" }] });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
+    await page.getByLabel("Allergies", { exact: false }).fill("milk, peanut");
+    await page.getByLabel("Dislikes", { exact: false }).fill("tomato");
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    await expect(page.locator(".recipe-card").first()).toContainText("Garlic Beans");
+    for (const excluded of ["Cheese Pasta", "Peanut Noodles", "Salmon Bowl", "Beef Stew"]) await expect(page.locator(".recipe-card").filter({ hasText: excluded })).toHaveCount(0);
+    await expect(page.locator(".diet-note").first()).toContainText("Diet not verified");
+    await expectNoModelCalls();
+  });
+
+  test("instant picks update as stock expires, is added, and becomes depleted", async ({ page, request }) => {
+    await page.clock.install({ time: new Date("2026-10-22T23:59:45+03:00") });
+    await saveKitchen(request, { ...emptyKitchen(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy: "2026-10-22" }, { id: "tomato-zero", name: "tomato", measure: "0" }] });
+    await openChef(page);
+    await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
+    await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
+    await page.clock.fastForward(31_000);
+    await expect(page.getByRole("heading", { name: "Dinner ideas", exact: true })).toBeVisible();
+    await expect(page.locator(".recipe-card").filter({ hasText: "0 of 2 ingredients in pantry" })).toHaveCount(3);
+    await page.getByRole("button", { name: "+ Add ingredient", exact: true }).click();
+    await page.getByRole("textbox", { name: "Ingredient name", exact: true }).fill("tomato");
+    await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
+    await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
+    await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
+    await page.getByRole("textbox", { name: "Available tomato", exact: true }).last().fill("0");
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Dinner ideas", exact: true })).toBeVisible();
+    await expectNoModelCalls();
+  });
+});
+
 test("Chef evidence quotes approved source records and keeps ingredient quantities intact", async ({ page, request }) => {
   const before = await (await request.get("/api/recipes/catalog")).json() as { recipes: Recipe[] };
   const answer = await ask(page, "Tomato Rice");
@@ -244,6 +376,33 @@ test.describe("planning directly from Chef", () => {
   test.beforeEach(async ({ page, request }) => {
     await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });
     await saveKitchen(request, emptyKitchen());
+  });
+
+  test("instant picks add to the chosen day without a Chef request", async ({ page, request }) => {
+    await openSelection(page);
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    const title = await page.locator(".recipe-card").first().locator(".recipe-title-button").innerText();
+    await page.getByRole("button", { name: `Add to Friday: ${title}`, exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+    await expect.poll(async () => (await readKitchen(request)).state.meals[date]?.title).toBe(title);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: unknown[] };
+    expect(status.calls).toEqual([]);
+  });
+
+  test("instant picks without a selected day use the existing day picker", async ({ page, request }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+    await expect(page.locator(".recipe-card")).toHaveCount(3);
+    const title = await page.locator(".recipe-card").first().locator(".recipe-title-button").innerText();
+    await page.getByRole("button", { name: `Add to plan: ${title}`, exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Choose dinner day", exact: true });
+    await expect(picker).toBeVisible();
+    expect((await readKitchen(request)).state.meals).toEqual({});
+    await picker.getByRole("combobox", { name: "Dinner date", exact: true }).selectOption(date);
+    await picker.getByRole("button", { name: "Add dinner", exact: true }).click();
+    await expect.poll(async () => (await readKitchen(request)).state.meals[date]?.title).toBe(title);
   });
 
   for (const unavailable of [false, true]) {

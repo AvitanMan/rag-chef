@@ -488,7 +488,6 @@ img {
 
 .primary-button,
 .secondary-button,
-.refresh-button,
 .text-button {
   border-radius: 11px;
   font-size: 11px;
@@ -513,15 +512,13 @@ img {
   transform: translateY(-1px);
 }
 
-.secondary-button,
-.refresh-button {
+.secondary-button {
   background: transparent;
   border: 1px solid var(--line-dark);
   color: var(--ink);
 }
 
-.secondary-button:hover,
-.refresh-button:hover {
+.secondary-button:hover {
   border-color: var(--green);
 }
 
@@ -531,28 +528,6 @@ img {
   color: var(--paprika);
   padding-left: 6px;
   padding-right: 6px;
-}
-
-.quick-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 15px;
-  position: relative;
-  z-index: 1;
-}
-
-.quick-prompts button {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.84);
-  font-size: 10px;
-  padding: 8px 12px;
-}
-
-.quick-prompts button:hover {
-  background: rgba(255, 255, 255, 0.14);
 }
 
 .pantry-strip {
@@ -2013,17 +1988,6 @@ img {
   .composer-bottom .primary-button {
     justify-content: space-between;
     width: 100%;
-  }
-
-  .quick-prompts {
-    flex-wrap: nowrap;
-    margin-right: -20px;
-    overflow-x: auto;
-    padding-right: 20px;
-  }
-
-  .quick-prompts button {
-    flex: 0 0 auto;
   }
 
   .section-heading {

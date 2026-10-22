@@ -266,14 +266,11 @@ export default function RagChefApp() {
   const [maxMinutes, setMaxMinutes] = useState("");
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
-  const [recipes, setRecipes] = useState<Recipe[]>(LOCAL_RECIPES);
   const [catalogRecipes, setCatalogRecipes] = useState<Recipe[]>([]);
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [planningNotice, setPlanningNotice] = useState("");
   const [planningReasons, setPlanningReasons] = useState<Record<string, string>>({});
-  const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
-  const [loadingRecipes, setLoadingRecipes] = useState(false);
   const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, settings, today });
   const [chefBusyContext, setChefBusyContext] = useState<string | null>(null);
   const askingChef = chefBusyContext === chefContext;
@@ -333,35 +330,6 @@ export default function RagChefApp() {
     } catch { /* Kitchen recovery is managed separately from preferences. */ }
   }, [hydrated, profile, settings]);
 
-  const loadRecipes = useCallback(
-    async (search = query) => {
-      setLoadingRecipes(true);
-      try {
-        const params = new URLSearchParams();
-        if (search.trim()) params.set("q", search.trim());
-        if (pantry.length) params.set("pantry", pantry.join(","));
-        const response = await fetch(`/api/recipes?${params.toString()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Recipe source unavailable");
-        const data = await response.json() as { recipes?: Recipe[]; meta?: { source?: { name?: string } } };
-        const incoming: Recipe[] = data.recipes ?? [];
-        if (incoming.length) {
-          setRecipes(incoming);
-          setRecipeStatus(
-            `${incoming.length} recipes from ${data.meta?.source?.name ?? "the approved catalog"}`,
-          );
-        } else {
-          setRecipeStatus("Using the local starter collection");
-        }
-      } catch {
-        setRecipeStatus("Offline — using the local starter collection");
-        setRecipes((current) => (current.length ? current : LOCAL_RECIPES));
-      } finally {
-        setLoadingRecipes(false);
-      }
-    },
-    [pantry, query],
-  );
-
   const loadPlanningCatalog = useCallback(async () => {
     setCatalogState("loading");
     try {
@@ -383,14 +351,6 @@ export default function RagChefApp() {
     return () => window.clearTimeout(id);
   }, [hydrated, kitchen.ready, loadPlanningCatalog]);
 
-  useEffect(() => {
-    if (!hydrated || !kitchen.ready) return;
-    const id = window.setTimeout(() => void loadRecipes(""), 0);
-    return () => window.clearTimeout(id);
-    // Initial source hydration should happen once after local state is restored.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, kitchen.ready]);
-
   const constraints = useMemo(() => normalizeConstraints(profile), [profile]);
   const metadataForRecipe = (recipe: Recipe) => {
     const current = catalogRecipes.find((item) => item.id === recipe.id);
@@ -398,13 +358,13 @@ export default function RagChefApp() {
   };
   const eligibilityFor = (recipe: Recipe) => evaluateRecipeConstraints(recipe, metadataForRecipe(recipe), constraints);
   const rankedRecipes = useMemo(() => {
-    return recipes
+    return catalogRecipes
       .filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible)
       .sort(
         (a, b) =>
           evaluateRecipeConstraints(a, metadataByRecipeId[a.id], constraints).dislikedIngredients.length - evaluateRecipeConstraints(b, metadataByRecipeId[b.id], constraints).dislikedIngredients.length || pantryDetails(b, pantry).coverage - pantryDetails(a, pantry).coverage,
       );
-  }, [pantry, constraints, metadataByRecipeId, recipes]);
+  }, [pantry, constraints, metadataByRecipeId, catalogRecipes]);
 
   const browseCatalog = useMemo(() => catalogRecipes.filter((recipe) => evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints).eligible), [catalogRecipes, constraints, metadataByRecipeId]);
   const browserResults = useMemo(() => browseRecipes(browseCatalog, recipeQuery, pantry).filter((recipe) => {
@@ -461,7 +421,6 @@ export default function RagChefApp() {
       if (!response.ok) throw new Error(data.error?.message || "Chef could not load the approved catalog. Please retry.");
       setChefResult({ ...data, contextKey });
       if (data.metadataByRecipeId) setMetadataByRecipeId((current) => ({ ...current, ...data.metadataByRecipeId }));
-      setRecipeStatus(`${data.retrieval?.catalogCount ?? 0} approved recipes searched · ${data.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}`);
     } catch (error) {
       if (requestId !== chefRequest.current.id || controller.signal.aborted) return;
       setChefResult({
@@ -608,7 +567,7 @@ export default function RagChefApp() {
   );
   const visibleRecipes = chefResult
     ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id) && recipeAllowed(recipe))
-    : rankedRecipes;
+    : catalogState === "ready" ? rankedRecipes : [];
   const addDinnerLabel = selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan";
 
   return (
@@ -677,16 +636,15 @@ export default function RagChefApp() {
             cancelChef={cancelChef}
             chefResult={chefResult}
             recipes={visibleRecipes}
-            recipeStatus={recipeStatus}
-            loadingRecipes={loadingRecipes}
-            refreshRecipes={() => void loadRecipes()}
+            catalogState={catalogState}
+            catalogEmpty={catalogRecipes.length === 0}
+            retryCatalog={() => void loadPlanningCatalog()}
             openRecipe={openRecipe}
             addRecipeToPlan={addRecipeToPlan}
             addLabel={addDinnerLabel}
             detailsFor={(recipe) => pantryDetails(recipe, pantry)}
             eligibilityFor={eligibilityFor}
             metadataForRecipe={metadataForRecipe}
-            generatePlan={selectionDate ? undefined : generatePlan}
           />
         </>)}
 
@@ -878,16 +836,15 @@ function ChefView({
   cancelChef,
   chefResult,
   recipes,
-  recipeStatus,
-  loadingRecipes,
-  refreshRecipes,
+  catalogState,
+  catalogEmpty,
+  retryCatalog,
   openRecipe,
   addRecipeToPlan,
   addLabel,
   detailsFor,
   eligibilityFor,
   metadataForRecipe,
-  generatePlan,
 }: {
   pantry: string[];
   pantryItems: PantryStock[];
@@ -902,23 +859,17 @@ function ChefView({
   cancelChef: () => void;
   chefResult: ChefResponse | null;
   recipes: Recipe[];
-  recipeStatus: string;
-  loadingRecipes: boolean;
-  refreshRecipes: () => void;
+  catalogState: "loading" | "ready" | "error";
+  catalogEmpty: boolean;
+  retryCatalog: () => void;
   openRecipe: (recipe: Recipe) => void;
   addRecipeToPlan: (recipe: Recipe) => void;
   addLabel: string;
   detailsFor: (recipe: Recipe) => ReturnType<typeof pantryDetails>;
   eligibilityFor: (recipe: Recipe) => ReturnType<typeof evaluateRecipeConstraints>;
   metadataForRecipe: (recipe: Recipe) => RecipeMetadata | undefined;
-  generatePlan?: () => void;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const prompts = [
-    "A quick dinner under 30 minutes",
-    "Something cozy and one-pot",
-    "Use my pantry ingredients",
-  ];
 
   return (
     <>
@@ -941,7 +892,7 @@ function ChefView({
             placeholder="I want something comforting, not too heavy…"
           />
           <div className="composer-bottom">
-            <span>{pantry.length} pantry items ready</span>
+            <span>{pantry.length ? `${pantry.length} pantry items ready` : "No pantry items yet — you can still choose dinner."}</span>
             <button className="primary-button" onClick={() => void askChef()} disabled={askingChef}>
               {askingChef ? "Chef is thinking…" : "Find my dinner"}
               <span aria-hidden="true">→</span>
@@ -950,11 +901,6 @@ function ChefView({
           </div>
         </div>
 
-        <div className="quick-prompts" aria-label="Quick prompts">
-          {prompts.map((prompt) => (
-            <button key={prompt} onClick={() => void askChef(prompt)}>{prompt}</button>
-          ))}
-        </div>
       </section>
 
       <section className="pantry-strip">
@@ -1014,24 +960,19 @@ function ChefView({
             <p>{chefResult.answer}</p>
             {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
           </div>
-          {generatePlan && chefResult.recommendations.length > 0 && <button className="secondary-button" onClick={generatePlan}>Plan the week</button>}
         </section>
       )}
 
       <section className="recipe-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Grounded picks</span>
-            <h3>{chefResult ? "Your chef’s shortlist" : "Best matches from your pantry"}</h3>
-            <p>{recipeStatus}</p>
+            <h3>{chefResult ? "Your chef’s shortlist" : pantry.length ? "Pantry picks" : "Dinner ideas"}</h3>
+            {chefResult?.retrieval && <p>{chefResult.retrieval.catalogCount} approved recipes searched · {chefResult.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}</p>}
           </div>
-          <button className="refresh-button" onClick={refreshRecipes} disabled={loadingRecipes}>
-            {loadingRecipes ? "Refreshing…" : "Refresh matches"}
-          </button>
         </div>
 
         <div className="recipe-grid">
-          {recipes.slice(0, 6).map((recipe, index) => (
+          {recipes.slice(0, 3).map((recipe, index) => (
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
@@ -1046,7 +987,10 @@ function ChefView({
             />
           ))}
         </div>
-        {!recipes.length && (
+        {!chefResult && catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
+          : !chefResult && catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged.</p><button className="primary-button" onClick={retryCatalog}>Retry recipes</button></div>
+          : !chefResult && !recipes.length ? <div className="empty-state"><strong>{catalogEmpty ? "Your recipe collection is empty." : "Your saved exclusions hide the available recipes."}</strong><p>{catalogEmpty ? "Import approved recipes to see dinner ideas." : "Keep your exclusions and review the available recipe collection."}</p></div>
+          : !recipes.length && (
           <div className="empty-state">
             <strong>{chefResult?.outcome === "no_match" ? "No relevant recipe found." : "No recipes to show."}</strong>
             <p>{chefResult?.outcome === "constraints_unsatisfied" ? "Keep your exclusions and review the available recipe collection." : "Try a different dish or a broader dinner request."}</p>
