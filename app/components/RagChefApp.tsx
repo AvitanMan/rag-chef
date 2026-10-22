@@ -3,10 +3,15 @@
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import type { Recipe } from "../lib/recipe-types";
+import { useKitchen } from "../lib/use-kitchen";
+import { mealScale, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
+import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, rankWeeklyCandidates, weekStart } from "../lib/kitchen-state";
+import { buildShoppingList, canonicalIngredient, completeMeal, consumptionPreview, formatMeasure, parseMeasure, plannedIngredientMeasure, undoMeal } from "../lib/quantities";
+import { dateLabel, DurablePlanView, DurableShoppingView, PlanPicker } from "./WeeklyKitchenViews";
+import { browseRecipes, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
 
-type View = "chef" | "pantry" | "plan" | "shop" | "settings";
+type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
 
 type Profile = {
   allergies: string[];
@@ -24,6 +29,8 @@ type AISettings = {
 };
 
 type ChefResponse = {
+  recipes: Recipe[];
+  generation: "ai" | "catalog_fallback";
   answer: string;
   sourceFacts: Array<{ recipeId: string; fact: string }>;
   chefChanges: Array<{
@@ -44,10 +51,8 @@ type ChefResponse = {
     sourceUrl: string;
   }>;
   warnings: string[];
-  retrieval?: { method: string; filteredCount: number };
+  retrieval?: { method: string; catalogCount: number };
 };
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const DEFAULT_PROFILE: Profile = {
   allergies: [],
@@ -133,7 +138,7 @@ const LOCAL_RECIPES: Recipe[] = [
   },
 ];
 
-const STORAGE_KEY = "rag-chef-prototype-v1";
+const STORAGE_KEY = "rag-chef-preferences-v2";
 
 function tidyIngredient(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -145,24 +150,6 @@ function ingredientMatches(ingredient: string, pantryItem: string) {
   return (
     ingredientValue.includes(pantryValue) || pantryValue.includes(ingredientValue)
   );
-}
-
-function pantryDetails(recipe: Recipe, pantry: string[]) {
-  const matched = recipe.ingredients.filter((ingredient) =>
-    pantry.some((item) => ingredientMatches(ingredient.name, item)),
-  );
-  const missing = recipe.ingredients.filter(
-    (ingredient) =>
-      !pantry.some((item) => ingredientMatches(ingredient.name, item)),
-  );
-  const ratio = recipe.ingredients.length
-    ? matched.length / recipe.ingredients.length
-    : 0;
-  return {
-    matched: matched.map((item) => item.name),
-    missing: missing.map((item) => item.name),
-    score: Math.min(98, Math.round(42 + ratio * 56)),
-  };
 }
 
 function recipeHasAllergen(recipe: Recipe, allergies: string[]) {
@@ -262,27 +249,35 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
 }
 
 export default function RagChefApp() {
-  const [view, setView] = useState<View>("chef");
-  const [pantry, setPantry] = useState<string[]>([
-    "chicken",
-    "rice",
-    "garlic",
-    "tomatoes",
-    "onion",
-  ]);
+  const [view, setView] = useState<View>("plan");
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [view]);
+  const kitchen = useKitchen(LOCAL_RECIPES);
+  const pantry = useMemo(() => kitchen.state.pantry.map((item) => item.name), [kitchen.state.pantry]);
   const [pantryDraft, setPantryDraft] = useState("");
   const [query, setQuery] = useState("");
+  const [recipeQuery, setRecipeQuery] = useState("");
+  const [recipeLimit, setRecipeLimit] = useState(RECIPE_PAGE_SIZE);
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [recipes, setRecipes] = useState<Recipe[]>(LOCAL_RECIPES);
+  const [catalogRecipes, setCatalogRecipes] = useState<Recipe[]>([]);
+  const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
+  const [planningNotice, setPlanningNotice] = useState("");
   const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
   const [loadingRecipes, setLoadingRecipes] = useState(false);
   const [askingChef, setAskingChef] = useState(false);
   const [chefResult, setChefResult] = useState<ChefResponse | null>(null);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [metric, setMetric] = useState(true);
-  const [plan, setPlan] = useState<Record<string, string>>({});
-  const [shoppingDone, setShoppingDone] = useState<Record<string, boolean>>({});
+  const [week, setWeek] = useState(() => weekStart());
+  const [planPicker, setPlanPicker] = useState<Recipe | null>(null);
+  const [selectionDate, setSelectionDate] = useState<string | null>(null);
+  const [selectionNotice, setSelectionNotice] = useState("");
+  const [pendingChoice, setPendingChoice] = useState<{ date: string; recipe: Recipe; expectedId: string } | null>(null);
+  const [reviewDate, setReviewDate] = useState<string | null>(null);
+  const [cookingMealDate, setCookingMealDate] = useState<string | null>(null);
+  const [completionDate, setCompletionDate] = useState<string | null>(null);
+  const [deductStock, setDeductStock] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [cooking, setCooking] = useState(false);
   const [cookingStep, setCookingStep] = useState(0);
@@ -295,15 +290,12 @@ export default function RagChefApp() {
   useEffect(() => {
     const id = window.setTimeout(() => {
       try {
-        const saved = window.localStorage.getItem(STORAGE_KEY);
+        const saved = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY);
         if (saved) {
           const state = JSON.parse(saved);
-          if (Array.isArray(state.pantry)) setPantry(state.pantry);
           if (state.profile) setProfile({ ...DEFAULT_PROFILE, ...state.profile });
           if (state.settings)
             setSettings({ ...DEFAULT_SETTINGS, ...state.settings });
-          if (state.plan) setPlan(state.plan);
-          if (state.shoppingDone) setShoppingDone(state.shoppingDone);
         }
       } catch {
         // A corrupt local draft should never prevent the app from opening.
@@ -315,11 +307,10 @@ export default function RagChefApp() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ pantry, profile, settings, plan, shoppingDone }),
-    );
-  }, [hydrated, pantry, profile, settings, plan, shoppingDone]);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, settings }));
+    } catch { /* Kitchen recovery is managed separately from preferences. */ }
+  }, [hydrated, profile, settings]);
 
   useEffect(() => {
     if (!timerRunning || timerSeconds <= 0) return;
@@ -342,9 +333,9 @@ export default function RagChefApp() {
         const params = new URLSearchParams();
         if (search.trim()) params.set("q", search.trim());
         if (pantry.length) params.set("pantry", pantry.join(","));
-        const response = await fetch(`/api/recipes?${params.toString()}`);
+        const response = await fetch(`/api/recipes?${params.toString()}`, { cache: "no-store" });
         if (!response.ok) throw new Error("Recipe source unavailable");
-        const data = await response.json();
+        const data = await response.json() as { recipes?: Recipe[]; meta?: { source?: { name?: string } } };
         const incoming: Recipe[] = data.recipes ?? [];
         if (incoming.length) {
           setRecipes(incoming);
@@ -364,72 +355,66 @@ export default function RagChefApp() {
     [pantry, query],
   );
 
+  const loadPlanningCatalog = useCallback(async () => {
+    setCatalogState("loading");
+    try {
+      const response = await fetch("/api/recipes/catalog", { cache: "no-store" });
+      if (!response.ok) throw new Error("Catalog unavailable");
+      const data = await response.json() as { recipes: Recipe[] };
+      if (!Array.isArray(data.recipes)) throw new Error("Invalid catalog");
+      setCatalogRecipes(data.recipes);
+      setCatalogState("ready");
+    } catch {
+      setCatalogState("error");
+    }
+  }, []);
+
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !kitchen.ready) return;
+    const id = window.setTimeout(() => void loadPlanningCatalog(), 0);
+    return () => window.clearTimeout(id);
+  }, [hydrated, kitchen.ready, loadPlanningCatalog]);
+
+  useEffect(() => {
+    if (!hydrated || !kitchen.ready) return;
     const id = window.setTimeout(() => void loadRecipes(""), 0);
     return () => window.clearTimeout(id);
     // Initial source hydration should happen once after local state is restored.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [hydrated, kitchen.ready]);
 
   const rankedRecipes = useMemo(() => {
-    const queryTerms = tidyIngredient(query).split(" ").filter(Boolean);
     return recipes
       .filter((recipe) => !recipeHasAllergen(recipe, profile.allergies))
-      .filter((recipe) => {
-        if (!queryTerms.length) return true;
-        const haystack = tidyIngredient(
-          [
-            recipe.title,
-            recipe.category,
-            recipe.cuisine,
-            ...recipe.tags,
-            ...recipe.ingredients.map((item) => item.name),
-          ].join(" "),
-        );
-        return queryTerms.every((term) => haystack.includes(term));
-      })
       .sort(
         (a, b) =>
-          pantryDetails(b, pantry).score - pantryDetails(a, pantry).score,
+          pantryDetails(b, pantry).coverage - pantryDetails(a, pantry).coverage,
       );
-  }, [pantry, profile.allergies, query, recipes]);
+  }, [pantry, profile.allergies, recipes]);
 
-  const plannedRecipes = useMemo(
-    () =>
-      DAYS.map((day) => recipes.find((recipe) => recipe.id === plan[day])).filter(
-        Boolean,
-      ) as Recipe[],
-    [plan, recipes],
-  );
+  const browseCatalog = useMemo(() => catalogRecipes.filter((recipe) => !recipeHasAllergen(recipe, profile.allergies)), [catalogRecipes, profile.allergies]);
+  const browserResults = useMemo(() => browseRecipes(browseCatalog, recipeQuery, pantry), [browseCatalog, recipeQuery, pantry]);
 
-  const shoppingItems = useMemo(() => {
-    const items = new Map<string, { name: string; measures: string[] }>();
-    for (const recipe of plannedRecipes) {
-      for (const ingredient of recipe.ingredients) {
-        if (pantry.some((item) => ingredientMatches(ingredient.name, item))) {
-          continue;
-        }
-        const key = tidyIngredient(ingredient.name);
-        const existing = items.get(key) ?? { name: ingredient.name, measures: [] };
-        if (ingredient.measure && !existing.measures.includes(ingredient.measure)) {
-          existing.measures.push(ingredient.measure);
-        }
-        items.set(key, existing);
-      }
-    }
-    return [...items.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [pantry, plannedRecipes]);
+  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDateDays(week, index)), [week]);
+  const weekMeals = useMemo(() => weekDates.flatMap((date) => kitchen.state.meals[date] ? [kitchen.state.meals[date]] : []), [kitchen.state.meals, weekDates]);
+  const shoppingItems = useMemo(() => buildShoppingList(weekMeals, kitchen.state.pantry).map((item) => ({ ...item, key: `${week}:${item.key}` })), [weekMeals, kitchen.state.pantry, week]);
+  function recipeAllowed(recipe: Recipe) {
+    if (recipeHasAllergen(recipe, profile.allergies)) return false;
+    const labels = `${recipe.title} ${recipe.category} ${recipe.tags.join(" ")}`.toLowerCase();
+    if (profile.diet === "Vegan") return /\bvegan\b/.test(labels);
+    if (profile.diet === "Vegetarian") return /\bvegan\b|\bvegetarian\b/.test(labels);
+    return true;
+  }
 
   function addPantryItem(value = pantryDraft) {
     const next = tidyIngredient(value);
-    if (!next || pantry.some((item) => tidyIngredient(item) === next)) return;
-    setPantry((items) => [...items, next]);
+    if (!next || pantry.some((item) => canonicalIngredient(item) === canonicalIngredient(next))) return;
+    kitchen.update((state) => ({ ...state, pantry: [...state.pantry, { id: crypto.randomUUID(), name: next, measure: "" }] }));
     setPantryDraft("");
   }
 
   function removePantryItem(value: string) {
-    setPantry((items) => items.filter((item) => item !== value));
+    kitchen.update((state) => ({ ...state, pantry: state.pantry.filter((item) => item.name !== value) }));
   }
 
   async function askChef(prompt = query) {
@@ -437,7 +422,6 @@ export default function RagChefApp() {
     setQuery(finalQuery);
     setAskingChef(true);
     try {
-      const candidates = rankedRecipes.length ? rankedRecipes.slice(0, 14) : recipes;
       const response = await fetch("/api/chef", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -445,7 +429,6 @@ export default function RagChefApp() {
           query: finalQuery,
           pantry,
           profile,
-          candidates,
           provider: settings.provider,
           model:
             settings.provider === "ollama"
@@ -453,36 +436,17 @@ export default function RagChefApp() {
               : settings.openaiModel,
         }),
       });
-      if (!response.ok) throw new Error("Chef provider unavailable");
-      setChefResult(await response.json());
-    } catch {
-      const top = rankedRecipes.slice(0, 3);
+      const data = await response.json() as ChefResponse & { error?: { message?: string } };
+      if (!response.ok) throw new Error(data.error?.message || "Chef could not load the approved catalog. Please retry.");
+      setChefResult(data);
+      setRecipeStatus(`${data.retrieval?.catalogCount ?? 0} approved recipes searched · ${data.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}`);
+    } catch (error) {
       setChefResult({
-        answer:
-          top.length > 0
-            ? `You already have a strong start for ${top[0].title}. I found ${top.length} grounded options and kept the source recipes separate from any suggested changes.`
-            : "Add a few pantry ingredients and I’ll build a grounded shortlist for you.",
+        answer: error instanceof Error ? error.message : "Chef could not load the approved catalog. Please retry.",
+        recipes: [], generation: "catalog_fallback",
         sourceFacts: [],
         chefChanges: [],
-        recommendations: top.map((recipe) => {
-          const details = pantryDetails(recipe, pantry);
-          return {
-            recipeId: recipe.id,
-            reason: `${details.matched.length} pantry ingredients already match.`,
-            pantryMatch: details.matched,
-            missingIngredients: details.missing.slice(0, 3),
-          };
-        }),
-        citations: top.map((recipe) => ({
-          recipeId: recipe.id,
-          title: recipe.title,
-          sourceName: sourceLabel(recipe),
-          sourceUrl: recipe.sourceUrl,
-        })),
-        warnings: [
-          "The AI provider was unavailable, so this shortlist uses deterministic pantry matching.",
-        ],
-        retrieval: { method: "pantry fallback", filteredCount: recipes.length },
+        recommendations: [], citations: [], warnings: [],
       });
     } finally {
       setAskingChef(false);
@@ -490,21 +454,79 @@ export default function RagChefApp() {
   }
 
   function generatePlan() {
-    const candidates = rankedRecipes.length ? rankedRecipes : recipes;
-    if (!candidates.length) return;
-    const next: Record<string, string> = {};
-    DAYS.forEach((day, index) => {
-      next[day] = candidates[index % candidates.length].id;
-    });
-    setPlan(next);
     setView("plan");
+    if (catalogState !== "ready") {
+      setPlanningNotice("Load the full catalog before filling empty days. Your saved dinners are unchanged.");
+      return;
+    }
+    const candidates = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), pantry, week, kitchen.state.meals);
+    const emptyDays = weekDates.filter((date) => !kitchen.state.meals[date]).length;
+    setPlanningNotice(candidates.length < emptyDays ? `Only ${candidates.length} different eligible recipes are available. Remaining days were left empty.` : "Empty days filled with pantry-first recipes, without repeats.");
+    kitchen.update((state) => {
+      const meals = { ...state.meals };
+      const available = rankWeeklyCandidates(catalogRecipes.filter(recipeAllowed), state.pantry.map((item) => item.name), week, state.meals);
+      let index = 0;
+      for (const date of weekDates) {
+        if (!meals[date] && index < available.length) meals[date] = createPlannedMeal(date, available[index++]);
+      }
+      return { ...state, meals };
+    });
   }
 
   function addRecipeToPlan(recipe: Recipe) {
-    const day = DAYS.find((item) => !plan[item]) ?? "Mon";
-    setPlan((current) => ({ ...current, [day]: recipe.id }));
     setSelectedRecipe(null);
-    setView("plan");
+    setSelectionNotice("");
+    if (!selectionDate) { setPlanPicker(recipe); return; }
+    const current = kitchen.state.meals[selectionDate];
+    if (current?.locked || current?.status === "cooked") {
+      setSelectionNotice("This dinner is locked or cooked. Return to Plan to choose another day or unlock it."); return;
+    }
+    if (current) setPendingChoice({ date: selectionDate, recipe, expectedId: current.id });
+    else chooseMeal(selectionDate, recipe, undefined, null);
+  }
+
+  function chooseMeal(date: string, recipe: Recipe, template?: PlannedMeal, expectedId: string | null = null): boolean {
+    if (dinnerSelectionStatus(kitchen.state.meals, date, expectedId) !== "available" || recipeHasAllergen(recipe, profile.allergies)) {
+      setSelectionNotice("This dinner or your exclusions changed. Choose again; the saved dinner is unchanged."); return false;
+    }
+    kitchen.update((state) => placePlannedDinner(state, date, recipe, expectedId, template));
+    setSelectionDate(null); setPendingChoice(null); setPlanPicker(null); setSelectedRecipe(null); setReviewDate(null);
+    setWeek(weekStart(date)); setView("plan"); setSelectionNotice("");
+    setPlanningNotice(`Dinner saved for ${dateLabel(date)}.`);
+    return true;
+  }
+
+  function chooseDay(date: string) {
+    if (kitchen.state.meals[date]?.locked || kitchen.state.meals[date]?.status === "cooked") return;
+    setSelectionDate(date); setSelectionNotice(""); setReviewDate(null); setView("recipes");
+  }
+
+  function navigate(next: View) {
+    setSelectionDate(null); setSelectionNotice(""); setPendingChoice(null); setReviewDate(null); setView(next);
+  }
+
+  function reviewMeal(date: string) {
+    setWeek(weekStart(date)); setReviewDate(date); setView("plan");
+  }
+
+  function cookMeal(date: string) {
+    const meal = kitchen.state.meals[date];
+    if (!meal?.recipe || meal.status === "cooked") return;
+    setCookingMealDate(date);
+    const methods = instructionSections(meal.recipe);
+    if (methods.length > 1) { setSelectedRecipe(meal.recipe); return; }
+    void startCooking(meal.recipe, methods[0]?.steps ?? meal.recipe.instructions, methods[0]?.title ?? "Source directions");
+  }
+
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), state: kitchen.state }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.download = "rag-chef-kitchen-backup.json"; link.click(); URL.revokeObjectURL(url);
+  }
+
+  function openRecipe(recipe: Recipe) {
+    setCookingMealDate(null);
+    setSelectedRecipe(recipe);
   }
 
   async function startCooking(
@@ -537,7 +559,7 @@ export default function RagChefApp() {
       const response = await fetch(
         `/api/health?provider=${settings.provider}&model=${encodeURIComponent(model)}`,
       );
-      const data = await response.json();
+      const data = await response.json() as { providers?: Record<string, { message?: string }>; error?: { message?: string }; ok?: boolean };
       const providerStatus = data.providers?.[settings.provider];
       setConnectionStatus(
         providerStatus?.message ??
@@ -553,15 +575,13 @@ export default function RagChefApp() {
     chefResult?.recommendations.map((item) => item.recipeId) ?? [],
   );
   const visibleRecipes = chefResult
-    ? rankedRecipes.filter((recipe) => recommendationIds.has(recipe.id)).concat(
-        rankedRecipes.filter((recipe) => !recommendationIds.has(recipe.id)),
-      )
+    ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id))
     : rankedRecipes;
 
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
-        <button className="brand" onClick={() => setView("chef")}>
+        <button className="brand" onClick={() => navigate("plan")}>
           <span className="brand-mark">R</span>
           <span>
             <strong>RAG Chef</strong>
@@ -570,11 +590,10 @@ export default function RagChefApp() {
         </button>
 
         <nav className="side-nav">
-          <NavButton active={view === "chef"} icon="⌂" label="Chef" onClick={() => setView("chef")} />
-          <NavButton active={view === "pantry"} icon="◌" label="Pantry" onClick={() => setView("pantry")} count={pantry.length} />
-          <NavButton active={view === "plan"} icon="▦" label="Weekly plan" onClick={() => setView("plan")} />
-          <NavButton active={view === "shop"} icon="✓" label="Shopping" onClick={() => setView("shop")} count={shoppingItems.length || undefined} />
-          <NavButton active={view === "settings"} icon="⚙" label="Settings" onClick={() => setView("settings")} />
+          <NavButton active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
+          <NavButton active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />
+          <NavButton active={view === "shop"} icon="✓" label="Shopping" onClick={() => navigate("shop")} count={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length || undefined} />
+          <NavButton active={view === "pantry"} icon="◌" label="Pantry" onClick={() => navigate("pantry")} count={pantry.length} />
         </nav>
 
         <div className="source-mini" id="source-note">
@@ -589,19 +608,20 @@ export default function RagChefApp() {
       <main className="main-content">
         <header className="topbar">
           <div>
-            <span className="eyebrow">Your kitchen, organized</span>
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="topbar-actions">
-            <button className="provider-pill" onClick={() => setView("settings")}>
-              <span className="status-dot" />
-              {settings.provider === "ollama" ? "Local · Ollama" : "Cloud · OpenAI"}
-            </button>
-            <button className="avatar" aria-label="Open cooking profile" onClick={() => setView("settings")}>MC</button>
+            <span className="save-indicator" role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
+            <button className="secondary-button" aria-label="Settings" onClick={() => setView("settings")}>⚙</button>
           </div>
         </header>
 
-        {view === "chef" && (
+        {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to this Mac."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
+        {kitchen.conflict && <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>}
+        <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
+
+        {view === "chef" && (<>
+          <button className="secondary-button flow-back" onClick={() => setView("recipes")}>← Back to Recipes</button>
           <ChefView
             pantry={pantry}
             pantryDraft={pantryDraft}
@@ -617,42 +637,74 @@ export default function RagChefApp() {
             recipeStatus={recipeStatus}
             loadingRecipes={loadingRecipes}
             refreshRecipes={() => void loadRecipes()}
-            openRecipe={setSelectedRecipe}
+            openRecipe={openRecipe}
             detailsFor={(recipe) => pantryDetails(recipe, pantry)}
             generatePlan={generatePlan}
           />
-        )}
+        </>)}
 
         {view === "pantry" && (
           <PantryView
-            pantry={pantry}
+            pantry={kitchen.state.pantry}
             draft={pantryDraft}
             setDraft={setPantryDraft}
             add={addPantryItem}
             remove={removePantryItem}
-            profile={profile}
-            setView={setView}
+            update={kitchen.update}
           />
         )}
 
+        {view === "recipes" && (
+          <section className="recipe-section catalog-browser" aria-label="Recipe collection">
+            {selectionDate && <div className="inline-confirm" role="status"><span>Choosing dinner for {dateLabel(selectionDate, { weekday: "long", month: "long", day: "numeric" })}.</span><button className="secondary-button" onClick={() => navigate("plan")}>Cancel selection</button></div>}
+            {selectionNotice && <p role="alert">{selectionNotice}</p>}
+            <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => setView("chef")}>Ask Chef</button></div>
+            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div></div>
+            {catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
+              : catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged. Retry to browse the approved catalog.</p><button className="primary-button" onClick={() => void loadPlanningCatalog()}>Retry recipes</button></div>
+              : <>
+                <p className="catalog-count" role="status">{browserResults.length} of {browseCatalog.length} recipes{browserResults.length > recipeLimit ? ` · Showing ${recipeLimit}` : ""}</p>
+                {profile.allergies.length > 0 && <p className="quantity-note">{catalogRecipes.length - browseCatalog.length} recipes hidden by your saved allergy exclusions. Always check source ingredients and labels; recipes are not allergy-certified.</p>}
+                {catalogRecipes.length === 0 ? <div className="empty-state"><strong>Your recipe collection is empty.</strong><p>Import approved recipes to start browsing.</p></div>
+                  : browserResults.length === 0 ? <div className="empty-state"><strong>No recipes match.</strong><p>{browseCatalog.length === 0 ? "Your saved allergy exclusions hide the available recipes." : "Try fewer words or a different ingredient."}</p></div>
+                  : <div className="recipe-grid">{browserResults.slice(0, recipeLimit).map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} details={pantryDetails(recipe, pantry)} featured={false} open={() => openRecipe(recipe)} add={() => addRecipeToPlan(recipe)} addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"} />)}</div>}
+                {browserResults.length > recipeLimit && <div className="catalog-more"><button className="secondary-button" onClick={() => setRecipeLimit((limit) => limit + RECIPE_PAGE_SIZE)}>Show more</button></div>}
+              </>}
+          </section>
+        )}
+
         {view === "plan" && (
-          <PlanView
-            plan={plan}
-            setPlan={setPlan}
-            recipes={rankedRecipes.length ? rankedRecipes : recipes}
+          <DurablePlanView
+            catalogState={catalogState}
+            retryCatalog={() => void loadPlanningCatalog()}
+            planningNotice={planningNotice}
+            week={week}
+            today={hydrated ? localDate() : undefined}
+            setWeek={(value) => { setWeek(value); setPlanningNotice(""); setReviewDate(null); }}
+            meals={kitchen.state.meals}
+            update={kitchen.update}
+            chooseMeal={chooseMeal}
+            chooseDay={chooseDay}
+            cookMeal={cookMeal}
+            reviewDate={reviewDate}
+            setReviewDate={setReviewDate}
             generatePlan={generatePlan}
-            openRecipe={setSelectedRecipe}
+            openMeal={(date) => { const meal = kitchen.state.meals[date]; if (meal?.recipe) { setCookingMealDate(date); setSelectedRecipe(meal.recipe); } }}
+            markCooked={(date) => { setCompletionDate(date); setDeductStock(false); }}
+            undoCooked={(date) => kitchen.update((state) => undoMeal(state, date))}
             goShopping={() => setView("shop")}
           />
         )}
 
         {view === "shop" && (
-          <ShoppingView
+          <DurableShoppingView
             items={shoppingItems}
-            done={shoppingDone}
-            setDone={setShoppingDone}
-            hasPlan={plannedRecipes.length > 0}
+            checked={kitchen.state.shoppingChecked}
+            update={kitchen.update}
+            hasPlan={weekMeals.length > 0}
+            week={week}
             goPlan={() => setView("plan")}
+            reviewMeal={reviewMeal}
           />
         )}
 
@@ -664,26 +716,38 @@ export default function RagChefApp() {
             setSettings={setSettings}
             connectionStatus={connectionStatus}
             testConnection={() => void testConnection()}
+            exportBackup={exportBackup}
           />
         )}
+        </fieldset>
       </main>
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        <NavButton active={view === "chef"} icon="⌂" label="Chef" onClick={() => setView("chef")} />
-        <NavButton active={view === "pantry"} icon="◌" label="Pantry" onClick={() => setView("pantry")} />
-        <NavButton active={view === "plan"} icon="▦" label="Plan" onClick={() => setView("plan")} />
-        <NavButton active={view === "shop"} icon="✓" label="Shop" onClick={() => setView("shop")} />
+        <NavButton active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
+        <NavButton active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />
+        <NavButton active={view === "shop"} icon="✓" label="Shopping" onClick={() => navigate("shop")} />
+        <NavButton active={view === "pantry"} icon="◌" label="Pantry" onClick={() => navigate("pantry")} />
       </nav>
+
+      {pendingChoice && <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Replace dinner"><h2>Replace this dinner?</h2><p>Replace {kitchen.state.meals[pendingChoice.date]?.title} on {dateLabel(pendingChoice.date)} with {pendingChoice.recipe.title}?</p>{dinnerSelectionStatus(kitchen.state.meals, pendingChoice.date, pendingChoice.expectedId) !== "available" && <p>This dinner changed or became locked or cooked. Cancel and choose again.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setPendingChoice(null)}>Keep current dinner</button><button className="primary-button" disabled={dinnerSelectionStatus(kitchen.state.meals, pendingChoice.date, pendingChoice.expectedId) !== "available"} onClick={() => chooseMeal(pendingChoice.date, pendingChoice.recipe, undefined, pendingChoice.expectedId)}>Replace dinner</button></div></section></div>}
+      {planPicker && <PlanPicker key={planPicker.id} recipe={planPicker} week={week} meals={kitchen.state.meals} close={() => setPlanPicker(null)} choose={(date, recipe, expectedId) => chooseMeal(date, recipe, undefined, expectedId)} />}
+      {completionDate && kitchen.state.meals[completionDate] && (() => {
+        const meal = kitchen.state.meals[completionDate];
+        const preview = consumptionPreview(meal, kitchen.state.pantry);
+        return <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Complete dinner"><span className="eyebrow">Dinner finished</span><h2>{meal.title}</h2><p>Mark this dinner cooked to remove its remaining needs from shopping. You can undo this in the plan.</p><label className="deduct-checkbox"><input type="checkbox" checked={deductStock} onChange={(event) => setDeductStock(event.target.checked)} />Deduct the matching pantry amounts shown below</label><ul>{preview.deductions.map((item) => <li key={item.pantryId}>{kitchen.state.pantry.find((stock) => stock.id === item.pantryId)?.name}: {item.before} → {item.after}</li>)}</ul>{preview.notes.map((note, index) => <p className="quantity-note" key={index}>{note}</p>)}{!preview.deductions.length && <p>No compatible, measured pantry stock to deduct.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setCompletionDate(null)}>Cancel</button><button className="primary-button" onClick={() => { kitchen.update((state) => completeMeal(state, completionDate, deductStock)); setCompletionDate(null); setSelectedRecipe(null); setView("plan"); }}>Confirm cooked</button></div></section></div>;
+      })()}
 
       {selectedRecipe && !cooking && (
         <RecipeDrawer
           recipe={selectedRecipe}
+          plannedMeal={cookingMealDate ? kitchen.state.meals[cookingMealDate] : undefined}
           pantry={pantry}
           metric={metric}
           setMetric={setMetric}
           chefResult={chefResult}
           close={() => setSelectedRecipe(null)}
           addToPlan={() => addRecipeToPlan(selectedRecipe)}
+          addLabel={selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan"}
           start={(steps, method) => void startCooking(selectedRecipe, steps, method)}
         />
       )}
@@ -699,6 +763,11 @@ export default function RagChefApp() {
           setSeconds={setTimerSeconds}
           running={timerRunning}
           setRunning={setTimerRunning}
+          finish={() => {
+            setCooking(false); setTimerRunning(false);
+            if (cookingMealDate && kitchen.state.meals[cookingMealDate]?.status === "planned") { setCompletionDate(cookingMealDate); setDeductStock(false); }
+            setSelectedRecipe(null);
+          }}
           close={() => {
             setCooking(false);
             setSelectedRecipe(null);
@@ -734,11 +803,12 @@ function NavButton({
 
 function viewTitle(view: View) {
   return {
-    chef: "Good evening, Matan",
-    pantry: "Your pantry",
-    plan: "This week’s table",
-    shop: "Shopping list",
-    settings: "Kitchen profile",
+    chef: "Ask Chef",
+    recipes: "Recipes",
+    pantry: "Pantry",
+    plan: "Weekly plan",
+    shop: "Shopping",
+    settings: "Settings",
   }[view];
 }
 
@@ -790,12 +860,7 @@ function ChefView({
     <>
       <section className="chef-hero">
         <div className="hero-copy">
-          <span className="hero-kicker">Pantry to plate</span>
-          <h2>What sounds good tonight?</h2>
-          <p>
-            Tell me what you’re craving. I’ll ground every suggestion in a real
-            recipe and mark my changes clearly.
-          </p>
+          <p>Tell me what sounds good. Suggestions use real recipes; changes are marked separately.</p>
         </div>
 
         <div className="chef-composer">
@@ -879,12 +944,10 @@ function ChefView({
 
       {chefResult && (
         <section className="chef-answer" aria-live="polite">
-          <div className="chef-stamp">Chef’s note</div>
+          <div className="chef-stamp">{chefResult.generation === "ai" ? "Chef’s note" : "Catalog suggestions"}</div>
           <div>
             <p>{chefResult.answer}</p>
-            {chefResult.warnings.length > 0 && (
-              <small>{chefResult.warnings[0]}</small>
-            )}
+            {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
           </div>
           <button className="secondary-button" onClick={generatePlan}>Plan the week</button>
         </section>
@@ -924,44 +987,38 @@ function ChefView({
   );
 }
 
-function RecipeCard({
+export function RecipeCard({
   recipe,
   details,
   featured,
   open,
+  add,
+  addLabel = "Add to plan",
 }: {
   recipe: Recipe;
   details: ReturnType<typeof pantryDetails>;
   featured: boolean;
   open: () => void;
+  add?: () => void;
+  addLabel?: string;
 }) {
   return (
     <article className={`recipe-card ${featured ? "featured" : ""}`}>
-      <button className="recipe-image" onClick={open} aria-label={`Open ${recipe.title}`}>
-        {recipe.image ? (
-          <img src={recipe.image} alt="" loading="lazy" />
-        ) : (
-          <span className="food-placeholder">{ingredientGlyph(recipe.ingredients[0]?.name ?? "meal")}</span>
-        )}
-        <span className="match-badge">{details.score}% pantry match</span>
-      </button>
+      {recipe.image && <button className="recipe-image" onClick={open} aria-label={`Open ${recipe.title}`}><img src={recipe.image} alt="" loading="lazy" /></button>}
       <div className="recipe-card-body">
         <div className="recipe-meta">
           <span>{recipe.cuisine || recipe.category}</span>
-          <span>{details.missing.length} missing</span>
         </div>
-        <h4>{recipe.title}</h4>
-        <p>
-          {details.matched.length
-            ? `Uses ${details.matched.slice(0, 3).join(", ")}.`
-            : `A grounded ${recipe.category.toLowerCase()} option.`}
-        </p>
+        <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
+        <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p>
+        <small className="coverage-note">Names only · amounts not checked</small>
         <div className="recipe-footer">
           <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             Source: {sourceLabel(recipe)}
           </a>
-          <button onClick={open} aria-label={`View ${recipe.title}`}>→</button>
+          <button className="text-button" onClick={open} aria-label={`View ${recipe.title}`}>View recipe</button>
         </div>
+        {add && <button className="primary-button recipe-add-action" onClick={add} aria-label={`${addLabel}: ${recipe.title}`}>{addLabel}</button>}
       </div>
     </article>
   );
@@ -973,177 +1030,41 @@ function PantryView({
   setDraft,
   add,
   remove,
-  profile,
-  setView,
+  update,
 }: {
-  pantry: string[];
+  pantry: PantryStock[];
   draft: string;
   setDraft: (value: string) => void;
   add: () => void;
   remove: (value: string) => void;
-  profile: Profile;
-  setView: (view: View) => void;
+  update: (change: (state: KitchenState) => KitchenState) => void;
 }) {
   return (
-    <div className="page-grid pantry-page">
+    <div className="pantry-page">
       <section className="panel large-panel">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Typed pantry · first prototype</span>
-            <h2>What do you have?</h2>
-            <p>Ingredient names are saved on this device and used to rank recipes.</p>
+            <p>Add ingredients below. Amounts are optional.</p>
           </div>
         </div>
         <form className="add-form" onSubmit={(event) => { event.preventDefault(); add(); }}>
           <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Try ‘canned tomatoes’" aria-label="New pantry ingredient" />
           <button className="primary-button" type="submit">Add to pantry</button>
         </form>
-        <div className="pantry-list">
+        <p className="quantity-note">Use amounts such as 300 g or 2 cans. Leave unknown amounts blank; they won’t be subtracted from shopping.</p>
+        <div className="unified-pantry-list">
           {pantry.map((item) => (
-            <div className="pantry-item" key={item}>
-              <span className="pantry-icon">{ingredientGlyph(item)}</span>
-              <div><strong>{item}</strong><small>Available</small></div>
-              <button onClick={() => remove(item)} aria-label={`Remove ${item}`}>×</button>
+            <div className="unified-pantry-item" key={item.id}>
+              <label><strong>{item.name}</strong><input aria-label={`Available ${item.name}`} placeholder="Amount unknown" value={item.measure} onChange={(event) => {
+                const measure = event.target.value;
+                update((state) => ({ ...state, pantry: state.pantry.map((stock) => stock.id === item.id ? { ...stock, measure } : stock) }));
+              }} />{item.measure && !parseMeasure(item.measure) && <small>Kept as a note; this amount cannot be subtracted automatically.</small>}</label>
+              <button className="text-button" onClick={() => remove(item.name)} aria-label={`Remove ${item.name}`}>Remove</button>
             </div>
           ))}
         </div>
+        {!pantry.length && <p>Your pantry is empty. Add an ingredient above.</p>}
       </section>
-
-      <aside className="stacked-side">
-        <section className="panel capture-card">
-          <span className="eyebrow">Coming next</span>
-          <h3>Capture ingredients</h3>
-          <p>Photograph the fridge or scan a receipt, then confirm every detected item.</p>
-          <button disabled>Take pantry photo</button>
-          <button disabled>Scan a receipt</button>
-        </section>
-        <section className="panel profile-card">
-          <span className="eyebrow">Hard filters</span>
-          <h3>Cooking profile</h3>
-          <dl>
-            <div><dt>Diet</dt><dd>{profile.diet}</dd></div>
-            <div><dt>Allergies</dt><dd>{profile.allergies.length ? profile.allergies.join(", ") : "None saved"}</dd></div>
-            <div><dt>Skill</dt><dd>{profile.skillLevel}</dd></div>
-          </dl>
-          <button className="secondary-button" onClick={() => setView("settings")}>Edit profile</button>
-        </section>
-      </aside>
-    </div>
-  );
-}
-
-function PlanView({
-  plan,
-  setPlan,
-  recipes,
-  generatePlan,
-  openRecipe,
-  goShopping,
-}: {
-  plan: Record<string, string>;
-  setPlan: (value: Record<string, string>) => void;
-  recipes: Recipe[];
-  generatePlan: () => void;
-  openRecipe: (recipe: Recipe) => void;
-  goShopping: () => void;
-}) {
-  return (
-    <>
-      <section className="planner-intro panel">
-        <div>
-          <span className="eyebrow">Pantry-aware</span>
-          <h2>Make the week easier.</h2>
-          <p>Reuse ingredients, keep leftovers moving, and change any meal you don’t love.</p>
-        </div>
-        <div className="planner-actions">
-          <button className="secondary-button" onClick={() => setPlan({})}>Clear</button>
-          <button className="primary-button" onClick={generatePlan}>Generate my week</button>
-        </div>
-      </section>
-      <section className="week-grid">
-        {DAYS.map((day) => {
-          const recipe = recipes.find((item) => item.id === plan[day]);
-          return (
-            <article className={`day-card ${recipe ? "filled" : ""}`} key={day}>
-              <span className="day-name">{day}</span>
-              {recipe ? (
-                <>
-                  <button className="day-image" onClick={() => openRecipe(recipe)}>
-                    {recipe.image ? <img src={recipe.image} alt="" /> : <span>{ingredientGlyph(recipe.ingredients[0]?.name ?? "meal")}</span>}
-                  </button>
-                  <strong>{recipe.title}</strong>
-                  <small>{recipe.cuisine}</small>
-                </>
-              ) : (
-                <div className="empty-day"><span>+</span><small>Add a meal</small></div>
-              )}
-              <select value={plan[day] ?? ""} onChange={(event) => setPlan({ ...plan, [day]: event.target.value })} aria-label={`Choose ${day} meal`}>
-                <option value="">Choose…</option>
-                {recipes.slice(0, 20).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-              </select>
-            </article>
-          );
-        })}
-      </section>
-      <div className="plan-footer">
-        <p><strong>{Object.keys(plan).filter((day) => plan[day]).length} meals planned.</strong> Shopping updates automatically.</p>
-        <button className="primary-button" onClick={goShopping}>Open shopping list →</button>
-      </div>
-    </>
-  );
-}
-
-function ShoppingView({
-  items,
-  done,
-  setDone,
-  hasPlan,
-  goPlan,
-}: {
-  items: Array<{ name: string; measures: string[] }>;
-  done: Record<string, boolean>;
-  setDone: (value: Record<string, boolean>) => void;
-  hasPlan: boolean;
-  goPlan: () => void;
-}) {
-  const remaining = items.filter((item) => !done[item.name]).length;
-  return (
-    <div className="shopping-layout">
-      <section className="panel shopping-panel">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">Consolidated from your plan</span>
-            <h2>{remaining} items left</h2>
-            <p>Pantry matches are removed before the list is built.</p>
-          </div>
-          {items.length > 0 && <button className="text-button" onClick={() => setDone({})}>Uncheck all</button>}
-        </div>
-        {items.length > 0 ? (
-          <div className="shopping-list">
-            {items.map((item) => (
-              <label className={done[item.name] ? "checked" : ""} key={item.name}>
-                <input type="checkbox" checked={Boolean(done[item.name])} onChange={(event) => setDone({ ...done, [item.name]: event.target.checked })} />
-                <span className="checkmark">✓</span>
-                <span><strong>{item.name}</strong><small>{item.measures.join(" + ") || "As needed"}</small></span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state tall">
-            <strong>{hasPlan ? "Your pantry covers this plan." : "Plan a few meals first."}</strong>
-            <p>{hasPlan ? "Nothing extra is needed based on the saved ingredients." : "The shopping list will combine missing ingredients automatically."}</p>
-            <button className="primary-button" onClick={goPlan}>Go to weekly plan</button>
-          </div>
-        )}
-      </section>
-      <aside className="panel shop-summary">
-        <span className="eyebrow">At a glance</span>
-        <h3>Shop once, cook all week.</h3>
-        <div className="progress-ring" style={{ "--progress": `${items.length ? ((items.length - remaining) / items.length) * 100 : 0}%` } as CSSProperties}>
-          <span>{items.length ? Math.round(((items.length - remaining) / items.length) * 100) : 0}%</span>
-        </div>
-        <p>{items.length - remaining} checked · {remaining} remaining</p>
-      </aside>
     </div>
   );
 }
@@ -1155,6 +1076,7 @@ function SettingsView({
   setSettings,
   connectionStatus,
   testConnection,
+  exportBackup,
 }: {
   profile: Profile;
   setProfile: (profile: Profile) => void;
@@ -1162,9 +1084,11 @@ function SettingsView({
   setSettings: (settings: AISettings) => void;
   connectionStatus: string;
   testConnection: () => void;
+  exportBackup: () => void;
 }) {
   return (
     <div className="settings-grid">
+      <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button></section>
       <section className="panel settings-panel">
         <div className="section-heading"><div><span className="eyebrow">Personalization</span><h2>How you cook</h2><p>Allergies are filtered before a recipe reaches the model.</p></div></div>
         <div className="form-grid">
@@ -1197,23 +1121,27 @@ function SettingsView({
   );
 }
 
-function RecipeDrawer({
+export function RecipeDrawer({
   recipe,
+  plannedMeal,
   pantry,
   metric,
   setMetric,
   chefResult,
   close,
   addToPlan,
+  addLabel,
   start,
 }: {
   recipe: Recipe;
+  plannedMeal?: PlannedMeal;
   pantry: string[];
   metric: boolean;
   setMetric: (value: boolean) => void;
   chefResult: ChefResponse | null;
   close: () => void;
   addToPlan: () => void;
+  addLabel: string;
   start: (steps: string[], method: string) => void;
 }) {
   const details = pantryDetails(recipe, pantry);
@@ -1222,17 +1150,17 @@ function RecipeDrawer({
   const directions = useMemo(() => instructionSections(recipe), [recipe]);
   const [directionIndex, setDirectionIndex] = useState(0);
   const activeDirection = directions[Math.min(directionIndex, directions.length - 1)];
+  const originalIngredients = <><div className="drawer-section-heading"><h3>{plannedMeal ? "Original ingredients" : "Ingredients"}</h3><div className="unit-toggle"><button className={!metric ? "active" : ""} onClick={() => setMetric(false)}>Original</button><button className={metric ? "active" : ""} onClick={() => setMetric(true)}>Metric</button></div></div>
+    <ul className="ingredient-list">{recipe.ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`}><strong>{ingredient.name}</strong><small>{metricMeasure(ingredient.measure, metric)}</small></li>)}</ul></>;
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <article className="recipe-drawer" role="dialog" aria-modal="true" aria-labelledby="recipe-title">
         <button className="drawer-close" onClick={close} aria-label="Close recipe">×</button>
-        <div className="drawer-hero">
-          {recipe.image ? <img src={recipe.image} alt="" /> : <span>{ingredientGlyph(recipe.ingredients[0]?.name ?? "meal")}</span>}
-          <div className="drawer-overlay"><span>{recipe.cuisine}</span><strong>{details.score}% pantry match</strong></div>
-        </div>
+        {recipe.image && <div className="drawer-hero"><img src={recipe.image} alt="" /></div>}
         <div className="drawer-content">
           <span className="eyebrow">{recipe.category}</span>
           <h2 id="recipe-title">{recipe.title}</h2>
+          <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry <small className="coverage-note">Names only · amounts not checked</small></p>
           {directions.length > 1 && (
             <div className="method-picker" aria-label="Choose cooking method">
               <span>Choose a method</span>
@@ -1251,18 +1179,23 @@ function RecipeDrawer({
               </div>
             </div>
           )}
-          <div className="drawer-actions"><button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" onClick={addToPlan}>Add to plan</button></div>
+          <div className="drawer-actions"><button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" onClick={addToPlan}>{addLabel}</button></div>
           <div className="source-citation">
             <span>Source citation</span>
-            <p>This recipe is shown from <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a>. Suggested changes appear separately below.</p>
+            <p>From <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a>.</p>
+            {recipe.source.licenseUrl && <p>License: <a href={recipe.source.licenseUrl} target="_blank" rel="noreferrer">{recipe.source.licenseId || "Source license"}</a>.</p>}
+            {recipe.source.attributionText && <p>{recipe.source.attributionText}</p>}
             {facts.length > 0 && (
               <ul className="source-facts">
                 {facts.map((fact, index) => <li key={`${fact.fact}-${index}`}>{fact.fact}</li>)}
               </ul>
             )}
           </div>
-          <div className="drawer-section-heading"><h3>Ingredients</h3><div className="unit-toggle"><button className={!metric ? "active" : ""} onClick={() => setMetric(false)}>Original</button><button className={metric ? "active" : ""} onClick={() => setMetric(true)}>Metric</button></div></div>
-          <ul className="ingredient-list">{recipe.ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`} className={details.matched.includes(ingredient.name) ? "have" : ""}><span>{details.matched.includes(ingredient.name) ? "✓" : "○"}</span><strong>{ingredient.name}</strong><small>{metricMeasure(ingredient.measure, metric)}</small></li>)}</ul>
+          {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{(plannedMeal.planningIngredients ?? recipe.ingredients).map((ingredient, index) => {
+            const parsed = plannedIngredientMeasure(plannedMeal, index, ingredient);
+            const amount = plannedMeal.ingredientOverrides[String(index)] ?? (parsed ? formatMeasure(parsed.quantity * mealScale(plannedMeal), parsed.unit) : `${ingredient.measure || "Amount needs review"}${mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`);
+            return <li key={index}><strong>{ingredient.name}</strong><small>{amount}</small></li>;
+          })}</ul><details className="original-ingredients"><summary>Original recipe quantities</summary>{originalIngredients}</details></section> : originalIngredients}
           <div className="directions-heading">
             <div><h3>Source directions</h3>{activeDirection && directions.length > 1 && <span>{activeDirection.title} method</span>}</div>
             <small>{activeDirection?.steps.length ?? 0} steps</small>
@@ -1272,7 +1205,7 @@ function RecipeDrawer({
           ) : (
             <div className="empty-directions">No source directions are available for this recipe.</div>
           )}
-          <section className="changes-panel"><span className="eyebrow">Chef’s changes</span><h3>{changes.length ? "Adapted for your kitchen" : "No changes suggested yet"}</h3>{changes.length ? changes.map((change, index) => <div key={`${change.change}-${index}`}><strong>{change.change}</strong><p>{change.reason}</p></div>) : <p>Ask the chef for substitutions or scaling. The original recipe will stay untouched.</p>}</section>
+          {changes.length > 0 && <section className="changes-panel"><span className="eyebrow">Chef’s changes</span><h3>Adapted for your kitchen</h3>{changes.map((change, index) => <div key={`${change.change}-${index}`}><strong>{change.change}</strong><p>{change.reason}</p></div>)}</section>}
         </div>
       </article>
     </div>
@@ -1289,6 +1222,7 @@ function CookingMode({
   setSeconds,
   running,
   setRunning,
+  finish,
   close,
 }: {
   recipe: Recipe;
@@ -1300,6 +1234,7 @@ function CookingMode({
   setSeconds: (value: number) => void;
   running: boolean;
   setRunning: (value: boolean) => void;
+  finish: () => void;
   close: () => void;
 }) {
   const total = instructions.length;
@@ -1317,7 +1252,7 @@ function CookingMode({
           <div><button onClick={() => { setSeconds(300); setRunning(true); }}>5 min</button><button onClick={() => { setSeconds(600); setRunning(true); }}>10 min</button><button onClick={() => setRunning(!running)} disabled={!seconds}>{running ? "Pause" : "Start"}</button></div>
         </div>
       </main>
-      <footer><button className="secondary-button" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Previous</button><span>Screen stays awake where supported · voice comes next</span><button className="primary-button" onClick={() => step === total - 1 ? close() : setStep(step + 1)}>{step === total - 1 ? "Finish cooking" : "Next step →"}</button></footer>
+      <footer><button className="secondary-button" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Previous</button><span>Screen stays awake where supported</span><button className="primary-button" onClick={() => step === total - 1 ? finish() : setStep(step + 1)}>{step === total - 1 ? "Finish cooking" : "Next step →"}</button></footer>
     </div>
   );
 }

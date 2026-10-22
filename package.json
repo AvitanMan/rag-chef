@@ -8,10 +8,17 @@
   "scripts": {
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "pnpm run build && node --test tests/rendered-html.test.mjs",
+    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler dev --local --config dist/server/wrangler.json --persist-to .wrangler/state --ip localhost --port 3000",
+    "test": "pnpm run build && node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply DB --local --config wrangler.jsonc --persist-to .wrangler/state",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "recipes:collect": "node tools/recipes/run.mjs",
+    "recipes:embed": "node tools/recipes/embed.mjs",
+    "recipes:eval": "node tools/recipes/evaluate.mjs",
+    "recipes:chef-eval": "node tools/recipes/evaluate-chef.mjs",
+    "recipes:test": ".venv-recipes/bin/python -m unittest discover -s tools/recipes/tests -v"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

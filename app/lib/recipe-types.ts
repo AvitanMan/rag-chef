@@ -6,6 +6,9 @@ export interface RecipeIngredient {
 export interface RecipeSourceAttribution {
   name: string;
   url: string;
+  licenseId?: string;
+  licenseUrl?: string;
+  attributionText?: string;
 }
 
 export interface Recipe {
@@ -19,9 +22,11 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   instructions: string[];
   tags: string[];
+  servings?: number;
 }
 
 export interface RecipeSearchOptions {
+  allergies?: string[];
   pantry?: string[];
   query?: string;
   limit?: number;

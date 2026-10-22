@@ -111,6 +111,7 @@ export const recipes = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title").notNull(),
+    servings: real("servings"),
     imageUrl: text("image_url"),
     category: text("category").notNull().default("Other"),
     cuisine: text("cuisine").notNull().default("International"),
@@ -246,3 +247,11 @@ export const recipeEmbeddings = sqliteTable(
     ),
   ],
 );
+
+/** One durable document for this local, personal kitchen (not a multi-user store). */
+export const kitchenState = sqliteTable("kitchen_state", {
+  id: text("id").primaryKey(),
+  stateJson: text("state_json").notNull(),
+  revision: integer("revision").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});

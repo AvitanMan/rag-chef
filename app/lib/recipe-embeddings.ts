@@ -1,7 +1,9 @@
 import type { Recipe } from "./recipe-types";
+import { normalizePlanningIngredient } from "./quantities";
 
 export const DEFAULT_RECIPE_EMBED_MODEL = "nomic-embed-text";
 export const DEFAULT_OLLAMA_EMBED_BASE_URL = "http://127.0.0.1:11434";
+export const RECIPE_EMBEDDING_KIND = "recipe-search-v2";
 
 const DEFAULT_EMBED_BATCH_SIZE = 32;
 const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
@@ -11,6 +13,7 @@ export type RecipeEmbeddingRefreshReason =
   | "missing"
   | "content_changed"
   | "model_changed"
+  | "format_changed"
   | "invalid_vector";
 
 export type RecipeEmbeddingProviderErrorCode =
@@ -24,6 +27,7 @@ export interface StoredRecipeEmbedding {
   contentHash: string;
   model: string;
   vector: unknown;
+  kind?: string;
 }
 
 export interface PreparedRecipeEmbedding {
@@ -48,6 +52,7 @@ export interface RecipeEmbeddingRecord {
   dimensions: number;
   vector: number[];
   embeddedAt: string;
+  kind: string;
 }
 
 export interface RecipeEmbeddingFailure {
@@ -113,9 +118,8 @@ export class RecipeEmbeddingProviderError extends Error {
 }
 
 /**
- * Builds the stable, search-relevant representation used for both embedding
- * and content hashing. Source metadata and images are deliberately excluded:
- * changing attribution or presentation must not force a semantic re-embed.
+ * Stable recipe-content representation. Keep this independent of the embedding
+ * format: changing search must never invalidate an approved recipe or snapshot.
  */
 export function buildRecipeSearchText(recipe: Recipe): string {
   const tags = [...new Set(recipe.tags.map(normalizeText).filter(Boolean))].sort(
@@ -134,6 +138,7 @@ export function buildRecipeSearchText(recipe: Recipe): string {
     `Title: ${normalizeText(recipe.title)}`,
     `Category: ${normalizeText(recipe.category)}`,
     `Cuisine: ${normalizeText(recipe.cuisine)}`,
+    ...(recipe.servings === undefined ? [] : [`Servings: ${recipe.servings}`]),
     `Tags: ${tags.join(", ")}`,
     "Ingredients:",
     ...ingredients,
@@ -156,6 +161,22 @@ export async function sha256Hex(value: string): Promise<string> {
 
 export function recipeEmbeddingContentHash(recipe: Recipe): Promise<string> {
   return sha256Hex(buildRecipeSearchText(recipe));
+}
+
+export function buildRecipeEmbeddingText(recipe: Recipe): string {
+  const ingredients = recipe.ingredients.map((item) => normalizeText(normalizePlanningIngredient(item).name));
+  return `search_document: ${[
+    `Title: ${normalizeText(recipe.title)}`,
+    `Category: ${normalizeText(recipe.category)}`,
+    `Cuisine: ${normalizeText(recipe.cuisine)}`,
+    `Ingredients: ${ingredients.join("; ")}`,
+    `Tags: ${[...new Set(recipe.tags.map(normalizeText).filter(Boolean))].sort(compareCodePoints).join(", ")}`,
+    ...(recipe.servings === undefined ? [] : [`Servings: ${recipe.servings}`]),
+  ].join("\n")}`;
+}
+
+export function buildRecipeQueryText(query: string, pantry: string[]): string {
+  return `search_query: ${normalizeText(query)}${pantry.length ? `\nAvailable ingredients: ${pantry.map(normalizeText).filter(Boolean).join(", ")}` : ""}`;
 }
 
 export function isValidEmbeddingVector(
@@ -228,8 +249,8 @@ export async function planRecipeEmbeddingRefresh(
     }
     seenRecipeIds.add(recipe.id);
 
-    const searchText = buildRecipeSearchText(recipe);
-    const contentHash = await sha256Hex(searchText);
+    const searchText = buildRecipeEmbeddingText(recipe);
+    const contentHash = await recipeEmbeddingContentHash(recipe);
     const records = existingByRecipe.get(recipe.id) ?? [];
     const matchingModel = records.find((record) => record.model === model);
     const reason = refreshReason(records, matchingModel, contentHash);
@@ -316,6 +337,7 @@ export async function precomputeRecipeEmbeddings(
           dimensions: vector.length,
           vector,
           embeddedAt,
+          kind: RECIPE_EMBEDDING_KIND,
         });
       });
     } catch (error) {
@@ -430,6 +452,7 @@ function refreshReason(
 ): RecipeEmbeddingRefreshReason | null {
   if (records.length === 0) return "missing";
   if (!matchingModel) return "model_changed";
+  if (matchingModel.kind !== RECIPE_EMBEDDING_KIND) return "format_changed";
   if (matchingModel.contentHash !== contentHash) return "content_changed";
   if (!isValidEmbeddingVector(matchingModel.vector)) return "invalid_vector";
   return null;
@@ -453,7 +476,7 @@ async function requestOllamaBatch(
       body: JSON.stringify({
         model: options.model,
         input: texts,
-        truncate: true,
+        truncate: false,
       }),
       signal: controller.signal,
     });

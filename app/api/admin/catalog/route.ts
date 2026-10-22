@@ -10,12 +10,14 @@ import {
   finishCatalogSync,
   getCatalogStatus,
   listStoredRecipeEmbeddings,
+  listCatalogRecipes,
   saveRecipeEmbeddings,
   startCatalogSync,
   upsertApprovedRecipeSource,
   upsertCatalogRecipe,
   type ApprovedRecipeSourceInput,
 } from "@/app/lib/recipe-store";
+import { authorizeCatalogRequest } from "@/app/lib/catalog-auth";
 
 const SOURCE_ID = "themealdb";
 const RUNNING_SYNC_TTL_MS = 10 * 60 * 1_000;
@@ -60,12 +62,28 @@ export async function POST(request: Request): Promise<Response> {
   if (authorizationError) return authorizationError;
 
   const model = embeddingModel();
+  let embeddingsOnly = false;
+  try {
+    const text = await request.text();
+    if (text.length > 1024) return json({ error: "Request body is too large." }, 413);
+    if (text.trim()) {
+      const input = JSON.parse(text);
+      if (input?.embeddingsOnly !== true || Object.keys(input).some((key) => key !== "embeddingsOnly")) return json({ error: "Expected embeddingsOnly: true, or an empty body for source sync." }, 400);
+      embeddingsOnly = true;
+    }
+  } catch { return json({ error: "Invalid request body." }, 400); }
   let syncRunId: string | null = null;
   let recordsSeen = 0;
   let recordsUpserted = 0;
 
   try {
     await ensureRecipeCatalogSchema();
+    if (embeddingsOnly) {
+      const records = await listCatalogRecipes(1000, { forEmbedding: true });
+      const embedded = await precomputeRecipeEmbeddings(records.map((item) => item.recipe), await listStoredRecipeEmbeddings(model), { model, timeoutMs: embeddingTimeoutMs() });
+      await saveRecipeEmbeddings(embedded.embeddings);
+      return json({ ok: embedded.failures.length === 0, embeddings: { model, checkedCount: embedded.checkedCount, skippedCount: embedded.skippedCount, requestedCount: embedded.requestedCount, completedCount: embedded.completedCount, failures: embedded.failures }, catalog: await getCatalogStatus(model) });
+    }
     const before = await getCatalogStatus(model);
     if (
       before.lastSync?.status === "running" &&
@@ -156,42 +174,6 @@ export async function POST(request: Request): Promise<Response> {
     }
     return catalogError(error);
   }
-}
-
-function authorizeCatalogRequest(request: Request): Response | null {
-  const url = new URL(request.url);
-  if (isLoopbackHost(url.hostname)) return null;
-
-  const token = serverEnv("CATALOG_ADMIN_TOKEN");
-  if (!token) {
-    return json(
-      {
-        ok: false,
-        error: {
-          code: "CATALOG_ADMIN_NOT_CONFIGURED",
-          message: "Catalog administration is disabled until CATALOG_ADMIN_TOKEN is set.",
-        },
-      },
-      503,
-    );
-  }
-  if (request.headers.get("authorization") !== `Bearer ${token}`) {
-    return json(
-      {
-        ok: false,
-        error: {
-          code: "UNAUTHORIZED",
-          message: "A valid catalog administrator token is required.",
-        },
-      },
-      401,
-    );
-  }
-  return null;
-}
-
-function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 function embeddingModel(): string {

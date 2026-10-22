@@ -1,4 +1,5 @@
 import type { Recipe } from "./recipe-types";
+import { RECIPE_EMBEDDING_KIND } from "./recipe-embeddings";
 import type {
   RecipeEmbeddingRecord,
   StoredRecipeEmbedding,
@@ -61,6 +62,7 @@ export interface CatalogStatus {
   embeddingCount: number;
   staleEmbeddingCount: number;
   embeddingModel: string;
+  embeddingKind: string;
   lastSync: {
     id: string;
     sourceId: string;
@@ -88,6 +90,10 @@ type RecipeRow = {
   version: number;
   source_name: string;
   source_homepage: string;
+  servings: number | null;
+  license_id: string;
+  license_url: string | null;
+  attribution_text: string | null;
 };
 
 type IngredientRow = {
@@ -112,6 +118,7 @@ type StepRow = {
 };
 
 type EmbeddingRow = {
+  kind: string;
   recipe_id: string;
   content_sha256: string;
   model: string;
@@ -119,123 +126,6 @@ type EmbeddingRow = {
   vector_json: string;
 };
 
-const SCHEMA_STATEMENTS = [
-  `CREATE TABLE IF NOT EXISTS recipe_sources (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    url TEXT NOT NULL,
-    license_id TEXT NOT NULL,
-    license_url TEXT,
-    attribution_text TEXT,
-    terms_url TEXT,
-    terms_snapshot_sha256 TEXT,
-    permission_basis TEXT NOT NULL,
-    permission_document_ref TEXT,
-    approval_status TEXT NOT NULL DEFAULT 'pending',
-    approved_by TEXT,
-    approved_at INTEGER,
-    approval_notes TEXT,
-    allow_display INTEGER NOT NULL DEFAULT 0,
-    allow_cache INTEGER NOT NULL DEFAULT 0,
-    allow_index_text INTEGER NOT NULL DEFAULT 0,
-    allow_embed INTEGER NOT NULL DEFAULT 0,
-    allow_derive INTEGER NOT NULL DEFAULT 0,
-    allow_commercial INTEGER NOT NULL DEFAULT 0,
-    allow_images INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`,
-  "CREATE INDEX IF NOT EXISTS recipe_sources_approval_idx ON recipe_sources (approval_status)",
-  `CREATE TABLE IF NOT EXISTS recipe_sync_runs (
-    id TEXT PRIMARY KEY NOT NULL,
-    source_id TEXT NOT NULL REFERENCES recipe_sources(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'running',
-    cursor TEXT,
-    records_seen INTEGER NOT NULL DEFAULT 0,
-    records_upserted INTEGER NOT NULL DEFAULT 0,
-    records_quarantined INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT,
-    started_at INTEGER NOT NULL,
-    finished_at INTEGER
-  )`,
-  "CREATE INDEX IF NOT EXISTS recipe_sync_runs_source_started_idx ON recipe_sync_runs (source_id, started_at)",
-  `CREATE TABLE IF NOT EXISTS recipes (
-    id TEXT PRIMARY KEY NOT NULL,
-    source_id TEXT NOT NULL REFERENCES recipe_sources(id) ON DELETE RESTRICT,
-    source_record_id TEXT NOT NULL,
-    source_url TEXT NOT NULL,
-    source_updated_at INTEGER,
-    sync_run_id TEXT REFERENCES recipe_sync_runs(id) ON DELETE SET NULL,
-    title TEXT NOT NULL,
-    image_url TEXT,
-    category TEXT NOT NULL DEFAULT 'Other',
-    cuisine TEXT NOT NULL DEFAULT 'International',
-    language TEXT NOT NULL DEFAULT 'en',
-    tags_json TEXT NOT NULL DEFAULT '[]',
-    search_text TEXT NOT NULL,
-    raw_snapshot_sha256 TEXT,
-    normalized_content_sha256 TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    last_seen_at INTEGER NOT NULL
-  )`,
-  "CREATE UNIQUE INDEX IF NOT EXISTS recipes_source_record_uidx ON recipes (source_id, source_record_id)",
-  "CREATE INDEX IF NOT EXISTS recipes_source_status_idx ON recipes (source_id, status)",
-  "CREATE INDEX IF NOT EXISTS recipes_updated_idx ON recipes (updated_at)",
-  `CREATE TABLE IF NOT EXISTS recipe_ingredients (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL,
-    section_title TEXT,
-    original_name TEXT NOT NULL,
-    normalized_name TEXT NOT NULL,
-    original_measure TEXT NOT NULL DEFAULT '',
-    quantity_value REAL,
-    quantity_min REAL,
-    quantity_max REAL,
-    unit TEXT,
-    preparation TEXT,
-    optional INTEGER NOT NULL DEFAULT 0
-  )`,
-  "CREATE UNIQUE INDEX IF NOT EXISTS recipe_ingredients_recipe_position_uidx ON recipe_ingredients (recipe_id, position)",
-  "CREATE INDEX IF NOT EXISTS recipe_ingredients_normalized_name_idx ON recipe_ingredients (normalized_name)",
-  `CREATE TABLE IF NOT EXISTS recipe_instruction_sections (
-    id TEXT PRIMARY KEY NOT NULL,
-    recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL,
-    title TEXT
-  )`,
-  "CREATE UNIQUE INDEX IF NOT EXISTS recipe_instruction_sections_recipe_position_uidx ON recipe_instruction_sections (recipe_id, position)",
-  `CREATE TABLE IF NOT EXISTS recipe_instruction_steps (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    section_id TEXT NOT NULL REFERENCES recipe_instruction_sections(id) ON DELETE CASCADE,
-    position INTEGER NOT NULL,
-    text TEXT NOT NULL,
-    duration_seconds INTEGER,
-    temperature_celsius REAL
-  )`,
-  "CREATE UNIQUE INDEX IF NOT EXISTS recipe_instruction_steps_section_position_uidx ON recipe_instruction_steps (section_id, position)",
-  "CREATE INDEX IF NOT EXISTS recipe_instruction_steps_recipe_idx ON recipe_instruction_steps (recipe_id)",
-  `CREATE TABLE IF NOT EXISTS recipe_embeddings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    recipe_version INTEGER NOT NULL,
-    kind TEXT NOT NULL DEFAULT 'recipe',
-    chunk_index INTEGER NOT NULL DEFAULT 0,
-    model TEXT NOT NULL,
-    dimensions INTEGER NOT NULL,
-    content_sha256 TEXT NOT NULL,
-    vector_json TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`,
-  "CREATE UNIQUE INDEX IF NOT EXISTS recipe_embeddings_identity_uidx ON recipe_embeddings (recipe_id, model, kind, chunk_index)",
-  "CREATE INDEX IF NOT EXISTS recipe_embeddings_model_idx ON recipe_embeddings (model)",
-  "CREATE INDEX IF NOT EXISTS recipe_embeddings_recipe_version_idx ON recipe_embeddings (recipe_id, recipe_version)",
-] as const;
 
 let schemaReady: Promise<void> | null = null;
 
@@ -263,9 +153,7 @@ export async function ensureRecipeCatalogSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       const db = await catalogDb();
-      await db.batch(
-        SCHEMA_STATEMENTS.map((statement) => db.prepare(statement)),
-      );
+      await db.prepare("SELECT id FROM recipes LIMIT 1").first();
     })().catch((error) => {
       schemaReady = null;
       throw error;
@@ -349,6 +237,13 @@ export async function startCatalogSync(sourceId: string): Promise<string> {
   return id;
 }
 
+export async function getRecipeSourcePolicy(sourceId: string) {
+  return (await catalogDb()).prepare(
+    `SELECT approval_status, allow_display, allow_cache, allow_index_text, allow_embed
+     FROM recipe_sources WHERE id = ?`,
+  ).bind(sourceId).first<{ approval_status: string; allow_display: number; allow_cache: number; allow_index_text: number; allow_embed: number }>();
+}
+
 export async function finishCatalogSync(
   syncRunId: string,
   status: "succeeded" | "failed",
@@ -392,7 +287,9 @@ export async function upsertCatalogRecipe(input: {
     .bind(catalogId)
     .first<{ content_hash: string; version: number }>();
   const now = Date.now();
-  const sections = normalizeInstructionSections(recipe);
+  const sections = sourceId === "wikibooks"
+    ? [{ title: "Main method", steps: recipe.instructions }]
+    : normalizeInstructionSections(recipe);
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
@@ -400,8 +297,8 @@ export async function upsertCatalogRecipe(input: {
           id, source_id, source_record_id, source_url, sync_run_id, title,
           image_url, category, cuisine, language, tags_json, search_text,
           normalized_content_sha256, version, status, created_at, updated_at,
-          last_seen_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, 1, 'active', ?, ?, ?)
+          last_seen_at, servings
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, 1, 'active', ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           source_url = excluded.source_url,
           sync_run_id = excluded.sync_run_id,
@@ -409,6 +306,7 @@ export async function upsertCatalogRecipe(input: {
           image_url = excluded.image_url,
           category = excluded.category,
           cuisine = excluded.cuisine,
+          servings = excluded.servings,
           tags_json = excluded.tags_json,
           search_text = excluded.search_text,
           version = CASE
@@ -437,6 +335,7 @@ export async function upsertCatalogRecipe(input: {
         now,
         now,
         now,
+        recipe.servings ?? null,
       ),
     db.prepare("DELETE FROM recipe_ingredients WHERE recipe_id = ?").bind(catalogId),
     db.prepare("DELETE FROM recipe_instruction_sections WHERE recipe_id = ?").bind(catalogId),
@@ -500,6 +399,7 @@ export async function upsertCatalogRecipe(input: {
 
 export async function listCatalogRecipes(
   limit = DEFAULT_CATALOG_LIMIT,
+  options: { forEmbedding?: boolean } = {},
 ): Promise<StoredCatalogRecipe[]> {
   await ensureRecipeCatalogSchema();
   const boundedLimit = Math.min(
@@ -510,16 +410,17 @@ export async function listCatalogRecipes(
   const recipeRows = await allRows<RecipeRow>(
     db
       .prepare(
-        `SELECT r.id, r.source_id, r.source_record_id, r.source_url, r.title,
+        `SELECT r.id, r.source_id, r.source_record_id, r.source_url, r.title, r.servings,
           r.image_url, r.category, r.cuisine, r.tags_json, r.search_text,
           r.normalized_content_sha256, r.version, s.name AS source_name,
-          s.url AS source_homepage
+          s.url AS source_homepage, s.license_id, s.license_url, s.attribution_text
          FROM recipes r
          JOIN recipe_sources s ON s.id = r.source_id
          WHERE r.status = 'active'
            AND s.approval_status = 'approved'
            AND s.allow_display = 1
            AND s.allow_index_text = 1
+           ${options.forEmbedding ? "AND s.allow_embed = 1" : ""}
          ORDER BY r.updated_at DESC, r.id ASC
          LIMIT ?`,
       )
@@ -528,34 +429,24 @@ export async function listCatalogRecipes(
   if (recipeRows.length === 0) return [];
 
   const ids = recipeRows.map((row) => row.id);
-  const placeholders = ids.map(() => "?").join(", ");
   const [ingredients, sections, steps] = await Promise.all([
-    allRows<IngredientRow>(
-      db
-        .prepare(
-          `SELECT recipe_id, position, original_name, original_measure
-           FROM recipe_ingredients WHERE recipe_id IN (${placeholders})
-           ORDER BY recipe_id, position`,
-        )
-        .bind(...ids),
+    rowsForRecipeIds<IngredientRow>(
+      db, ids,
+      `SELECT recipe_id, position, original_name, original_measure
+       FROM recipe_ingredients WHERE recipe_id IN`,
+      "ORDER BY recipe_id, position",
     ),
-    allRows<SectionRow>(
-      db
-        .prepare(
-          `SELECT id, recipe_id, position, title
-           FROM recipe_instruction_sections WHERE recipe_id IN (${placeholders})
-           ORDER BY recipe_id, position`,
-        )
-        .bind(...ids),
+    rowsForRecipeIds<SectionRow>(
+      db, ids,
+      `SELECT id, recipe_id, position, title
+       FROM recipe_instruction_sections WHERE recipe_id IN`,
+      "ORDER BY recipe_id, position",
     ),
-    allRows<StepRow>(
-      db
-        .prepare(
-          `SELECT recipe_id, section_id, position, text
-           FROM recipe_instruction_steps WHERE recipe_id IN (${placeholders})
-           ORDER BY recipe_id, section_id, position`,
-        )
-        .bind(...ids),
+    rowsForRecipeIds<StepRow>(
+      db, ids,
+      `SELECT recipe_id, section_id, position, text
+       FROM recipe_instruction_steps WHERE recipe_id IN`,
+      "ORDER BY recipe_id, section_id, position",
     ),
   ]);
 
@@ -566,7 +457,12 @@ export async function listCatalogRecipes(
       image: row.image_url,
       category: row.category,
       cuisine: row.cuisine,
-      source: { name: row.source_name, url: row.source_homepage },
+      source: {
+        name: row.source_name, url: row.source_homepage,
+        ...(row.license_url ? { licenseId: row.license_id, licenseUrl: row.license_url } : {}),
+        ...(row.attribution_text ? { attributionText: row.attribution_text } : {}),
+      },
+      ...(row.servings !== null ? { servings: row.servings } : {}),
       sourceUrl: row.source_url,
       ingredients: ingredients
         .filter((item) => item.recipe_id === row.id)
@@ -596,13 +492,16 @@ export async function listStoredRecipeEmbeddings(
   const db = await catalogDb();
   const condition = model ? "AND e.model = ?" : "";
   const statement = db.prepare(
-    `SELECT e.recipe_id, e.content_sha256, e.model, e.dimensions, e.vector_json
+    `SELECT e.recipe_id, e.content_sha256, e.model, e.dimensions, e.vector_json, e.kind
      FROM recipe_embeddings e
      JOIN recipes r ON r.id = e.recipe_id
      JOIN recipe_sources s ON s.id = r.source_id
      WHERE r.status = 'active'
        AND s.approval_status = 'approved'
        AND s.allow_embed = 1
+       AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
+       AND e.recipe_version = r.version
+       AND e.content_sha256 = r.normalized_content_sha256
        ${condition}
      ORDER BY e.recipe_id`,
   );
@@ -612,6 +511,7 @@ export async function listStoredRecipeEmbeddings(
     contentHash: row.content_sha256,
     model: row.model,
     vector: parseNumberArray(row.vector_json, row.dimensions),
+    kind: row.kind,
   }));
 }
 
@@ -619,6 +519,12 @@ export async function saveRecipeEmbeddings(
   records: readonly RecipeEmbeddingRecord[],
 ): Promise<void> {
   if (records.length === 0) return;
+  // D1 limits each statement to 100 bound parameters. A full-catalog refresh
+  // must also bound the version lookup, not only embedding-provider batches.
+  if (records.length > 80) {
+    for (let offset = 0; offset < records.length; offset += 80) await saveRecipeEmbeddings(records.slice(offset, offset + 80));
+    return;
+  }
   await ensureRecipeCatalogSchema();
   const db = await catalogDb();
   const ids = [...new Set(records.map((record) => record.recipeId))];
@@ -642,7 +548,7 @@ export async function saveRecipeEmbeddings(
         `INSERT INTO recipe_embeddings (
           recipe_id, recipe_version, kind, chunk_index, model, dimensions,
           content_sha256, vector_json, created_at, updated_at
-        ) VALUES (?, ?, 'recipe', 0, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(recipe_id, model, kind, chunk_index) DO UPDATE SET
           recipe_version = excluded.recipe_version,
           dimensions = excluded.dimensions,
@@ -653,6 +559,7 @@ export async function saveRecipeEmbeddings(
       .bind(
         record.recipeId,
         recipeVersion,
+        record.kind,
         record.model,
         record.dimensions,
         record.contentHash,
@@ -679,13 +586,16 @@ export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
             JOIN recipes r ON r.id = e.recipe_id
             JOIN recipe_sources s ON s.id = r.source_id
             WHERE r.status = 'active' AND s.approval_status = 'approved'
+              AND s.allow_embed = 1 AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
+              AND e.recipe_version = r.version AND e.content_sha256 = r.normalized_content_sha256
               AND e.model = ?) AS embedding_count,
           (SELECT COUNT(*) FROM recipes r
             JOIN recipe_sources s ON s.id = r.source_id
             LEFT JOIN recipe_embeddings e ON e.recipe_id = r.id
-              AND e.model = ? AND e.kind = 'recipe' AND e.chunk_index = 0
+              AND e.model = ? AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
             WHERE r.status = 'active' AND s.approval_status = 'approved'
-              AND (e.recipe_id IS NULL OR e.content_sha256 <> r.normalized_content_sha256)
+              AND s.allow_embed = 1
+              AND (e.recipe_id IS NULL OR e.content_sha256 <> r.normalized_content_sha256 OR e.recipe_version <> r.version)
           ) AS stale_embedding_count`,
       )
       .bind(model, model)
@@ -719,6 +629,7 @@ export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
     embeddingCount: counts?.embedding_count ?? 0,
     staleEmbeddingCount: counts?.stale_embedding_count ?? 0,
     embeddingModel: model,
+    embeddingKind: RECIPE_EMBEDDING_KIND,
     lastSync: lastSync
       ? {
           id: lastSync.id,
@@ -850,6 +761,21 @@ function reconstructInstructions(
 async function allRows<T>(statement: D1PreparedStatement): Promise<T[]> {
   const result = await statement.all<T>();
   return result.results ?? [];
+}
+
+async function rowsForRecipeIds<T>(
+  db: D1Database, ids: string[], prefix: string, suffix: string,
+): Promise<T[]> {
+  const rows: T[] = [];
+  // D1 accepts at most 100 bound parameters per statement.
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const chunk = ids.slice(offset, offset + 100);
+    const placeholders = chunk.map(() => "?").join(", ");
+    rows.push(...await allRows<T>(
+      db.prepare(`${prefix} (${placeholders}) ${suffix}`).bind(...chunk),
+    ));
+  }
+  return rows;
 }
 
 function parseStringArray(value: string): string[] {

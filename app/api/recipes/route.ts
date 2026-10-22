@@ -41,6 +41,8 @@ export async function GET(request: Request): Promise<Response> {
 
   const query = url.searchParams.get("q")?.trim() ?? "";
   const pantry = readPantry(url.searchParams);
+  const allergies = url.searchParams.getAll("allergy").map((item) => item.trim()).filter(Boolean);
+  if (allergies.length > 30 || allergies.some((item) => item.length > 100)) return jsonError("Invalid allergy exclusions.", "INVALID_ALLERGIES", 400);
 
   if (query.length > MAX_QUERY_LENGTH) {
     return jsonError(
@@ -65,10 +67,10 @@ export async function GET(request: Request): Promise<Response> {
     if (await isRecipeCatalogConfigured()) {
       try {
         const catalog = await searchRecipeCatalog(
-          { pantry, query },
+          { pantry, query, allergies },
           embeddingModel(),
         );
-        if (catalog.recipes.length > 0) {
+        if (catalog.catalogCount > 0 || allergies.length > 0) {
           return Response.json(
             {
               recipes: catalog.recipes,
@@ -85,6 +87,8 @@ export async function GET(request: Request): Promise<Response> {
                   catalogCount: catalog.catalogCount,
                   embeddingCount: catalog.embeddingCount,
                   embedModel: catalog.embedModel,
+                  allergyExcludedCount: catalog.allergyExcludedCount,
+                  warning: catalog.warning,
                 },
               },
             },

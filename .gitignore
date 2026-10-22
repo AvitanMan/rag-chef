@@ -42,3 +42,8 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/output/playwright/
+/.playwright-cli/
+/.venv-recipes/
+/recipe-runs/
+__pycache__/
