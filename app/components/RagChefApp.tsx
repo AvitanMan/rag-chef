@@ -403,7 +403,7 @@ export default function RagChefApp() {
 
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDateDays(week, index)), [week]);
   const weekMeals = useMemo(() => weekDates.flatMap((date) => kitchen.state.meals[date] ? [kitchen.state.meals[date]] : []), [kitchen.state.meals, weekDates]);
-  const shoppingItems = useMemo(() => buildShoppingList(weekMeals, kitchen.state.pantry).map((item) => ({ ...item, key: `${week}:${item.key}` })), [weekMeals, kitchen.state.pantry, week]);
+  const shoppingItems = useMemo(() => buildShoppingList(weekMeals, kitchen.state.pantry, today).map((item) => ({ ...item, key: `${week}:${item.key}` })), [weekMeals, kitchen.state.pantry, week, today]);
   function recipeAllowed(recipe: Recipe) {
     return eligibilityFor(recipe).eligible;
   }
@@ -767,7 +767,7 @@ export default function RagChefApp() {
       {completionDate && kitchen.state.meals[completionDate] && (() => {
         const meal = kitchen.state.meals[completionDate];
         const unchanged = meal.id === completionMealId && plannedDinnerFingerprint(meal) === completionFingerprint;
-        const preview = consumptionPreview(meal, kitchen.state.pantry);
+        const preview = consumptionPreview(meal, kitchen.state.pantry, today);
         return <div className="kitchen-modal-backdrop"><section className="panel kitchen-modal" role="dialog" aria-modal="true" aria-label="Complete dinner"><span className="eyebrow">Dinner finished</span><h2>{meal.title}</h2><p>Mark this dinner cooked to remove its remaining needs from shopping. You can undo this in the plan.</p>{!unchanged && <p role="alert">This dinner changed. Cancel and open the current dinner before completing it.</p>}<label className="deduct-checkbox"><input type="checkbox" checked={deductStock} onChange={(event) => setDeductStock(event.target.checked)} />Deduct the matching pantry amounts shown below</label><ul>{preview.deductions.map((item) => <li key={item.pantryId}>{kitchen.state.pantry.find((stock) => stock.id === item.pantryId)?.name}: {item.before} → {item.after}</li>)}</ul>{preview.notes.map((note, index) => <p className="quantity-note" key={index}>{note}</p>)}{!preview.deductions.length && <p>No compatible, measured pantry stock to deduct.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setCompletionDate(null)}>Cancel</button><button className="primary-button" disabled={!unchanged} onClick={() => { kitchen.update((state) => state.meals[completionDate]?.id === completionMealId && plannedDinnerFingerprint(state.meals[completionDate]) === completionFingerprint ? completeMeal(state, completionDate, deductStock) : state); setCompletionDate(null); setSelectedRecipe(null); setView("plan"); }}>Confirm cooked</button></div></section></div>;
       })()}
 

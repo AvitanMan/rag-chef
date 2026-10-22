@@ -50,6 +50,31 @@ test("use-by edits persist and shared stock covers only dinners on eligible date
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
 });
 
+for (const date of ["2026-10-21", "2026-10-23"]) {
+  test(`cooking dinner planned for ${date} checks stock against today`, async ({ page, request }) => {
+    const recipe = await recipeFixture(request);
+    const early = date > TODAY;
+    const useBy = early ? TODAY : date;
+    await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy }, { id: "tomato", name: "tomato", measure: "4" }], meals: { [date]: mealFixture(recipe, date) } });
+    await page.goto("/");
+    if (!early) {
+      await navigate(page, "Shopping");
+      await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
+      await navigate(page, "Plan");
+    }
+    await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
+    const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+    await cooking.getByRole("button", { name: /Next step/ }).click();
+    await cooking.getByRole("button", { name: "Finish cooking", exact: true }).click();
+    const complete = page.getByRole("dialog", { name: "Complete dinner", exact: true });
+    if (early) await expect(complete).toContainText("rice: 200 g → 0 g");
+    else await expect(complete).toContainText("past its entered use-by date");
+    await complete.getByRole("checkbox").check();
+    await complete.getByRole("button", { name: "Confirm cooked", exact: true }).click();
+    await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").measure).toBe(early ? "0 g" : "200 g");
+  });
+}
+
 test("cooking shows final amounts once and cooked undo restores dated stock", async ({ page, request }) => {
   const recipe = await recipeFixture(request);
   const planned = mealFixture(recipe, TODAY, { servings: 4, ingredientOverrides: { "0": "350 g" } });

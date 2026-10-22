@@ -21,13 +21,13 @@ export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: st
   const saved = Object.values(meals).filter((meal) => dates.includes(meal.date));
   const used = new Set(saved.map((meal) => meal.recipeId));
   const identities = new Set(saved.flatMap((meal) => (meal.planningIngredients ?? meal.recipe?.ingredients ?? []).map((item) => canonicalIngredient(item.name))));
-  let virtualPantry = allocateStockForMeals(saved, pantry).pantry;
+  let virtualPantry = allocateStockForMeals(saved, pantry, today).pantry;
   const additions: PlannedMeal[] = [];
   const reasons: Record<string, string> = {};
   for (const date of dates.filter((day) => day >= today && !meals[day])) {
     const choices = [...new Map(recipes.map((recipe) => [recipe.id, recipe])).values()].filter((recipe) => !used.has(recipe.id)).map((recipe) => {
       const meal = createPlannedMeal(date, recipe);
-      const allocation = allocateMealStock(meal, virtualPantry);
+      const allocation = allocateMealStock(meal, virtualPantry, today);
       const reuse = allocation.ingredientIdentities.filter((identity) => identities.has(identity)).length;
       return { recipe, meal, allocation, reuse, tie: weeklyTie(week, recipe.id) };
     }).sort((a, b) => b.allocation.useSoonCoverage - a.allocation.useSoonCoverage || b.allocation.coverage - a.allocation.coverage || b.reuse - a.reuse || a.tie - b.tie || a.recipe.id.localeCompare(b.recipe.id));

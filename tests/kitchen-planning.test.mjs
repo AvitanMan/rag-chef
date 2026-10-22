@@ -14,7 +14,7 @@ for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-sto
   await writeFile(join(dir, `${name}.mjs`), code);
 }
 const load = (name) => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
-const { allocateMealStock, allocateStockForMeals, buildShoppingList, completeMeal, undoMeal, resolvedMealIngredients } = await load("quantities");
+const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients } = await load("quantities");
 const { createPlannedMeal } = await load("kitchen-state");
 const { fillEmptyDays } = await load("kitchen-planning");
 const { availablePantryNames } = await load("kitchen-stock");
@@ -49,18 +49,18 @@ test("one virtual inventory respects meal dates and shopping agrees with consump
   const first = meal(), second = meal("2026-10-23");
   const pantry = [stock("early", "rice", "500 g", "2026-10-22"), stock("undated", "rice", "200 g")];
   const before = structuredClone({ first, second, pantry });
-  const allocation = allocateStockForMeals([second, first], pantry);
+  const allocation = allocateStockForMeals([second, first], pantry, "2026-10-22");
   assert.equal(allocation.allocations[0].deductions[0].pantryId, "early");
   assert.equal(allocation.pantry.find((item) => item.id === "early").measure, "100 g");
   assert.equal(allocation.pantry.find((item) => item.id === "undated").measure, "0 g");
   assert.equal(allocation.allocations[1].coverage, 0.5);
   assert.ok(allocation.allocations[1].notes.some((note) => note.includes("past its entered use-by date")));
-  const [shopping] = buildShoppingList([first, second], pantry);
+  const [shopping] = buildShoppingList([first, second], pantry, "2026-10-22");
   assert.equal(shopping.requiredMeasure, "800 g");
   assert.equal(shopping.pantryMeasure, "600 g");
   assert.equal(shopping.measure, "200 g");
   assert.ok(shopping.notes.some((note) => note.includes("excluded")));
-  assert.deepEqual(completeMeal(kitchen(pantry, { [first.date]: first }), first.date, true).pantry, allocation.allocations[0].pantry);
+  assert.deepEqual(completeMeal(kitchen(pantry, { [first.date]: first }), first.date, true, "2026-10-22T12:00:00.000Z").pantry, allocation.allocations[0].pantry);
   assert.deepEqual({ first, second, pantry }, before);
 });
 
@@ -73,10 +73,37 @@ test("unknown and incompatible amounts cannot create quantified coverage or dedu
   assert.equal(buildShoppingList([value], result.pantry)[0].needsReview, true);
 });
 
+test("historical unfinished dinners cannot make past-dated stock available again", () => {
+  const dinner = meal("2030-01-10");
+  const pantry = [stock("past", "rice", "400 g", "2030-01-10")];
+  const today = "2030-01-12";
+  assert.equal(allocateMealStock(dinner, pantry, today).coverage, 0);
+  assert.deepEqual(allocateStockForMeals([dinner], pantry, today).allocations[0].deductions, []);
+  const [shopping] = buildShoppingList([dinner], pantry, today);
+  assert.equal(shopping.measure, "400 g");
+  assert.equal(shopping.pantryMeasure, "0 g");
+  assert.ok(shopping.notes.some((note) => note.includes("excluded")));
+  assert.deepEqual(consumptionPreview(dinner, pantry, today).deductions, []);
+  const state = kitchen(pantry, { [dinner.date]: dinner });
+  const cooked = completeMeal(state, dinner.date, true, "2030-01-12T12:00:00.000Z");
+  assert.deepEqual(cooked.pantry, pantry);
+  assert.deepEqual(cooked.meals[dinner.date].completion.deductions, []);
+});
+
+test("cooking a future dinner early checks stock against the actual cooking date", () => {
+  const dinner = meal("2030-01-14");
+  const pantry = [stock("today", "rice", "400 g", "2030-01-12")];
+  assert.equal(buildShoppingList([dinner], pantry, "2030-01-12")[0].measure, "400 g", "forecast respects the planned date");
+  assert.equal(consumptionPreview(dinner, pantry, "2030-01-12").deductions[0].after, "0 g");
+  const cooked = completeMeal(kitchen(pantry, { [dinner.date]: dinner }), dinner.date, true, "2030-01-12T12:00:00.000Z");
+  assert.equal(cooked.pantry[0].measure, "0 g");
+  assert.equal(cooked.meals[dinner.date].completion.deductions[0].useBy, "2030-01-12");
+});
+
 test("undo retains edited dates and recreates deleted stock with its captured date", () => {
   const dinner = meal();
   const initial = kitchen([stock("rice", "rice", "1 kg", "2026-10-22")], { [dinner.date]: dinner });
-  const cooked = completeMeal(initial, dinner.date, true);
+  const cooked = completeMeal(initial, dinner.date, true, "2026-10-22T12:00:00.000Z");
   assert.equal(cooked.meals[dinner.date].completion.deductions[0].useBy, "2026-10-22");
   validateKitchenState(cooked);
   const deleted = undoMeal({ ...cooked, pantry: [] }, dinner.date);

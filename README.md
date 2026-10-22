@@ -113,6 +113,8 @@ count ingredient names, not whether you have enough to cook the meal.
 Fresh installations start with an empty pantry. Known zero stock and stock past
 its optional entered **Use by** date do not count as available. The entered date
 is inclusive. Unknown amounts remain uncertain and are never treated as enough.
+Past-dated stock stays excluded for unfinished historical dinners. Cooking
+deductions use the actual cooking date, including when a dinner is cooked early.
 Automatic planning reserves measured stock for saved dinners, then fills upcoming
 empty days in date order without spending the same stock twice. Stock due within
 three days leads, followed by quantity coverage, ingredient reuse and stable ties.
