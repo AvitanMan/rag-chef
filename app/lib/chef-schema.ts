@@ -75,6 +75,7 @@ export type ChefChange = {
 export type ChefRecommendation = {
   recipeId: string;
   reason: string;
+  matchReason?: string;
   pantryMatch: string[];
   missingIngredients: string[];
 };

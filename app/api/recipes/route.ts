@@ -1,4 +1,4 @@
-import { constraintsForRecipeQuery, searchRecipeCatalog } from "@/app/lib/catalog-search";
+import { catalogMatchReason, constraintsForRecipeQuery, searchRecipeCatalog } from "@/app/lib/catalog-search";
 import { DEFAULT_RECIPE_EMBED_MODEL } from "@/app/lib/recipe-embeddings";
 import { RecipeSourceError, searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
 import { isRecipeCatalogConfigured } from "@/app/lib/recipe-store";
@@ -77,6 +77,7 @@ export async function GET(request: Request): Promise<Response> {
             {
               recipes: catalog.recipes,
               metadataByRecipeId: catalog.metadataByRecipeId,
+              matchReasonsByRecipeId: Object.fromEntries(catalog.ranked.map((item) => [item.recipe.id, catalogMatchReason(item, query, catalog.metadataByRecipeId[item.recipe.id])])),
               outcome: catalog.outcome,
               meta: {
                 count: catalog.recipes.length,
@@ -112,6 +113,7 @@ export async function GET(request: Request): Promise<Response> {
       {
         recipes,
         metadataByRecipeId: {},
+        matchReasonsByRecipeId: {},
         meta: {
           count: recipes.length,
           mode,

@@ -80,6 +80,10 @@ test("named searches and ingredient requests use the same concise shortlist in s
     await expect(page.locator(".recipe-card")).toHaveCount(1);
     const found = await (await request.get(`/api/recipes?q=${encodeURIComponent(query)}`)).json();
     expect(found.recipes).toEqual(answer.recipes);
+    const reason = query === "Cheese Pasta" ? "Matches the recipe you named." : "Matches your search words: pasta, cheese.";
+    expect(answer.recommendations[0].matchReason).toBe(reason);
+    expect(found.matchReasonsByRecipeId[answer.recipes[0].id]).toBe(reason);
+    await expect(page.locator(".match-reason")).toHaveText(`Why this match: ${reason}`);
   }
 });
 
@@ -89,6 +93,9 @@ test("invalid evidence IDs produce a labeled fallback rather than invented facts
   expect(answer.generation).toBe("catalog_fallback");
   expect(answer.sourceFacts).toEqual([]);
   expect(answer.recommendations[0].recipeId).toBe("fixture-tomato-rice");
+  expect(answer.recommendations[0].matchReason).toBe("Matches the recipe you named.");
+  await expect(page.locator(".match-reason")).toHaveText("Why this match: Matches the recipe you named.");
+  await expect(page.locator(".recommendation-details")).toContainText("Missing ingredient names:");
   await expect(page.locator(".chef-answer")).toContainText(/catalog|suggestions|unavailable/i);
 });
 
@@ -98,6 +105,8 @@ test("provider failure preserves relevant recipe suggestions without changing sa
   const answer = await ask(page, "Tomato Rice");
   expect(answer.generation).toBe("catalog_fallback");
   expect(answer.recommendations[0].recipeId).toBe("fixture-tomato-rice");
+  expect(answer.recommendations[0].matchReason).toBe("Matches the recipe you named.");
+  await expect(page.locator(".match-reason")).toHaveText("Why this match: Matches the recipe you named.");
   await expect(page.getByRole("button", { name: "View Tomato Rice", exact: true })).toBeVisible();
   expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
 });

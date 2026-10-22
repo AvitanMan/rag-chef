@@ -12,7 +12,7 @@ import {
   type ChefStructuredAnswer,
   type RecipeCandidate,
 } from "@/app/lib/chef-schema";
-import { focusedRecipeId, recipeQueryIntent, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
+import { catalogMatchReason, focusedRecipeId, recipeQueryIntent, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
 import type { Recipe } from "@/app/lib/recipe-types";
 import { normalizeConstraints, type RecipeEligibility } from "@/app/lib/recipe-constraints";
 import { parseMeasure } from "@/app/lib/quantities";
@@ -57,6 +57,7 @@ type RankedCandidate = {
   pantryMatch: string[];
   missingIngredients: string[];
   eligibility: RecipeEligibility;
+  matchReason: string;
 };
 type RetrievalResult = {
   method: CatalogRetrievalMethod;
@@ -103,7 +104,7 @@ export async function POST(request: Request): Promise<Response> {
       return amount === null || amount.quantity > 0;
     }).map((item) => item.name);
     const found = await searchRecipeCatalog({ query: input.query, pantry: pantryNames, constraints: normalizeConstraints(input.profile), limit: topK() }, embedModel);
-    retrieval = { method: found.method, ranked: found.ranked.map(asChefCandidate), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount, outcome: found.outcome };
+    retrieval = { method: found.method, ranked: found.ranked.map((item) => asChefCandidate(item, catalogMatchReason(item, input.query, found.metadataByRecipeId[item.recipe.id]))), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount, outcome: found.outcome };
     if (found.warning) preWarnings.push(found.warning);
   } catch {
     return jsonError(503, "catalog_unavailable", "The approved recipe catalog is unavailable. Retry when it is running; your kitchen is unchanged.");
@@ -147,7 +148,7 @@ export async function POST(request: Request): Promise<Response> {
       generated = {
         answer: "Here are recipe suggestions from your approved catalog. Open a recipe to check its ingredients and directions.",
         sourceFacts: [], chefChanges: [], citations: [], warnings: [],
-        recommendations: ranked.slice(0, 3).map((item) => ({ recipeId: item.recipe.id, reason: item.pantryMatch.length + " of " + item.recipe.ingredients.length + " ingredient names match your pantry; amounts are not checked.", pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients })),
+        recommendations: ranked.slice(0, 3).map((item) => ({ recipeId: item.recipe.id, reason: item.matchReason, pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients })),
       };
     }
   }
@@ -160,8 +161,8 @@ export function adaptationRequested(query: string, hasRecipeFocus = false): bool
   return recipeQueryIntent(query, hasRecipeFocus).mode === "adaptation";
 }
 
-function asChefCandidate(item: CatalogRankedRecipe): RankedCandidate {
-  return { ...item, candidate: { ...item.recipe, allergens: [], communityTips: [] } };
+function asChefCandidate(item: CatalogRankedRecipe, matchReason: string): RankedCandidate {
+  return { ...item, matchReason, candidate: { ...item.recipe, allergens: [], communityTips: [] } };
 }
 
 async function generateWithOllama(
@@ -347,6 +348,7 @@ function sanitizeGeneratedAnswer(
       return {
         recipeId: recommendation.recipeId,
         reason: recommendation.reason.slice(0, 1_200),
+        matchReason: rankedCandidate.matchReason,
         pantryMatch: rankedCandidate.pantryMatch,
         missingIngredients: rankedCandidate.missingIngredients,
       };

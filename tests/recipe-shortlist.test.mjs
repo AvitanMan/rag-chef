@@ -41,3 +41,34 @@ test("broad dinner browsing keeps reviewed ordering while specific queries norma
   assert.deepEqual(pure.search.selectCatalogShortlist(broad, "Dinner without beef").map((row) => row.recipe.id), broad.map((row) => row.recipe.id));
   assert.equal(pure.search.selectCatalogShortlist(ranked("a creamy pasta with mushrooms"), "a creamy pasta with mushrooms")[0].recipe.id, "pasta");
 });
+
+test("match reasons distinguish named recipes, normalized search words and partial semantic matches", () => {
+  const explain = pure.search.catalogMatchReason;
+  assert.equal(explain(ranked("Creamy Mushroom Pasta")[0], "Creamy Mushroom Pasta"), "Matches the recipe you named.");
+  const query = "pasta with mushrooms";
+  const candidates = ranked(query);
+  assert.equal(explain(candidates.find((row) => row.recipe.id === "pasta"), query), "Matches your search words: pasta, mushroom.");
+  const partial = { ...candidates.find((row) => row.recipe.id === "cheese"), semanticScore: 0.9 };
+  assert.equal(explain(partial, query), "Matches some search words: pasta.");
+  const semantic = { ...ranked("coastal comfort")[0], semanticScore: 0.9 };
+  assert.equal(pure.search.queryRelevanceDecision(semantic, "coastal comfort"), true);
+  assert.equal(explain(semantic, "coastal comfort"), "Related to your request by meaning.");
+});
+
+test("broad match reasons use reviewed dinner roles or pantry names without implying quantity or diet suitability", () => {
+  const explain = pure.search.catalogMatchReason;
+  const empty = ranked("Suggest dinner")[0];
+  assert.equal(explain(empty, "Suggest dinner"), "Suggested from your approved catalog.");
+  assert.equal(explain(empty, "Suggest dinner", { dinnerRole: "main" }), "Reviewed as a main dinner.");
+  assert.equal(explain(empty, "Suggest dinner", { dinnerRole: "unknown" }), "Suggested from your approved catalog.");
+  assert.equal(explain(ranked("Dinner without beef", ["pasta"])[0], "Dinner without beef"), "Uses ingredient names from your pantry.");
+});
+
+test("explaining a shortlist does not change its ranking or include excluded search words", () => {
+  const query = "pasta without mushrooms";
+  const shortlist = pure.search.selectCatalogShortlist(ranked(query), query);
+  const before = structuredClone(shortlist);
+  assert.equal(shortlist.length, 1);
+  assert.equal(pure.search.catalogMatchReason(shortlist[0], query), "Matches your search words: pasta.");
+  assert.deepEqual(shortlist, before);
+});

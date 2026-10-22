@@ -418,6 +418,7 @@ test("invalid or oversized model output safely falls back instead of leaking inv
     (a) => ({ ...a, sourceFacts: [{ recipeId: "R1", fact: "Invented 99 g protein." }] }),
     (a) => ({ ...a, citations: [{ sourceUrl: "https://wrong.example" }] }),
     (a) => ({ ...a, recommendations: [{ recipeId: "R1", reason: "Fine", pantryMatch: ["invented"] }] }),
+    (a) => ({ ...a, recommendations: [{ recipeId: "R1", reason: "Fine", matchReason: "Invented model-owned match explanation" }] }),
     (a) => ({ ...a, answer: "x".repeat(641) }),
     (a) => ({ ...a, sourceFacts: Array.from({ length: 4 }, () => ({ recipeId: "R1", evidenceId: "I1" })) }),
   ]) {
@@ -457,6 +458,7 @@ test("missing compound dishes abstain before generation even when their shared i
   const searchResult = await (await searchRoute.GET(new Request("http://localhost/api/recipes?q=Beef%20Wellington&pantry=beef,onion"))).json();
   assert.equal(searchResult.outcome, "no_match");
   assert.deepEqual(searchResult.recipes, []);
+  assert.deepEqual(searchResult.matchReasonsByRecipeId, {});
   const broad = await (await searchRoute.GET(new Request("http://localhost/api/recipes?q=beef%20dinner"))).json();
   assert.equal(broad.outcome, "matches");
   assert.equal(broad.recipes.length, 2);
@@ -474,8 +476,29 @@ test("the public search and Chef share a focused shortlist and prune incomplete 
     assert.deepEqual(found.recipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
     const answer = await (await chefRoute.POST(chefRequest({ query, pantry: ["pasta", "cheese"] }))).json();
     assert.deepEqual(answer.recipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
+    assert.equal(answer.recommendations[0].matchReason, found.matchReasonsByRecipeId[answer.recipes[0].id]);
+    assert.equal(answer.recommendations[0].matchReason, query === "Creamy Mushroom Pasta" ? "Matches the recipe you named." : "Matches your search words: pasta, mushroom.");
+    assert.equal(answer.recommendations[0].reason, "Matches your request", "The model's advice remains separate from the retrieval explanation");
     assert.deepEqual(contexts.at(-1).retrievedRecipes.map((recipe) => recipe.title), ["Creamy Mushroom Pasta"]);
   }
+});
+
+test("match explanations survive provider failure and invalid evidence while diet unknowns remain explicit", async () => {
+  await importOne(await draft());
+  const query = "Test rice 0";
+  const results = [];
+  for (const failure of ["none", "offline", "invalid_evidence"]) {
+    mockChef([], (answer) => failure === "invalid_evidence" ? { ...answer, sourceFacts: [{ recipeId: "R1", evidenceId: "S999" }] } : answer);
+    if (failure === "offline") globalThis.fetch = async () => { throw new Error("offline"); };
+    const result = await (await chefRoute.POST(chefRequest({ query, profile: { diet: "Vegetarian" } }))).json();
+    assert.equal(result.generation, failure === "none" ? "ai" : "catalog_fallback");
+    assert.equal(result.recommendations[0].matchReason, "Matches the recipe you named.");
+    if (failure !== "none") assert.equal(result.recommendations[0].reason, result.recommendations[0].matchReason);
+    assert.ok(result.warnings.some((warning) => warning.includes("Diet suitability is not verified")));
+    results.push(result.recipes);
+  }
+  assert.deepEqual(results[0], results[1]);
+  assert.deepEqual(results[0], results[2]);
 });
 
 test("unknown questions may return no recommendations without manufacturing a recipe card", async () => {
@@ -571,6 +594,7 @@ test("OpenAI receives the same complete evidence as Ollama and rejects incomplet
       const result = await (await chefRoute.POST(chefRequest({ provider: "openai" }))).json();
       assert.equal(result.generation, status === "completed" ? "ai" : "catalog_fallback");
       assert.equal(result.recommendations[0].recipeId, (await store.listCatalogRecipes())[0].recipe.id);
+      assert.equal(result.recommendations[0].matchReason, "Matches your search words: test, rice.");
       assert.deepEqual(result.sourceFacts.map((item) => item.fact), status === "completed" ? ["1 ½ cups rice", before.instructions[24]] : []);
       assert.deepEqual(result.recipes, [before]);
     }

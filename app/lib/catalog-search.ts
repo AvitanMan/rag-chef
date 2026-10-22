@@ -2,7 +2,7 @@ import { buildRecipeEmbeddingText, buildRecipeQueryText, cosineSimilarity, embed
 import { listCatalogRecipes, listStoredRecipeEmbeddings } from "./recipe-store";
 import { normalizeRecipeSearch, recipePantryDetails } from "./recipe-browser";
 import { evaluateRecipeConstraints, normalizeConstraints, type RecipeEligibility } from "./recipe-constraints";
-import type { Recipe, RecipeConstraints, RecipeMetadataMap, RecipeSearchOptions } from "./recipe-types";
+import type { Recipe, RecipeConstraints, RecipeMetadata, RecipeMetadataMap, RecipeSearchOptions } from "./recipe-types";
 
 export type CatalogRetrievalMethod = "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
 export type CatalogSearchOutcome = "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
@@ -117,6 +117,17 @@ export function recipeQueryEvidence(query: string, recipe: Recipe): Pick<Catalog
   const matchedQueryTerms = terms.filter((term) => content.has(term));
   const missingQueryTerms = terms.filter((term) => !content.has(term));
   return { queryCoverage: terms.length ? matchedQueryTerms.length / terms.length : 0, matchedQueryTerms, missingQueryTerms };
+}
+
+/** Explain an already-selected result without changing relevance or eligibility. */
+export function catalogMatchReason(item: Pick<CatalogRankedRecipe, "exactTitle" | "matchedQueryTerms" | "queryCoverage" | "pantryMatch">, query: string, metadata?: Pick<RecipeMetadata, "dinnerRole">): string {
+  if (item.exactTitle) return "Matches the recipe you named.";
+  if (recipeQueryIntent(query).broad) {
+    if (metadata?.dinnerRole === "main") return "Reviewed as a main dinner.";
+    return item.pantryMatch.length ? "Uses ingredient names from your pantry." : "Suggested from your approved catalog.";
+  }
+  if (item.matchedQueryTerms.length) return `${item.queryCoverage === 1 ? "Matches your search words" : "Matches some search words"}: ${item.matchedQueryTerms.join(", ")}.`;
+  return "Related to your request by meaning.";
 }
 
 /** The same final selection is used by production retrieval and evaluation. */
