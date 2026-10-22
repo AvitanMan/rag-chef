@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import type { Recipe } from "../../app/lib/recipe-types";
 
 const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL;
 if (!modelURL || new URL(modelURL).hostname !== "127.0.0.1") throw new Error("Use the disposable model stub through pnpm test:e2e.");
@@ -23,13 +24,23 @@ test.beforeEach(async () => { await control({ resetCalls: true }); });
 test.afterEach(async () => { await control({ resetCalls: true, release: true }); });
 
 test("Chef evidence quotes approved source records and keeps ingredient quantities intact", async ({ page, request }) => {
-  const before = await (await request.get("/api/recipes/catalog")).json();
+  const before = await (await request.get("/api/recipes/catalog")).json() as { recipes: Recipe[] };
   const answer = await ask(page, "Tomato Rice");
   expect(answer.generation).toBe("ai");
   expect(answer.sourceFacts).toHaveLength(1);
   expect(answer.sourceFacts[0]).toMatchObject({ recipeId: "fixture-tomato-rice", evidenceId: "I1" });
   expect(answer.sourceFacts[0].fact).toContain("rice");
   expect(answer.sourceFacts[0].fact).toContain("200 g");
+  const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string; body: { messages?: Array<{ role: string; content: string }> } }> };
+  const prompt = status.calls.find((call) => call.path === "/api/chat")!.body.messages!.find((message) => message.role === "user")!.content;
+  const record = JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2)).retrievedRecipes[0];
+  const source = before.recipes.find((recipe) => recipe.id === "fixture-tomato-rice")!;
+  expect(Object.hasOwn(record, "ingredients")).toBe(false);
+  expect(Object.hasOwn(record, "instructions")).toBe(false);
+  expect(record.evidence).toEqual([
+    ...source.ingredients.map((ingredient, index) => ({ evidenceId: `I${index + 1}`, text: [ingredient.measure, ingredient.name].filter(Boolean).join(" ") })),
+    ...source.instructions.map((text, index) => ({ evidenceId: `S${index + 1}`, text })),
+  ]);
   await page.getByRole("button", { name: "View Tomato Rice", exact: true }).click();
   await expect(page.locator(".source-facts")).toContainText(answer.sourceFacts[0].fact);
   await expect(page.getByRole("dialog")).toContainText("Simmer the rice and tomatoes for 10 minutes.");

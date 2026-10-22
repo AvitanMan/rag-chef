@@ -262,7 +262,18 @@ test("cross-origin writes, remote unconfigured admin and oversized batches are r
 function chefRequest(overrides = {}) {
   return new Request("http://localhost:3000/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: "Test rice", pantry: ["rice"], provider: "ollama", ...overrides }) });
 }
-function mockChef(contexts, transform = (answer) => answer) {
+function assertChefEvidence(record, recipe) {
+  assert.equal(Object.hasOwn(record, "ingredients"), false);
+  assert.equal(Object.hasOwn(record, "instructions"), false);
+  assert.equal(record.title, recipe.title);
+  assert.equal(record.servings, recipe.servings ?? null);
+  assert.equal(record.sourceName, recipe.source.name);
+  assert.deepEqual(record.evidence, [
+    ...recipe.ingredients.map((ingredient, index) => ({ evidenceId: `I${index + 1}`, text: [ingredient.measure, ingredient.name].filter(Boolean).join(" ") })),
+    ...recipe.instructions.map((text, index) => ({ evidenceId: `S${index + 1}`, text })),
+  ]);
+}
+function mockChef(contexts, transform = (answer) => answer, prompts = []) {
   globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
     if (String(url).endsWith("/api/embed")) {
@@ -277,6 +288,8 @@ function mockChef(contexts, transform = (answer) => answer) {
     assert.deepEqual(body.format.properties.recommendations.items.required, ["recipeId", "reason"]);
     assert.match(body.messages[0].content, /Required JSON schema:/);
     assert.match(prompt, /at most two short sentences/);
+    assert.match(prompt, /complete original ingredients.*complete original directions/);
+    prompts.push(prompt);
     const context = JSON.parse(prompt.slice(prompt.indexOf("\n\n") + 2));
     contexts.push(context);
     const recipe = context.retrievedRecipes[0];
@@ -302,7 +315,7 @@ test("Chef searches all 102 approved recipes rather than a client shortlist and 
   assert.equal(result.citations[0].sourceUrl, expected.sourceUrl);
   assert.match(result.recipes[0].source.licenseUrl, /creativecommons/);
   assert.equal(contexts[0].retrievedRecipes.length, 1);
-  assert.equal(contexts[0].retrievedRecipes[0].instructions.length, 25);
+  assertChefEvidence(contexts[0].retrievedRecipes[0], expected);
   assert.equal(contexts[0].retrievedRecipes[0].recipeId, "R1");
   assert.equal(contexts[0].retrievedRecipes[0].sourceUrl, undefined);
   assert.deepEqual(result.recommendations[0].pantryMatch, ["rice"]);
@@ -314,6 +327,35 @@ test("Chef searches all 102 approved recipes rather than a client shortlist and 
   assert.equal(refreshed.embeddings.completedCount, 102);
   assert.equal(refreshed.catalog.embeddingCount, 102);
   assert.equal(JSON.stringify(db.prepare("SELECT * FROM recipes ORDER BY id").all()), before);
+});
+
+test("a 25-step Chef context keeps all quantities, source evidence and metadata with less serialized input", async (t) => {
+  await importOne(await draft(0, {
+    ingredients: [{ name: "rice", measure: "1 ½ cups" }, { name: "water", measure: "500 ml" }, { name: "fresh coriander", measure: "" }],
+    instructions: Array.from({ length: 25 }, (_, index) => `Instruction ${index + 1}: stir the rice gently, keeping the original source direction intact.`),
+  }));
+  const review = await metadataReview();
+  assert.equal((await metadataRoute.POST(metadataRequest([review]))).status, 200);
+  const before = (await store.listCatalogRecipes())[0];
+  const contexts = [];
+  mockChef(contexts, (answer) => ({ ...answer, sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }, { recipeId: "R1", evidenceId: "S25" }] }));
+  const result = await (await chefRoute.POST(chefRequest({ query: before.recipe.title, pantry: [{ name: "rice", quantity: "100 g" }], profile: { diet: "Vegan", dislikes: ["onion"], equipment: ["Stovetop"] } }))).json();
+  assert.equal(result.generation, "ai");
+  const context = contexts[0];
+  assertChefEvidence(context.retrievedRecipes[0], before.recipe);
+  assert.deepEqual(context.retrievedRecipes[0].reviewedMetadata, before.metadata);
+  assert.deepEqual(context.pantry, [{ name: "rice", quantity: "100 g" }]);
+  assert.deepEqual(context.profile, chefSchema.parseChefRequest({ query: before.recipe.title, profile: { diet: "Vegan", dislikes: ["onion"], equipment: ["Stovetop"] } }).profile);
+  assert.deepEqual(result.sourceFacts.map((item) => item.fact), ["1 ½ cups rice", before.recipe.instructions[24]]);
+  assert.deepEqual(result.recipes, [before.recipe]);
+  assert.deepEqual((await store.listCatalogRecipes())[0], before);
+
+  // The prior context supplied both source arrays in addition to this same evidence.
+  const legacy = { ...context, retrievedRecipes: context.retrievedRecipes.map((record) => ({ ...record, ingredients: before.recipe.ingredients, instructions: before.recipe.instructions })) };
+  const oldBytes = Buffer.byteLength(JSON.stringify(legacy));
+  const newBytes = Buffer.byteLength(JSON.stringify(context));
+  assert.ok(newBytes < oldBytes, "Complete evidence must use less input than the duplicated source representation");
+  t.diagnostic(`25-step serialized JSON context: ${oldBytes} -> ${newBytes} UTF-8 bytes (${((oldBytes - newBytes) / oldBytes * 100).toFixed(1)}% smaller); includes unchanged reviewed metadata and profile.`);
 });
 
 test("allergy exclusions apply before top-K selection and generation context", async () => {
@@ -349,13 +391,15 @@ test("compact recipe references hydrate facts, changes, citations and pantry dat
   await importOne(await draft());
   const before = (await store.listCatalogRecipes())[0].recipe;
   const contexts = [];
-  mockChef(contexts, (answer) => ({ ...answer, answer: "Try Test rice 0 (R1).", sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }], chefChanges: [{ recipeId: "R1", change: "Use vegetable stock instead of water.", reason: "A proposed savory adaptation, not part of the source." }] }));
+  mockChef(contexts, (answer) => ({ ...answer, answer: "Try Test rice 0 (R1).", sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }, { recipeId: "R1", evidenceId: "S2" }], chefChanges: [{ recipeId: "R1", change: "Use vegetable stock instead of water.", reason: "A proposed savory adaptation, not part of the source." }] }));
   const result = await (await chefRoute.POST(chefRequest({ query: "Could I use stock instead of water in Test rice 0?" }))).json();
   assert.equal(result.generation, "ai");
   assert.equal(result.answer, "Try Test rice 0.");
   assert.equal(result.sourceFacts[0].recipeId, before.id);
   assert.equal(result.sourceFacts[0].evidenceId, "I1");
   assert.equal(result.sourceFacts[0].fact, "1 ½ cups rice");
+  assert.equal(result.sourceFacts[1].fact, before.instructions[1]);
+  assertChefEvidence(contexts[0].retrievedRecipes[0], before);
   assert.deepEqual(contexts[0].retrievedRecipes[0].evidence[0], { evidenceId: "I1", text: "1 ½ cups rice" });
   assert.equal(result.chefChanges[0].recipeId, before.id);
   assert.deepEqual(result.citations, [{ recipeId: before.id, title: before.title, sourceName: before.source.name, sourceUrl: before.sourceUrl }]);
@@ -501,11 +545,16 @@ test("a named vegan adaptation preserves its original source but cannot bypass s
   assert.deepEqual((await store.listCatalogRecipes())[0].recipe, before);
 });
 
-test("OpenAI uses the same compact strict schema and rejects incomplete responses without paid calls", async () => {
-  await importOne(await draft());
+test("OpenAI receives the same complete evidence as Ollama and rejects incomplete or invalid responses without paid calls", async () => {
+  await importOne(await draft(0, { instructions: Array.from({ length: 25 }, (_, step) => `Instruction ${step + 1}: cook carefully.`) }));
+  const before = (await store.listCatalogRecipes())[0].recipe;
+  const contexts = []; const prompts = [];
+  mockChef(contexts, (answer) => answer, prompts);
+  assert.equal((await (await chefRoute.POST(chefRequest())).json()).generation, "ai");
+  assertChefEvidence(contexts[0].retrievedRecipes[0], before);
   process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
   try {
-    for (const status of ["completed", "incomplete"]) {
+    for (const status of ["completed", "incomplete", "invalid_evidence"]) {
       globalThis.fetch = async (url, options) => {
         const body = JSON.parse(options.body);
         if (String(url).endsWith("/api/embed")) return Response.json({ embeddings: [[1, 2, 3]] });
@@ -513,13 +562,17 @@ test("OpenAI uses the same compact strict schema and rejects incomplete response
         assert.deepEqual(body.text.format.schema.properties.recommendations, chefSchema.CHEF_RESPONSE_JSON_SCHEMA.properties.recommendations);
         assert.equal(body.text.format.schema.properties.chefChanges.maxItems, 0);
         assert.equal(body.store, false);
+        assert.equal(body.input[1].content, prompts[0]);
         const context = JSON.parse(body.input[1].content.split("\n\n")[1]);
         assert.equal(context.retrievedRecipes[0].recipeId, "R1");
-        return Response.json({ status, output_text: JSON.stringify({ answer: "Use this source recipe.", recommendations: [{ recipeId: "R1", reason: "Fits the request." }], sourceFacts: [], chefChanges: [], warnings: [] }) });
+        assertChefEvidence(context.retrievedRecipes[0], before);
+        return Response.json({ status: status === "invalid_evidence" ? "completed" : status, output_text: JSON.stringify({ answer: "Use this source recipe.", recommendations: [{ recipeId: "R1", reason: "Fits the request." }], sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }, { recipeId: "R1", evidenceId: status === "invalid_evidence" ? "S26" : "S25" }], chefChanges: [], warnings: [] }) });
       };
       const result = await (await chefRoute.POST(chefRequest({ provider: "openai" }))).json();
       assert.equal(result.generation, status === "completed" ? "ai" : "catalog_fallback");
       assert.equal(result.recommendations[0].recipeId, (await store.listCatalogRecipes())[0].recipe.id);
+      assert.deepEqual(result.sourceFacts.map((item) => item.fact), status === "completed" ? ["1 ½ cups rice", before.instructions[24]] : []);
+      assert.deepEqual(result.recipes, [before]);
     }
   } finally { delete process.env.OPENAI_API_KEY; }
 });

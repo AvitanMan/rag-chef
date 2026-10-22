@@ -152,10 +152,19 @@ recipe text submitted by a client. Ingredient-text allergy exclusions run before
 ranking and before recipes reach the model. Retrieval combines precomputed
 semantic embeddings, lexical relevance, and conservative pantry-name coverage.
 
-The model receives complete directions for the selected records and returns a
-small, validated JSON response. The server supplies canonical recipe IDs,
+The model receives each selected recipe's complete ingredients and directions
+once, in an ordered evidence list (`I1…` for ingredients with quantities, `S1…`
+for cooking steps), and returns a small, validated JSON response. Titles,
+servings, reviewed metadata, pantry information and user preferences remain in
+the input. The server supplies canonical recipe IDs,
 citations, and pantry lists. Proposed substitutions appear separately from
 source facts and unchanged original directions.
+
+The fixed 25-step regression fixture uses **5,339 bytes instead of 7,627 bytes**
+for its serialized JSON context, a **30.0% reduction** with all evidence,
+reviewed metadata and preferences retained. This measures input size, not tokens
+or response speed; local-model timing checks remain separate from deterministic
+tests.
 
 Source facts use request-local ingredient/step evidence IDs; the server copies
 their original text rather than accepting model-written factual claims. Recipe
