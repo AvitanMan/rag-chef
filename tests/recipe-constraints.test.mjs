@@ -34,12 +34,13 @@ test("known diet conflicts are excluded while unknowns stay eligible and labeled
 });
 
 test("ingredient evidence overrides reviewed fits and a diet review never overrides an allergy", () => {
-  const metadata = { diets: { vegan: "fits", vegetarian: "fits", gluten_free: "unknown", low_carb: "unknown" }, equipment: ["oven"], totalMinutes: 20 };
+  const metadata = { diets: { vegan: "fits", vegetarian: "fits", gluten_free: "unknown", low_carb: "unknown" }, equipment: ["oven"], totalMinutes: 20, provenance: { totalMinutes: { basis: "source", evidence: "Total time: 20 minutes." } } };
   assert.equal(decide(["butter"], { diet: "Vegan" }, metadata).eligible, false);
   assert.equal(decide(["peanut"], { allergies: ["peanut"] }, metadata).eligible, false);
   assert.deepEqual(decide(["rice"], { diet: "Vegan" }, metadata).dietUnknowns, []);
   assert.equal(decide(["rice"], { maxTotalMinutes: 30 }, metadata).eligible, true);
   assert.equal(decide(["rice"], { maxTotalMinutes: 30 }).eligible, false);
+  assert.equal(decide(["rice"], { maxTotalMinutes: 30 }, { ...metadata, provenance: { totalMinutes: { basis: "curator_estimate", evidence: "Estimated 20 minutes." } } }).eligible, false, "An estimate cannot satisfy a hard total-time limit");
   assert.equal(decide(["rice"], { equipment: ["Stovetop"] }, metadata).eligible, false);
 });
 

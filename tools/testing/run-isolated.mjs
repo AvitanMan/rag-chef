@@ -2,7 +2,7 @@ import { cp, mkdir, mkdtemp, open, readdir, rm, symlink, writeFile } from "node:
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fixtureSql } from "./fixtures.mjs";
 import { startModelStub } from "./model-stub.mjs";
@@ -23,7 +23,7 @@ let cleaning;
 // Only non-secret tool settings reach the disposable project. No user .env file,
 // cloud credentials, database, browser profile, or inherited model key is copied.
 const env = {
-  PATH: `${resolve(process.execPath, "..")}\u003a${process.env.PATH ?? ""}`,
+  PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
   HOME: process.env.HOME,
   TMPDIR: process.env.TMPDIR ?? tmpdir(),
   SYSTEMROOT: process.env.SYSTEMROOT,

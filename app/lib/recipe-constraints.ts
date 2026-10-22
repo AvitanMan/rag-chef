@@ -60,12 +60,13 @@ export function evaluateRecipeConstraints(recipe: Recipe, metadata: RecipeMetada
   const dietUnknowns = constraints.diets.filter((diet) => !dietConflicts.includes(diet) && metadata?.diets[diet] !== "fits");
   const dislikedIngredients = recipe.ingredients.filter((ingredient) => constraints.dislikes.some((term) => containsIngredientTerm(normalizeIngredientText(ingredient.name), term))).map((x) => x.name);
   const equipmentMissing = constraints.equipment.length && metadata?.equipment ? metadata.equipment.filter((item) => !constraints.equipment.includes(normalizeIngredientText(item))) : [];
+  const establishedTotal = metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source" ? metadata.totalMinutes : null;
   const reasons = [
     ...allergyMatches.map((x) => `Excluded ingredient allergy: ${x}.`),
     ...dietConflicts.map((x) => `Known conflict with ${x.replaceAll("_", " ")} diet.`),
     ...equipmentMissing.map((x) => `Requires unavailable equipment: ${x}.`),
-    ...(constraints.maxTotalMinutes !== undefined && (metadata?.totalMinutes == null || metadata.totalMinutes > constraints.maxTotalMinutes)
-      ? [metadata?.totalMinutes == null ? "Total time is not verified." : `Total time exceeds ${constraints.maxTotalMinutes} minutes.`] : []),
+    ...(constraints.maxTotalMinutes !== undefined && (establishedTotal === null || establishedTotal > constraints.maxTotalMinutes)
+      ? [establishedTotal === null ? "A complete source total time is not verified." : `Total time exceeds ${constraints.maxTotalMinutes} minutes.`] : []),
   ];
   return { eligible: !reasons.length, allergyMatches, dietConflicts, dietUnknowns, dislikedIngredients, equipmentMissing, reasons };
 }

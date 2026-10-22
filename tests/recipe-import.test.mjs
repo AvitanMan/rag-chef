@@ -344,11 +344,14 @@ test("compact recipe references hydrate facts, changes, citations and pantry dat
   await importOne(await draft());
   const before = (await store.listCatalogRecipes())[0].recipe;
   const contexts = [];
-  mockChef(contexts, (answer) => ({ ...answer, answer: "Try Test rice 0 (R1).", sourceFacts: [{ recipeId: "R1", fact: "The source uses rice." }], chefChanges: [{ recipeId: "R1", change: "Use vegetable stock instead of water.", reason: "A proposed savory adaptation, not part of the source." }] }));
+  mockChef(contexts, (answer) => ({ ...answer, answer: "Try Test rice 0 (R1).", sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }], chefChanges: [{ recipeId: "R1", change: "Use vegetable stock instead of water.", reason: "A proposed savory adaptation, not part of the source." }] }));
   const result = await (await chefRoute.POST(chefRequest({ query: "Could I use stock instead of water in Test rice 0?" }))).json();
   assert.equal(result.generation, "ai");
   assert.equal(result.answer, "Try Test rice 0.");
   assert.equal(result.sourceFacts[0].recipeId, before.id);
+  assert.equal(result.sourceFacts[0].evidenceId, "I1");
+  assert.equal(result.sourceFacts[0].fact, "1 ½ cups rice");
+  assert.deepEqual(contexts[0].retrievedRecipes[0].evidence[0], { evidenceId: "I1", text: "1 ½ cups rice" });
   assert.equal(result.chefChanges[0].recipeId, before.id);
   assert.deepEqual(result.citations, [{ recipeId: before.id, title: before.title, sourceName: before.source.name, sourceUrl: before.sourceUrl }]);
   assert.deepEqual(result.recommendations[0].missingIngredients, []);
@@ -361,11 +364,13 @@ test("invalid or oversized model output safely falls back instead of leaking inv
   for (const mutate of [
     (a) => ({ ...a, recommendations: [{ recipeId: "R8", reason: "Not in this request" }] }),
     (a) => ({ ...a, recommendations: [{ recipeId: "https://wrong.example", reason: "Fake" }] }),
-    (a) => ({ ...a, sourceFacts: [{ recipeId: "R8", fact: "Invented source fact" }] }),
+    (a) => ({ ...a, sourceFacts: [{ recipeId: "R8", evidenceId: "I1" }] }),
+    (a) => ({ ...a, sourceFacts: [{ recipeId: "R1", evidenceId: "S999" }] }),
+    (a) => ({ ...a, sourceFacts: [{ recipeId: "R1", fact: "Invented 99 g protein." }] }),
     (a) => ({ ...a, citations: [{ sourceUrl: "https://wrong.example" }] }),
     (a) => ({ ...a, recommendations: [{ recipeId: "R1", reason: "Fine", pantryMatch: ["invented"] }] }),
     (a) => ({ ...a, answer: "x".repeat(641) }),
-    (a) => ({ ...a, sourceFacts: Array.from({ length: 4 }, () => ({ recipeId: "R1", fact: "Extra fact" })) }),
+    (a) => ({ ...a, sourceFacts: Array.from({ length: 4 }, () => ({ recipeId: "R1", evidenceId: "I1" })) }),
   ]) {
     mockChef([], mutate);
     const result = await (await chefRoute.POST(chefRequest())).json();
@@ -373,6 +378,30 @@ test("invalid or oversized model output safely falls back instead of leaking inv
     assert.deepEqual(result.chefChanges, []);
     assert.ok(result.citations.every((citation) => citation.sourceUrl.startsWith("https://en.wikibooks.org/")));
   }
+});
+
+test("unrelated requests abstain even with complete pantry coverage, and broad requests still browse", async () => {
+  await route.POST(req([await draft()]));
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  for (const query of ["qwerty flibbertigibbet", "lobster thermidor", "quantum spaceship repair"]) {
+    const result = await (await chefRoute.POST(chefRequest({ query, pantry: ["rice"] }))).json();
+    assert.equal(result.outcome, "no_match", query); assert.deepEqual(result.recommendations, []); assert.deepEqual(result.recipes, []);
+  }
+  const broad = await (await chefRoute.POST(chefRequest({ query: "What can I make with my ingredients?" }))).json();
+  assert.equal(broad.outcome, "matches"); assert.equal(broad.recipes.length, 1);
+});
+
+test("unknown questions may return no recommendations without manufacturing a recipe card", async () => {
+  await route.POST(req([await draft()]));
+  mockChef([], (answer) => ({ ...answer, answer: "Nutrition is not provided by the source.", recommendations: [] }));
+  const result = await (await chefRoute.POST(chefRequest({ query: "For Test rice 0, how much protein is there?" }))).json();
+  assert.equal(result.generation, "ai"); assert.deepEqual(result.recommendations, []);
+  assert.equal(result.citations.length, 0);
+});
+
+test("adaptation recognition includes scaling and explicit reductions without expanding source permissions", () => {
+  for (const query of ["Make Test rice vegan", "Scale Test rice for 8 people", "For Test rice, halve the salt", "Double Test rice"]) assert.equal(chefRoute.adaptationRequested(query), true, query);
+  assert.equal(chefRoute.adaptationRequested("Recommend rice"), false);
 });
 
 test("OpenAI uses the same compact strict schema and rejects incomplete responses without paid calls", async () => {

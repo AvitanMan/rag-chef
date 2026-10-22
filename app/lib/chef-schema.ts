@@ -62,6 +62,7 @@ export type ChefRequest = {
 export type ChefSourceFact = {
   recipeId: string;
   fact: string;
+  evidenceId?: string;
 };
 
 export type ChefChange = {
@@ -103,6 +104,7 @@ export type RankedRecipe = {
 export type ChefApiResponse = ChefStructuredAnswer & {
   recipes: Recipe[];
   metadataByRecipeId: RecipeMetadataMap;
+  outcome: "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
   generation: "ai" | "catalog_fallback";
   provider: ChefProvider;
   model: string;
@@ -135,9 +137,9 @@ export const CHEF_RESPONSE_JSON_SCHEMA = {
         additionalProperties: false,
         properties: {
           recipeId: { type: "string", enum: ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"] },
-          fact: { type: "string", minLength: 1, maxLength: 360 },
+          evidenceId: { type: "string", pattern: "^[IS][1-9][0-9]{0,2}$" },
         },
-        required: ["recipeId", "fact"],
+        required: ["recipeId", "evidenceId"],
       },
     },
     chefChanges: {
@@ -156,7 +158,7 @@ export const CHEF_RESPONSE_JSON_SCHEMA = {
     },
     recommendations: {
       type: "array",
-      minItems: 1,
+      minItems: 0,
       maxItems: 3,
       items: {
         type: "object",

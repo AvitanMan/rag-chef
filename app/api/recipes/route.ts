@@ -77,6 +77,7 @@ export async function GET(request: Request): Promise<Response> {
             {
               recipes: catalog.recipes,
               metadataByRecipeId: catalog.metadataByRecipeId,
+              outcome: catalog.outcome,
               meta: {
                 count: catalog.recipes.length,
                 mode: query ? "search" : pantry.length > 0 ? "pantry" : "curated",

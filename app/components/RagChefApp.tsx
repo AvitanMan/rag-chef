@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Recipe, RecipeMetadataMap } from "../lib/recipe-types";
 import { evaluateRecipeConstraints, normalizeConstraints } from "../lib/recipe-constraints";
 import { availablePantryNames } from "../lib/kitchen-stock";
@@ -56,6 +56,7 @@ type ChefResponse = {
   warnings: string[];
   retrieval?: { method: string; catalogCount: number };
   metadataByRecipeId?: RecipeMetadataMap;
+  outcome?: "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
 };
 
 const DEFAULT_PROFILE: Profile = {
@@ -254,8 +255,12 @@ export default function RagChefApp() {
   const [planningNotice, setPlanningNotice] = useState("");
   const [recipeStatus, setRecipeStatus] = useState("Loading licensed recipes…");
   const [loadingRecipes, setLoadingRecipes] = useState(false);
-  const [askingChef, setAskingChef] = useState(false);
-  const [chefResult, setChefResult] = useState<ChefResponse | null>(null);
+  const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, settings });
+  const [chefBusyContext, setChefBusyContext] = useState<string | null>(null);
+  const askingChef = chefBusyContext === chefContext;
+  const [storedChefResult, setChefResult] = useState<(ChefResponse & { contextKey: string }) | null>(null);
+  const chefResult = storedChefResult?.contextKey === chefContext ? storedChefResult : null;
+  const chefRequest = useRef<{ id: number; controller: AbortController | null }>({ id: 0, controller: null });
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [metric, setMetric] = useState(true);
   const [week, setWeek] = useState(() => weekStart());
@@ -275,6 +280,7 @@ export default function RagChefApp() {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("");
+  useEffect(() => () => chefRequest.current.controller?.abort(), []);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -406,13 +412,19 @@ export default function RagChefApp() {
   }
 
   async function askChef(prompt = query) {
+    chefRequest.current.controller?.abort();
+    const controller = new AbortController();
+    const requestId = ++chefRequest.current.id;
+    chefRequest.current.controller = controller;
+    const contextKey = chefContext;
     const finalQuery = prompt.trim() || "What can I cook with what I have?";
     setQuery(finalQuery);
-    setAskingChef(true);
+    setChefBusyContext(contextKey);
     try {
       const response = await fetch("/api/chef", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           query: finalQuery,
           pantry: kitchen.state.pantry.filter((item) => pantry.includes(item.name)).map((item) => ({ name: item.name, quantity: item.measure || undefined })),
@@ -425,12 +437,15 @@ export default function RagChefApp() {
         }),
       });
       const data = await response.json() as ChefResponse & { error?: { message?: string } };
+      if (requestId !== chefRequest.current.id || controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.error?.message || "Chef could not load the approved catalog. Please retry.");
-      setChefResult(data);
+      setChefResult({ ...data, contextKey });
       if (data.metadataByRecipeId) setMetadataByRecipeId((current) => ({ ...current, ...data.metadataByRecipeId }));
       setRecipeStatus(`${data.retrieval?.catalogCount ?? 0} approved recipes searched · ${data.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}`);
     } catch (error) {
+      if (requestId !== chefRequest.current.id || controller.signal.aborted) return;
       setChefResult({
+        contextKey,
         answer: error instanceof Error ? error.message : "Chef could not load the approved catalog. Please retry.",
         recipes: [], generation: "catalog_fallback",
         sourceFacts: [],
@@ -438,8 +453,15 @@ export default function RagChefApp() {
         recommendations: [], citations: [], warnings: [],
       });
     } finally {
-      setAskingChef(false);
+      if (requestId === chefRequest.current.id) setChefBusyContext(null);
     }
+  }
+
+  function cancelChef() {
+    ++chefRequest.current.id;
+    chefRequest.current.controller?.abort();
+    chefRequest.current.controller = null;
+    setChefBusyContext(null);
   }
 
   function generatePlan() {
@@ -564,7 +586,7 @@ export default function RagChefApp() {
     chefResult?.recommendations.map((item) => item.recipeId) ?? [],
   );
   const visibleRecipes = chefResult
-    ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id))
+    ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id) && recipeAllowed(recipe))
     : rankedRecipes;
 
   return (
@@ -623,6 +645,7 @@ export default function RagChefApp() {
             removePantryItem={removePantryItem}
             askChef={askChef}
             askingChef={askingChef}
+            cancelChef={cancelChef}
             chefResult={chefResult}
             recipes={visibleRecipes}
             recipeStatus={recipeStatus}
@@ -820,6 +843,7 @@ function ChefView({
   removePantryItem,
   askChef,
   askingChef,
+  cancelChef,
   chefResult,
   recipes,
   recipeStatus,
@@ -840,6 +864,7 @@ function ChefView({
   removePantryItem: (value: string) => void;
   askChef: (prompt?: string) => Promise<void>;
   askingChef: boolean;
+  cancelChef: () => void;
   chefResult: ChefResponse | null;
   recipes: Recipe[];
   recipeStatus: string;
@@ -883,6 +908,7 @@ function ChefView({
               {askingChef ? "Chef is thinking…" : "Find my dinner"}
               <span aria-hidden="true">→</span>
             </button>
+            {askingChef && <button className="secondary-button" onClick={cancelChef}>Cancel request</button>}
           </div>
         </div>
 
@@ -950,7 +976,7 @@ function ChefView({
             <p>{chefResult.answer}</p>
             {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
           </div>
-          <button className="secondary-button" onClick={generatePlan}>Plan the week</button>
+          {chefResult.recommendations.length > 0 && <button className="secondary-button" onClick={generatePlan}>Plan the week</button>}
         </section>
       )}
 
@@ -973,6 +999,7 @@ function ChefView({
               recipe={recipe}
               details={detailsFor(recipe)}
               dietUnknowns={eligibilityFor(recipe).dietUnknowns}
+              recommendation={chefResult?.recommendations.find((item) => item.recipeId === recipe.id)}
               featured={index === 0}
               open={() => openRecipe(recipe)}
             />
@@ -980,8 +1007,8 @@ function ChefView({
         </div>
         {!recipes.length && (
           <div className="empty-state">
-            <strong>No safe matches yet.</strong>
-            <p>Try a broader request or add another pantry ingredient.</p>
+            <strong>{chefResult?.outcome === "no_match" ? "No relevant recipe found." : "No recipes to show."}</strong>
+            <p>{chefResult?.outcome === "constraints_unsatisfied" ? "Keep your exclusions and review the available recipe collection." : "Try a different dish or a broader dinner request."}</p>
           </div>
         )}
       </section>
@@ -997,6 +1024,7 @@ export function RecipeCard({
   add,
   addLabel = "Add to plan",
   dietUnknowns = [],
+  recommendation,
 }: {
   recipe: Recipe;
   details: ReturnType<typeof pantryDetails>;
@@ -1005,6 +1033,7 @@ export function RecipeCard({
   add?: () => void;
   addLabel?: string;
   dietUnknowns?: string[];
+  recommendation?: ChefResponse["recommendations"][number];
 }) {
   return (
     <article className={`recipe-card ${featured ? "featured" : ""}`}>
@@ -1017,6 +1046,7 @@ export function RecipeCard({
         <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p>
         <small className="coverage-note">Names only · amounts not checked</small>
         {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
+        {recommendation && <div className="recommendation-details"><p>{recommendation.reason}</p><p className="quantity-note">{recommendation.missingIngredients.length ? `Missing ingredient names: ${recommendation.missingIngredients.join(", ")}` : "All ingredient names match your pantry; check quantities before cooking."}</p></div>}
         <div className="recipe-footer">
           <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             Source: {sourceLabel(recipe)}

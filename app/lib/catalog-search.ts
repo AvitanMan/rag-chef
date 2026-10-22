@@ -2,9 +2,11 @@ import { buildRecipeEmbeddingText, buildRecipeQueryText, cosineSimilarity, embed
 import { listCatalogRecipes, listStoredRecipeEmbeddings } from "./recipe-store";
 import { normalizeRecipeSearch, recipePantryDetails } from "./recipe-browser";
 import { evaluateRecipeConstraints, normalizeConstraints, type RecipeEligibility } from "./recipe-constraints";
-import type { Recipe, RecipeMetadataMap, RecipeSearchOptions } from "./recipe-types";
+import type { Recipe, RecipeConstraints, RecipeMetadataMap, RecipeSearchOptions } from "./recipe-types";
 
 export type CatalogRetrievalMethod = "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
+export type CatalogSearchOutcome = "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
+export const catalogRelevanceThresholds = { lexical: 0.333333, semantic: 0.82855, version: "recipe-relevance-v1" } as const;
 export interface CatalogRankedRecipe {
   recipe: Recipe;
   score: number;
@@ -27,16 +29,45 @@ export interface CatalogSearchResult {
   metadataByRecipeId: RecipeMetadataMap;
   embedModel: string;
   warning?: string;
+  outcome: CatalogSearchOutcome;
 }
 
-const STOP_WORDS = new Set("a an and can cook for from i in make me my of please recipe recipes the to want what with something dinner tonight".split(" "));
+const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend some something suggest suggestions that the to tonight use want what when which with would dinner ideas using".split(" "));
+
+/** Deterministic intent only: do not let generated text relax stored exclusions. */
+export function recipeQueryIntent(query: string): { topic: string; broad: boolean; maxTotalMinutes?: number; diets: string[] } {
+  const normalized = normalizeRecipeSearch(query);
+  const time = normalized.match(/\b(?:under|within|less than|up to|in)\s+(\d{1,3})\s*(?:minutes?|mins?)\b/);
+  const diets = [
+    ...( /\bvegan\b/.test(normalized) ? ["vegan"] : []),
+    ...( /\bvegetarian\b/.test(normalized) ? ["vegetarian"] : []),
+    ...( /\bgluten free\b/.test(normalized) ? ["gluten_free"] : []),
+    ...( /\blow carb\b/.test(normalized) ? ["low_carb"] : []),
+  ];
+  const topic = normalized.replace(/\b(?:under|within|less than|up to|in)\s+\d{1,3}\s*(?:minutes?|mins?)\b/g, " ")
+    .replace(/\b(?:vegan|vegetarian|gluten free|low carb)\b/g, " ")
+    .split(" ").filter((word) => word && !STOP_WORDS.has(word)).join(" ");
+  return { topic, broad: !topic, diets, ...(time && Number(time[1]) > 0 ? { maxTotalMinutes: Number(time[1]) } : {}) };
+}
+
+export function constraintsForRecipeQuery(query: string, constraints: RecipeConstraints): RecipeConstraints {
+  const intent = recipeQueryIntent(query);
+  const parsed = normalizeConstraints({ ...constraints, diets: [...constraints.diets, ...intent.diets] });
+  const maximum = [constraints.maxTotalMinutes, intent.maxTotalMinutes].filter((x): x is number => x !== undefined);
+  return { ...parsed, ...(maximum.length ? { maxTotalMinutes: Math.min(...maximum) } : {}) };
+}
+
+/** Pantry coverage orders relevant recipes, but cannot make an unrelated dish relevant. */
+export function queryRelevanceDecision(item: Pick<CatalogRankedRecipe, "exactTitle" | "lexicalScore" | "semanticScore">, query: string, thresholds: { lexical: number; semantic: number } = catalogRelevanceThresholds): boolean {
+  return recipeQueryIntent(query).broad || item.exactTitle || item.lexicalScore >= thresholds.lexical || (item.semanticScore !== null && item.semanticScore >= thresholds.semantic);
+}
 
 /** Only explicit positive named-dish requests; not a general intent classifier. */
 export function focusedRecipeId(query: string, recipes: Recipe[]): string | null {
   const request = normalizeRecipeSearch(query);
   const matches = recipes.filter((recipe) => {
     const title = normalizeRecipeSearch(recipe.title);
-    return title && (request === title || ["for", "recommend", "help me cook", "help me make", "how do i cook", "how do i make"].some((prefix) => request === `${prefix} ${title}` || request.startsWith(`${prefix} ${title} `)));
+    return title && (request === title || ["for", "recommend", "make", "scale", "halve", "help me cook", "help me make", "how do i cook", "how do i make"].some((prefix) => request === `${prefix} ${title}` || request.startsWith(`${prefix} ${title} `)));
   }).sort((a, b) => b.title.length - a.title.length);
   return matches[0]?.id ?? null;
 }
@@ -52,7 +83,7 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
   const query = options.query?.trim() ?? "";
   const pantry = options.pantry ?? [];
   const focus = focusedRecipeId(query, recipes);
-  const constraints = options.constraints ?? normalizeConstraints({ allergies: options.allergies });
+  const constraints = constraintsForRecipeQuery(query, options.constraints ?? normalizeConstraints({ allergies: options.allergies }));
   return recipes.map((recipe) => {
     const eligibility = evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints);
     const details = recipePantryDetails(recipe, pantry);
@@ -68,11 +99,11 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
 export async function searchRecipeCatalog(options: RecipeSearchOptions, embedModel: string): Promise<CatalogSearchResult> {
   // This loader enforces active recipes and database source approval/permissions.
   const stored = await listCatalogRecipes(1000);
-  const constraints = options.constraints ?? normalizeConstraints({ allergies: options.allergies });
+  const constraints = constraintsForRecipeQuery(options.query ?? "", options.constraints ?? normalizeConstraints({ allergies: options.allergies }));
   const metadataByRecipeId: RecipeMetadataMap = Object.fromEntries(stored.flatMap((item) => item.metadata ? [[item.recipe.id, item.metadata]] : []));
   const evaluated = stored.map(({ recipe }) => ({ recipe, eligibility: evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints) }));
   const eligible = evaluated.filter((item) => item.eligibility.eligible).map((item) => item.recipe);
-  const result: CatalogSearchResult = { recipes: [], ranked: [], method: "empty", catalogCount: stored.length, embeddingCount: 0, allergyExcludedCount: evaluated.filter((item) => item.eligibility.allergyMatches.length).length, constraintExcludedCount: stored.length - eligible.length, metadataByRecipeId, embedModel };
+  const result: CatalogSearchResult = { recipes: [], ranked: [], method: "empty", outcome: stored.length ? "constraints_unsatisfied" : "catalog_empty", catalogCount: stored.length, embeddingCount: 0, allergyExcludedCount: evaluated.filter((item) => item.eligibility.allergyMatches.length).length, constraintExcludedCount: stored.length - eligible.length, metadataByRecipeId, embedModel };
   const requestedFocus = focusedRecipeId(options.query ?? "", stored.map((item) => item.recipe));
   const blocked = evaluated.find((item) => item.recipe.id === requestedFocus && !item.eligibility.eligible);
   if (blocked) {
@@ -89,7 +120,7 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
       result.embeddingCount = vectors.size;
       // Don't compare semantic scores with differently scaled partial-index scores.
       if (!eligible.every((recipe) => vectors.has(recipe.id))) throw new Error("Search embeddings are pending.");
-      const query = await embedTextsWithOllama([buildRecipeQueryText(options.query, options.pantry ?? [])], { model: embedModel, timeoutMs: 8000 });
+      const query = await embedTextsWithOllama([buildRecipeQueryText(options.query, [])], { model: embedModel, timeoutMs: 8000 });
       queryVector = query.vectors[0] ?? null;
       const dimension = queryVector?.length;
       if (!dimension || !eligible.every((recipe) => isValidEmbeddingVector(vectors.get(recipe.id), dimension))) throw new Error("Search embedding dimensions differ.");
@@ -99,7 +130,9 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
     }
   }
   const limit = Math.min(Math.max(Math.floor(options.limit ?? 8), 1), 20);
-  result.ranked = rankCatalogRecipes(eligible, { ...options, constraints }, vectors, queryVector, metadataByRecipeId).slice(0, limit);
+  const ranked = rankCatalogRecipes(eligible, { ...options, constraints }, vectors, queryVector, metadataByRecipeId);
+  result.ranked = ranked.filter((item) => queryRelevanceDecision(item, options.query ?? "")).slice(0, limit);
+  result.outcome = result.ranked.length ? "matches" : "no_match";
   result.recipes = result.ranked.map((item) => item.recipe);
   result.method = queryVector ? "precomputed_embeddings" : options.query?.trim() || options.pantry?.length ? "lexical_pantry" : "catalog_order";
   return result;
