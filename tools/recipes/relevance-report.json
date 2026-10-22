@@ -1,7 +1,7 @@
 {
   "reportVersion": 1,
-  "generatedAt": "2026-10-22T17:37:38.147Z",
-  "evaluatorSha256": "e9a9067caaea5a27e4c4a6f5607ec04dab3539bdd20d27c70bcd80badc6280cb",
+  "generatedAt": "2026-10-22T17:59:17.075Z",
+  "evaluatorSha256": "0d3ceb5c4d6c9ddab048ae72655e382185e727c41856a4eb0c7d4c2addb949f3",
   "corpus": {
     "file": "tools/recipes/fixtures/relevance-catalog.json",
     "sha256": "8a770cc09f00ef7a68905bf188845d9f59d76fff7cfd2c3f824020c06e86fbc5",
@@ -15,7 +15,7 @@
     "splitBeforeCalibration": true
   },
   "ranker": {
-    "sourceSha256": "7c76d042bfd327163f597809ac0502a10ca7d63753469cc820749507454c3a4d",
+    "sourceSha256": "7067d256ec5ac736b98918fc3ef4ae28259d9e5af728d2c6d7379ef0ea121ae3",
     "embeddingSourceSha256": "404181d7e696ceb0b9226c553a59fefeb1b6ff2793b54a91517d18ea806aabda",
     "constraintsSourceSha256": "2471f9cfd7a52c2f8ae13e0e2c98617a3e8f03ed8d0f3ac79d0f5b69c9db4d11",
     "safetySourceSha256": "2f5381dbfed5656d680cebde9355cd3dbe57052ef0eef8028f3584080de6b5d1",
@@ -43,17 +43,21 @@
     },
     "configurationMatchesSelection": true
   },
+  "shortlist": {
+    "version": "recipe-shortlist-v1",
+    "lexicalQueryCoverage": 0.6666666666666666,
+    "secondaryQueryCoverage": 1,
+    "maximumTargetedResults": 3,
+    "countDefinition": "Returned shortlist capped at three for evaluation; the same selector is used by production."
+  },
   "selection": {
     "split": "calibration",
     "mode": "frozen_configured",
-    "calibrationCandidate": {
-      "lexical": 0.666666,
-      "semantic": 0.836933
-    },
+    "calibrationCandidate": null,
     "targetRetention": 0.95,
     "targetAbstention": 0.95,
-    "searchedPairs": 6888,
-    "objective": "Both semantic and forced-lexical calibration gates, worst classification rate, total classification rates, expected hit@3, labeled precision@3. Equal metrics favor the stricter lexical boundary, then the least restrictive semantic boundary within (0,1]. Held-out labels never select thresholds."
+    "searchedPairs": 0,
+    "objective": "Verify configured thresholds and shortlist policy without searching parameters. Held-out labels never select thresholds."
   },
   "precisionDefinition": "Mean precision among returned top-three titles for supported cases with explicit acceptable-title labels. Labels are not exhaustive culinary judgments; unlabeled titles count as a penalty. Broad queries are excluded.",
   "semantic": {
@@ -62,13 +66,13 @@
       "supported": 20,
       "unsupported": 20,
       "retention": 1,
-      "abstention": 0.95,
+      "abstention": 1,
       "expectedTitleCases": 18,
       "expectedHitAt3": 1,
       "exactTitleCases": 10,
       "exactTitleTopOne": 1,
-      "labeledPrecisionAt3": 0.4629629629629629,
-      "labeledPrecisionPenalty": 0.5370370370370371,
+      "labeledPrecisionAt3": 0.8611111111111112,
+      "labeledPrecisionPenalty": 0.13888888888888884,
       "gatesPassed": true,
       "results": [
         {
@@ -83,29 +87,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
               "title": "Cheese Omelette",
               "lexicalScore": 1,
-              "semanticScore": 0.8971878375547688
-            },
-            {
-              "id": "wikibooks:db82826ed6cd1a83f6e13d826fafdf4a698a7fb1fecd84cae6d8eefffafbb7dd",
-              "title": "Cheese Spaetzle",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8369329010383003
-            },
-            {
-              "id": "wikibooks:dfd7acf6463fa043a97463a3c4e215b4313d8e542cb5028bb69d555ef0683752",
-              "title": "Chickpea Omelette",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8285501125284742
+              "semanticScore": 0.8971878375547688,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cheese",
+                "omelet"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8971878375547688,
           "broad": false
@@ -122,29 +120,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:a56ea8e3be24bf941c8122afbd1c18aff5f0419b551e5c256051f8031a656450",
               "title": "Baked Ziti",
               "lexicalScore": 1,
-              "semanticScore": 0.8837072887279588
-            },
-            {
-              "id": "wikibooks:a9dbf0da5089a8e6607d04b33f27612addc7c69b894b2a52600f323892a3db99",
-              "title": "Baked Brie in Puff Pastry",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7893978626772593
-            },
-            {
-              "id": "wikibooks:c267dd90d2438599c158140dc4aeaf34a1a6caaf8638b83afb2fc66e47cae4e6",
-              "title": "Baked Penne",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7891443960580785
+              "semanticScore": 0.8837072887279588,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "baked",
+                "ziti"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 8,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8837072887279588,
           "broad": false
@@ -161,29 +153,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 1,
-              "semanticScore": 0.8888072678142098
-            },
-            {
-              "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
-              "title": "Egyptian Lentil Soup",
-              "lexicalScore": 0.8,
-              "semanticScore": 0.8747310071000821
-            },
-            {
-              "id": "wikibooks:b75e51ac0e3f788316b0936c7f1f0508205d720f338c3311e08cf77e2d53413d",
-              "title": "Pasta and Bean Soup (Pasta e Fagioli)",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.8207813502475256
+              "semanticScore": 0.8888072678142098,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "red",
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 23,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8888072678142098,
           "broad": false
@@ -200,29 +187,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
               "title": "Chickpea Stew",
               "lexicalScore": 1,
-              "semanticScore": 0.9061392538157205
-            },
-            {
-              "id": "wikibooks:d122dd44ad577c08a6b557ce9a5f82536e3a209b3c0a23e7af3b9e0405cc992b",
-              "title": "Garbanzo Bean Stew",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8682121062007455
-            },
-            {
-              "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
-              "title": "Cholley (Chickpea Curry)",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.857195978382209
+              "semanticScore": 0.9061392538157205,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "stew"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 11,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.9061392538157205,
           "broad": false
@@ -239,29 +220,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 1,
-              "semanticScore": 0.8874632686395557
-            },
-            {
-              "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-              "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8292011847481291
-            },
-            {
-              "id": "wikibooks:a56ea8e3be24bf941c8122afbd1c18aff5f0419b551e5c256051f8031a656450",
-              "title": "Baked Ziti",
-              "lexicalScore": 0.13333333333333333,
-              "semanticScore": 0.8357127536620186
+              "semanticScore": 0.8874632686395557,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 13,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8874632686395557,
           "broad": false
@@ -278,23 +254,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c8690e13447942825b9ebd5d132458670ef30bff8743fd2ff48ba4fabceab21d",
               "title": "Mapo Tofu",
               "lexicalScore": 1,
-              "semanticScore": 0.8890640043664326
-            },
-            {
-              "id": "wikibooks:11e3f219f1f23e95c2720aa4f1365842bfbdc878bd6ebfd852e06f073df89b9e",
-              "title": "Tandoori Tofu",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7997678217075942
+              "semanticScore": 0.8890640043664326,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "mapo",
+                "tofu"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8890640043664326,
           "broad": false
@@ -311,23 +287,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "themealdb:52774",
               "title": "Pad See Ew",
               "lexicalScore": 1,
-              "semanticScore": 0.7833721273305378
-            },
-            {
-              "id": "wikibooks:572e61f0518dc83a1dc6bb29ea8aecb015533acd63fef317481b0ebb7d0d099d",
-              "title": "Pad Thai",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.740208838629126
+              "semanticScore": 0.7833721273305378,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pad",
+                "see",
+                "ew"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.7833721273305378,
           "broad": false
@@ -344,29 +321,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f52cd202673c0cc106f083263394ce6818449c18ce33476284979bbe7831b44",
               "title": "Bean Chili",
               "lexicalScore": 1,
-              "semanticScore": 0.8859376322119135
-            },
-            {
-              "id": "wikibooks:830696d244406662b74fd806246c19f51414ea96e2d9634d0f8425d7b536ae07",
-              "title": "Bean Balls",
-              "lexicalScore": 0.7,
-              "semanticScore": 0.8490118556001152
-            },
-            {
-              "id": "wikibooks:2e615aa3925f818be215c2f36e41ab9744e67f4f9805de8972e8f6e1db75619f",
-              "title": "Chili (Vegan)",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.85777001477394
+              "semanticScore": 0.8859376322119135,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "chili"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 15,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8859376322119135,
           "broad": false
@@ -383,29 +354,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
               "title": "Egyptian Lentil Soup",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": 0.8506919060050557
+              "semanticScore": 0.8506919060050557,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": 0.8440608354086532
-            },
-            {
-              "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
-              "title": "Yogurt Curry Soup (Kadhi)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8183420390243845
+              "semanticScore": 0.8440608354086532,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 22,
+          "relevantCount": 2,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": 0.8506919060050557,
           "broad": false
@@ -422,29 +399,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
               "title": "Creamy Mushroom Pasta",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": 0.897802809690346
-            },
-            {
-              "id": "wikibooks:2a5fe775c0fc148c3879006cc9df30d42b584a1aec31938fc5edc6e73c2484d5",
-              "title": "Pasta in Gorgonzola Cheese Sauce (Pasta Alla Gorgonzola)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8510286095878811
-            },
-            {
-              "id": "themealdb:52777",
-              "title": "Mediterranean Pasta Salad",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8475976494113746
+              "semanticScore": 0.897802809690346,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cream",
+                "pasta",
+                "mushroom"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 13,
+          "relevantCount": 1,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": 0.897802809690346,
           "broad": false
@@ -461,29 +433,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
               "title": "Cholley (Chickpea Curry)",
               "lexicalScore": 1,
-              "semanticScore": 0.8846854254751332
+              "semanticScore": 0.8846854254751332,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
               "title": "Yogurt Curry Soup (Kadhi)",
               "lexicalScore": 0.7,
-              "semanticScore": 0.860439598030527
-            },
-            {
-              "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
-              "title": "Chickpea Stew",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8726535909824655
+              "semanticScore": 0.860439598030527,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 2,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8846854254751332,
           "broad": false
@@ -501,29 +479,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
               "title": "Tomato Pasta",
               "lexicalScore": 1,
-              "semanticScore": 0.8787341087995866
-            },
-            {
-              "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-              "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-              "lexicalScore": 1,
-              "semanticScore": 0.8645808980411527
-            },
-            {
-              "id": "themealdb:52777",
-              "title": "Mediterranean Pasta Salad",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8469123888431549
+              "semanticScore": 0.8787341087995866,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "pasta"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 15,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8787341087995866,
           "broad": false
@@ -548,22 +520,40 @@
               "id": "wikibooks:8090f83d9fab363c0ba0518da9b03e6a1ad11215a8cc58590536716751105280",
               "title": "Loco Moco (Rice with Egg and Hamburger)",
               "lexicalScore": 1,
-              "semanticScore": 0.8457494018446411
+              "semanticScore": 0.8457494018446411,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 0.7,
-              "semanticScore": 0.8259146685679533
+              "semanticScore": 0.8259146685679533,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:1598486bff52edf8758b361023f753642a3c01d0d46599f6a7d55085e73cb16f",
               "title": "Lentil Rice Loaf",
               "lexicalScore": 0.7,
-              "semanticScore": 0.8067004796869919
+              "semanticScore": 0.8067004796869919,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 13,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8457494018446411,
           "broad": false
@@ -581,29 +571,33 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.6666666666666666,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:58ae59f8ed23fe947b0039d75f104609b10c870e6d71e6a201ebb094ca1831af",
               "title": "Blueberry Pancakes",
               "lexicalScore": 0.5,
-              "semanticScore": 0.8478641231867565
+              "semanticScore": 0.8478641231867565,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:7f623a6802b2722793574a76d9d927a7e1fe8c61ba6759d601462b129df22708",
               "title": "Blueberry Muffin",
               "lexicalScore": 0.5,
-              "semanticScore": 0.8401071605641965
-            },
-            {
-              "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
-              "title": "Breakfast Burrito",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7739620933529834
+              "semanticScore": 0.8401071605641965,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 3,
+          "relevantCount": 2,
           "maxLexicalScore": 0.5,
           "maxSemanticScore": 0.8478641231867565,
           "broad": false
@@ -632,7 +626,12 @@
               "id": "wikibooks:b435e83a39247f75648881d678b3b40aace6e5c3f33542ddd3891076be248f6f",
               "title": "Pancakes (Vegan)",
               "lexicalScore": 1,
-              "semanticScore": 0.8679903159764115
+              "semanticScore": 0.8679903159764115,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pancake"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -652,29 +651,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:328294bd118372f5329eeec1e4acd17d569bf3777ca27c9142c4d77e0e5f4fd8",
               "title": "Warm Black Bean Salad with Kale and Tomatoes",
               "lexicalScore": 0.7,
-              "semanticScore": 0.8592085370634348
+              "semanticScore": 0.8592085370634348,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "kale"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:092c82954eb77d7fa3aaba3407e3741b702ed0367fbc8a8e93bba0adf576287d",
               "title": "Black-Eyed Peas and Kale",
               "lexicalScore": 0.5,
-              "semanticScore": 0.8434545207918023
-            },
-            {
-              "id": "wikibooks:a77a7a60c9d0b2c420158339cdcae388d95c0820534beed042b8ad4fa0c9e9f1",
-              "title": "Baked Beans",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.827016730567997
+              "semanticScore": 0.8434545207918023,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "kale"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 11,
+          "relevantCount": 2,
           "maxLexicalScore": 0.7,
           "maxSemanticScore": 0.8592085370634348,
           "broad": false
@@ -699,22 +704,40 @@
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 1,
-              "semanticScore": 0.8714593446733538
-            },
-            {
-              "id": "themealdb:52772",
-              "title": "Teriyaki Chicken Casserole",
-              "lexicalScore": 0.7,
-              "semanticScore": 0.8461879545838049
+              "semanticScore": 0.8714593446733538,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "themealdb:52774",
               "title": "Pad See Ew",
               "lexicalScore": 0.4,
-              "semanticScore": 0.8565118204328322
+              "semanticScore": 0.8565118204328322,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
+            },
+            {
+              "id": "themealdb:52772",
+              "title": "Teriyaki Chicken Casserole",
+              "lexicalScore": 0.7,
+              "semanticScore": 0.8461879545838049,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 23,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8714593446733538,
           "broad": false
@@ -738,7 +761,17 @@
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 0.68,
-              "semanticScore": 0.8496912454499965
+              "semanticScore": 0.8496912454499965,
+              "queryCoverage": 0.8,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake",
+                "salt"
+              ],
+              "missingQueryTerms": [
+                "halve"
+              ]
             }
           ],
           "relevantCount": 1,
@@ -763,22 +796,31 @@
               "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
               "title": "Cholley (Chickpea Curry)",
               "lexicalScore": 0,
-              "semanticScore": 0.8302884039975338
+              "semanticScore": 0.8302884039975338,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:ddc8064334830eb550befd44dc628788fc4eeb621d6726c86538a2ee35cba85c",
               "title": "Vichyssoise (Chilled Potato Leek Soup)",
               "lexicalScore": 0,
-              "semanticScore": 0.8269197159783117
+              "semanticScore": 0.8269197159783117,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:fa669d307bfbd0170be250b361635b532948cb04af4d191fcc07238bd1338747",
               "title": "Paneer Butter Masala",
               "lexicalScore": 0,
-              "semanticScore": 0.8238785594666167
+              "semanticScore": 0.8238785594666167,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": 0.8302884039975338,
           "broad": true
@@ -800,22 +842,31 @@
               "id": "wikibooks:0e8f67d0aa18042a2dfb8554a816c695f349bf576ab47d04e8e392ad558f31dc",
               "title": "Bean Soup (Vegetarian)",
               "lexicalScore": 1,
-              "semanticScore": 0.8055300137935915
+              "semanticScore": 0.8055300137935915,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:f9f30ab3cbaad43c6ff2892cbefc183d992887aee02a26a959321cf40b318724",
               "title": "Saffron Rice and Beans",
               "lexicalScore": 0.4,
-              "semanticScore": 0.7836886304188365
+              "semanticScore": 0.7836886304188365,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
               "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
               "lexicalScore": 0,
-              "semanticScore": 0.8084821096893823
+              "semanticScore": 0.8084821096893823,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 111,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8084821096893823,
           "broad": true
@@ -1060,33 +1111,14 @@
           "query": "Beef Wellington",
           "expectedOutcome": "no_match",
           "expectedTitles": [],
-          "accepted": true,
-          "outcomePass": false,
+          "accepted": false,
+          "outcomePass": true,
           "expectedHitAt3": null,
           "exactTitleTopOnePass": null,
           "labeledPrecisionAt3": null,
           "exclusionsPass": true,
-          "top3": [
-            {
-              "id": "wikibooks:5e5568b4d99ee446109712a203d08c1a951f44b41720c7544a7c5ceb91ebac84",
-              "title": "Hearty Beef Vegetable Soup",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.796430817777456
-            },
-            {
-              "id": "wikibooks:242652b720c4e5e9d651e7d9879da1b7c3318ee5fe301ed68674f6895e2512cb",
-              "title": "Beef Stew II",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7912933241587947
-            },
-            {
-              "id": "wikibooks:59ca03dcc3e1b85c33cd6785c38fbccffcb2b62bce0c74138c7a61d55051fa0e",
-              "title": "Beef Fajitas",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.7786903635662301
-            }
-          ],
-          "relevantCount": 3,
+          "top3": [],
+          "relevantCount": 0,
           "maxLexicalScore": 0.5,
           "maxSemanticScore": 0.796430817777456,
           "broad": false
@@ -1211,8 +1243,8 @@
       "expectedHitAt3": 1,
       "exactTitleCases": 9,
       "exactTitleTopOne": 1,
-      "labeledPrecisionAt3": 0.5277777777777777,
-      "labeledPrecisionPenalty": 0.4722222222222223,
+      "labeledPrecisionAt3": 0.9166666666666666,
+      "labeledPrecisionPenalty": 0.08333333333333337,
       "gatesPassed": true,
       "results": [
         {
@@ -1227,29 +1259,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:4ec487abf6cce4ea9799a28990e70064bae7f24fed8ed8ea572e2ce695da775f",
               "title": "Cauliflower Cheese",
               "lexicalScore": 1,
-              "semanticScore": 0.8847304130084686
-            },
-            {
-              "id": "wikibooks:a3735e353c5fa530f3f9a9d294ae63d85878caf98dc853130418ad85e3ab0fe5",
-              "title": "Cauliflower Rice",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8296544312848835
-            },
-            {
-              "id": "wikibooks:e16e48caabeed787529a9bfdcf62cd7117fba66adc2f1c67088671312606147c",
-              "title": "Cheese Enchilada",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8087589548638668
+              "semanticScore": 0.8847304130084686,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cauliflower",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 7,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8847304130084686,
           "broad": false
@@ -1273,7 +1299,12 @@
               "id": "wikibooks:8209ab1dc69cd5a4fb340157761361b5d7354fbc56e6337b19ff1d7b68648b6c",
               "title": "Calzone",
               "lexicalScore": 1,
-              "semanticScore": 0.8454085432145176
+              "semanticScore": 0.8454085432145176,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "calzone"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -1300,7 +1331,13 @@
               "id": "wikibooks:2de88beb6bc5f17528755d229109645e1c9102cd52bebf08d96ff1f9baca3cf2",
               "title": "Baba Ganoush",
               "lexicalScore": 1,
-              "semanticScore": 0.8536337125997311
+              "semanticScore": 0.8536337125997311,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "baba",
+                "ganoush"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -1327,7 +1364,13 @@
               "id": "wikibooks:e3bc856301f50cc100aec7daba34e1c9e6387b05664f3a69e8c8053f522d4137",
               "title": "Buckwheat Crêpes",
               "lexicalScore": 1,
-              "semanticScore": 0.8813660765032145
+              "semanticScore": 0.8813660765032145,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "buckwheat",
+                "crepe"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -1348,29 +1391,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.6666666666666666,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:cc3c677dc061dfbd52f25cd000d7e40ab20c9ce28c4790c1df59ab9147e7b881",
               "title": "Eggplant and Chickpea Skillet",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": 0.8729468353492739
-            },
-            {
-              "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
-              "title": "Chickpea Stew",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8389112109007235
-            },
-            {
-              "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
-              "title": "Cholley (Chickpea Curry)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8244293257551933
+              "semanticScore": 0.8729468353492739,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "chickpea",
+                "skillet"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 1,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": 0.8729468353492739,
           "broad": false
@@ -1387,29 +1425,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c281c34bec657fddb2b85048683329336561b2019ccd35dde2e402aa9030038e",
               "title": "Garlic Parmesan Pasta",
               "lexicalScore": 1,
-              "semanticScore": 0.91013914766596
-            },
-            {
-              "id": "wikibooks:db3201ae26d783a5a1e71b702edb8a37e6b5fdbbfdfc89520330b44c779ee44b",
-              "title": "Kale and Garlic Pasta",
-              "lexicalScore": 0.8,
-              "semanticScore": 0.8374993835715014
-            },
-            {
-              "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
-              "title": "Tomato Pasta",
-              "lexicalScore": 0.6,
-              "semanticScore": 0.8274115469735253
+              "semanticScore": 0.91013914766596,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "garlic",
+                "parmesan",
+                "pasta"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 12,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.91013914766596,
           "broad": false
@@ -1426,29 +1459,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:69d0b0541fb5752961ef6050d797ffad0f65f315bb9fc25bf978eda93ef38ae9",
               "title": "Easy Onion Chicken",
               "lexicalScore": 1,
-              "semanticScore": 0.8995142756244966
-            },
-            {
-              "id": "wikibooks:c185347dd282ff694b676f06fa3222f2dab0587e31f71d132cc4dde65996bf86",
-              "title": "Chicken Fajitas",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.8223273792883796
-            },
-            {
-              "id": "wikibooks:3c2ba4a993df1f624fff4bd6e802b961b51c03addf6cdbed1a7e8b848436a145",
-              "title": "French Onion Soup",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.8092190764508123
+              "semanticScore": 0.8995142756244966,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "easy",
+                "onion",
+                "chicken"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8995142756244966,
           "broad": false
@@ -1465,29 +1493,25 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:b27c7ae1898acf042beb0484a8918f578c8806a487fbebe3e9888d9c40b95c99",
               "title": "Yellow Split Pea Soup",
               "lexicalScore": 1,
-              "semanticScore": 0.9086064028184669
-            },
-            {
-              "id": "wikibooks:2a1fe46b0017768f64d5193cb2cbccdfc3d2d6fd99590def2e08b255b886292e",
-              "title": "Kik Alicha (Yellow Split Pea Stew)",
-              "lexicalScore": 0.75,
-              "semanticScore": 0.8632009889911865
-            },
-            {
-              "id": "wikibooks:0306f09bf0725f6f789b2ccda6b340112346d22f97ca3ef9738b691b824a7a5a",
-              "title": "Mango and Yellow Split Pea Curry",
-              "lexicalScore": 0.75,
-              "semanticScore": 0.8368723790843424
+              "semanticScore": 0.9086064028184669,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "yellow",
+                "split",
+                "pea",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 5,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.9086064028184669,
           "broad": false
@@ -1504,29 +1528,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f52cd202673c0cc106f083263394ce6818449c18ce33476284979bbe7831b44",
               "title": "Bean Chili",
               "lexicalScore": 1,
-              "semanticScore": 0.889060559629629
-            },
-            {
-              "id": "wikibooks:2e615aa3925f818be215c2f36e41ab9744e67f4f9805de8972e8f6e1db75619f",
-              "title": "Chili (Vegan)",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.87037379765632
-            },
-            {
-              "id": "wikibooks:830696d244406662b74fd806246c19f51414ea96e2d9634d0f8425d7b536ae07",
-              "title": "Bean Balls",
-              "lexicalScore": 0.7,
-              "semanticScore": 0.8487914178175806
+              "semanticScore": 0.889060559629629,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "chili"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 15,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.889060559629629,
           "broad": false
@@ -1543,29 +1561,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
               "title": "Egyptian Lentil Soup",
               "lexicalScore": 0.35,
-              "semanticScore": 0.8694573938258989
+              "semanticScore": 0.8694573938258989,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "soup",
+                "lentil"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 0.35,
-              "semanticScore": 0.8679361287319536
-            },
-            {
-              "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
-              "title": "Yogurt Curry Soup (Kadhi)",
-              "lexicalScore": 0.25,
-              "semanticScore": 0.8498341189697853
+              "semanticScore": 0.8679361287319536,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "soup",
+                "lentil"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 13,
+          "relevantCount": 2,
           "maxLexicalScore": 0.35,
           "maxSemanticScore": 0.8694573938258989,
           "broad": false
@@ -1582,29 +1606,26 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
               "title": "Creamy Mushroom Pasta",
               "lexicalScore": 0.75,
-              "semanticScore": 0.887709891117741
-            },
-            {
-              "id": "wikibooks:2a5fe775c0fc148c3879006cc9df30d42b584a1aec31938fc5edc6e73c2484d5",
-              "title": "Pasta in Gorgonzola Cheese Sauce (Pasta Alla Gorgonzola)",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8416438638816113
-            },
-            {
-              "id": "wikibooks:4f4ba566aa281bf40a12bee1d54bd95ec5ed99f8a0369b1d7353d08875ddfd02",
-              "title": "Inguday Tibs (Ethiopian Mushroom Stir-Fry)",
-              "lexicalScore": 0.35,
-              "semanticScore": 0.8042376351656956
+              "semanticScore": 0.887709891117741,
+              "queryCoverage": 0.75,
+              "matchedQueryTerms": [
+                "pasta",
+                "cream",
+                "mushroom"
+              ],
+              "missingQueryTerms": [
+                "sauce"
+              ]
             }
           ],
-          "relevantCount": 4,
+          "relevantCount": 1,
           "maxLexicalScore": 0.75,
           "maxSemanticScore": 0.887709891117741,
           "broad": false
@@ -1631,22 +1652,40 @@
               "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
               "title": "Cheese Omelette",
               "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8561166511056345
+              "semanticScore": 0.8561166511056345,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
               "title": "Breakfast Burrito",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.8397086089451915
+              "semanticScore": 0.8397086089451915,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:adf8f834da28246d398fe46aee9472eb7b0af5c9fe73279d55a19c6676859a37",
               "title": "Macaroni and Cheese (Baked)",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.8361681155944676
+              "semanticScore": 0.8361681155944676,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 10,
+          "relevantCount": 3,
           "maxLexicalScore": 0.4666666666666667,
           "maxSemanticScore": 0.8561166511056345,
           "broad": false
@@ -1670,22 +1709,40 @@
               "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
               "title": "Cholley (Chickpea Curry)",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.89950687855253
+              "semanticScore": 0.89950687855253,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
               "title": "Yogurt Curry Soup (Kadhi)",
               "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8859688968815745
+              "semanticScore": 0.8859688968815745,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             },
             {
-              "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
-              "title": "Chickpea Stew",
+              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
+              "title": "Bean and Rice Bake",
               "lexicalScore": 0.26666666666666666,
-              "semanticScore": 0.88506439066354
+              "semanticScore": 0.8344110942932752,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 21,
+          "relevantCount": 3,
           "maxLexicalScore": 0.4666666666666667,
           "maxSemanticScore": 0.89950687855253,
           "broad": false
@@ -1702,23 +1759,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f623a6802b2722793574a76d9d927a7e1fe8c61ba6759d601462b129df22708",
               "title": "Blueberry Muffin",
               "lexicalScore": 1,
-              "semanticScore": 0.898197665364426
-            },
-            {
-              "id": "wikibooks:58ae59f8ed23fe947b0039d75f104609b10c870e6d71e6a201ebb094ca1831af",
-              "title": "Blueberry Pancakes",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8469355358403581
+              "semanticScore": 0.898197665364426,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry",
+                "muffin"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.898197665364426,
           "broad": false
@@ -1735,29 +1792,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:8a2d3f013cd058a11b61d5777e271c98ac85c8e9b00171987eec2cb92394b982",
               "title": "Basic Indian Tomato Gravy",
               "lexicalScore": 1,
-              "semanticScore": 0.8654931719892949
-            },
-            {
-              "id": "wikibooks:4818040b014a4f1d31f366be13faa5ed45512e3312ef5d8851ef09f0e4193b82",
-              "title": "Cashew Gravy",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8110481286256089
-            },
-            {
-              "id": "wikibooks:0b8cb41f7f3eaddef8030534c589edcdce9e44fa003c96975ccf8574d75386b3",
-              "title": "Herbed Tomato Soup",
-              "lexicalScore": 0.5,
-              "semanticScore": 0.8066946820827399
+              "semanticScore": 0.8654931719892949,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "gravy"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 5,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8654931719892949,
           "broad": false
@@ -1774,29 +1825,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 1,
-              "semanticScore": 0.8897718972274634
-            },
-            {
-              "id": "themealdb:52772",
-              "title": "Teriyaki Chicken Casserole",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": 0.832147472852131
-            },
-            {
-              "id": "themealdb:52774",
-              "title": "Pad See Ew",
-              "lexicalScore": 0.26666666666666666,
-              "semanticScore": 0.8418550726124844
+              "semanticScore": 0.8897718972274634,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "rice",
+                "fried",
+                "chicken"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 20,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.8897718972274634,
           "broad": false
@@ -1813,29 +1859,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 1,
-              "semanticScore": 0.9008322011541965
-            },
-            {
-              "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-              "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8487255769039845
-            },
-            {
-              "id": "wikibooks:b75e51ac0e3f788316b0936c7f1f0508205d720f338c3311e08cf77e2d53413d",
-              "title": "Pasta and Bean Soup (Pasta e Fagioli)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": 0.8450882430352394
+              "semanticScore": 0.9008322011541965,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pasta",
+                "bake",
+                "zucchini"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 15,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": 0.9008322011541965,
           "broad": false
@@ -1859,7 +1900,17 @@
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 0.5,
-              "semanticScore": 0.8343863912386201
+              "semanticScore": 0.8343863912386201,
+              "queryCoverage": 0.6,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake"
+              ],
+              "missingQueryTerms": [
+                "scale",
+                "eight"
+              ]
             }
           ],
           "relevantCount": 1,
@@ -1884,22 +1935,31 @@
               "id": "wikibooks:e9ae83dd4d226a5d5356b8442926f5bac8242a21a17012d7bf1f2ecbecb8905e",
               "title": "Hamli (Ethiopian Spinach Stew)",
               "lexicalScore": 0,
-              "semanticScore": 0.7711672308566608
+              "semanticScore": 0.7711672308566608,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:f0cd4cf2dab872beed2060374b9f6c3054d163293ebc2de51a6679c87cdb2e69",
               "title": "Denver Omelet",
               "lexicalScore": 0,
-              "semanticScore": 0.7693425149582406
+              "semanticScore": 0.7693425149582406,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:1ab6b0ac4b715b25ce1551db741b62f3530f71ff55d5e5aa3a9c97fa7ebae4b7",
               "title": "Hamburger Skillet Dinner",
               "lexicalScore": 0,
-              "semanticScore": 0.7668212557220409
+              "semanticScore": 0.7668212557220409,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": 0.7711672308566608,
           "broad": true
@@ -1921,22 +1981,31 @@
               "id": "wikibooks:ddc8064334830eb550befd44dc628788fc4eeb621d6726c86538a2ee35cba85c",
               "title": "Vichyssoise (Chilled Potato Leek Soup)",
               "lexicalScore": 0,
-              "semanticScore": 0.8179308336573863
+              "semanticScore": 0.8179308336573863,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:a485e96ae9340402a1674968c28c772528a01a7493547fc54f47f088c8ef1d4d",
               "title": "Jambalaya I",
               "lexicalScore": 0,
-              "semanticScore": 0.8157125869103816
+              "semanticScore": 0.8157125869103816,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:11e3f219f1f23e95c2720aa4f1365842bfbdc878bd6ebfd852e06f073df89b9e",
               "title": "Tandoori Tofu",
               "lexicalScore": 0,
-              "semanticScore": 0.8156162279911628
+              "semanticScore": 0.8156162279911628,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": 0.8179308336573863,
           "broad": true
@@ -2311,13 +2380,13 @@
       "supported": 20,
       "unsupported": 20,
       "retention": 1,
-      "abstention": 0.95,
+      "abstention": 1,
       "expectedTitleCases": 18,
       "expectedHitAt3": 1,
       "exactTitleCases": 10,
       "exactTitleTopOne": 1,
-      "labeledPrecisionAt3": 0.4629629629629629,
-      "labeledPrecisionPenalty": 0.5370370370370371,
+      "labeledPrecisionAt3": 0.8796296296296295,
+      "labeledPrecisionPenalty": 0.12037037037037046,
       "gatesPassed": true,
       "results": [
         {
@@ -2332,29 +2401,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
               "title": "Cheese Omelette",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4ec487abf6cce4ea9799a28990e70064bae7f24fed8ed8ea572e2ce695da775f",
-              "title": "Cauliflower Cheese",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:e16e48caabeed787529a9bfdcf62cd7117fba66adc2f1c67088671312606147c",
-              "title": "Cheese Enchilada",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cheese",
+                "omelet"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 7,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2371,29 +2434,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:a56ea8e3be24bf941c8122afbd1c18aff5f0419b551e5c256051f8031a656450",
               "title": "Baked Ziti",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:a77a7a60c9d0b2c420158339cdcae388d95c0820534beed042b8ad4fa0c9e9f1",
-              "title": "Baked Beans",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:a9dbf0da5089a8e6607d04b33f27612addc7c69b894b2a52600f323892a3db99",
-              "title": "Baked Brie in Puff Pastry",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "baked",
+                "ziti"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 8,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2410,29 +2467,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
-              "title": "Egyptian Lentil Soup",
-              "lexicalScore": 0.8,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4c99934e284abcf026bd851058b89d26e4371c955ccc6226702adea1bfd160fb",
-              "title": "Black Bean Soup",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "red",
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 22,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2449,29 +2501,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
               "title": "Chickpea Stew",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
-              "title": "African Cabbage Stew",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:f5db28ba6609fb4c08de76296b73a30961c320e497cd3bfc80f2a852b53993f8",
-              "title": "Atkilt Wat (Ethiopian Cabbage and Potato Stew)",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "stew"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 11,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2488,29 +2534,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
-              "title": "Bean and Rice Bake",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
-              "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 12,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2527,23 +2568,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c8690e13447942825b9ebd5d132458670ef30bff8743fd2ff48ba4fabceab21d",
               "title": "Mapo Tofu",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:11e3f219f1f23e95c2720aa4f1365842bfbdc878bd6ebfd852e06f073df89b9e",
-              "title": "Tandoori Tofu",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "mapo",
+                "tofu"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2560,23 +2601,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "themealdb:52774",
               "title": "Pad See Ew",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:572e61f0518dc83a1dc6bb29ea8aecb015533acd63fef317481b0ebb7d0d099d",
-              "title": "Pad Thai",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pad",
+                "see",
+                "ew"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2593,29 +2635,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f52cd202673c0cc106f083263394ce6818449c18ce33476284979bbe7831b44",
               "title": "Bean Chili",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
-              "title": "Bean and Rice Bake",
-              "lexicalScore": 0.7,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:830696d244406662b74fd806246c19f51414ea96e2d9634d0f8425d7b536ae07",
-              "title": "Bean Balls",
-              "lexicalScore": 0.7,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "chili"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 14,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2632,29 +2668,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
               "title": "Egyptian Lentil Soup",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
-              "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "lentil",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 22,
+          "relevantCount": 2,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": null,
           "broad": false
@@ -2671,29 +2713,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
               "title": "Creamy Mushroom Pasta",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
-              "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:9027d3b1984e95c17def0775ec82295f96b025b843455c974784bca8ea928946",
-              "title": "Eggplant Pasta",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cream",
+                "pasta",
+                "mushroom"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 12,
+          "relevantCount": 1,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": null,
           "broad": false
@@ -2710,29 +2747,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
               "title": "Cholley (Chickpea Curry)",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
               "title": "Yogurt Curry Soup (Kadhi)",
               "lexicalScore": 0.7,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:dfd7acf6463fa043a97463a3c4e215b4313d8e542cb5028bb69d555ef0683752",
-              "title": "Chickpea Omelette",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 2,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2750,29 +2793,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
               "title": "Tomato Pasta",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-              "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-              "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
-              "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "pasta"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 15,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2797,22 +2834,40 @@
               "id": "wikibooks:8090f83d9fab363c0ba0518da9b03e6a1ad11215a8cc58590536716751105280",
               "title": "Loco Moco (Rice with Egg and Hamburger)",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 0.7,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:1598486bff52edf8758b361023f753642a3c01d0d46599f6a7d55085e73cb16f",
               "title": "Lentil Rice Loaf",
               "lexicalScore": 0.7,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "rice"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 13,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2830,29 +2885,33 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.6666666666666666,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f623a6802b2722793574a76d9d927a7e1fe8c61ba6759d601462b129df22708",
               "title": "Blueberry Muffin",
               "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:58ae59f8ed23fe947b0039d75f104609b10c870e6d71e6a201ebb094ca1831af",
               "title": "Blueberry Pancakes",
               "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
-              "title": "Breakfast Burrito",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 3,
+          "relevantCount": 2,
           "maxLexicalScore": 0.5,
           "maxSemanticScore": null,
           "broad": false
@@ -2881,7 +2940,12 @@
               "id": "wikibooks:b435e83a39247f75648881d678b3b40aace6e5c3f33542ddd3891076be248f6f",
               "title": "Pancakes (Vegan)",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pancake"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -2901,29 +2965,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:328294bd118372f5329eeec1e4acd17d569bf3777ca27c9142c4d77e0e5f4fd8",
               "title": "Warm Black Bean Salad with Kale and Tomatoes",
               "lexicalScore": 0.7,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:a77a7a60c9d0b2c420158339cdcae388d95c0820534beed042b8ad4fa0c9e9f1",
-              "title": "Baked Beans",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "kale"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:092c82954eb77d7fa3aaba3407e3741b702ed0367fbc8a8e93bba0adf576287d",
               "title": "Black-Eyed Peas and Kale",
               "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "kale"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 11,
+          "relevantCount": 2,
           "maxLexicalScore": 0.7,
           "maxSemanticScore": null,
           "broad": false
@@ -2941,29 +3011,47 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.6666666666666666,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "themealdb:52772",
               "title": "Teriyaki Chicken Casserole",
               "lexicalScore": 0.7,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
             },
             {
-              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
-              "title": "Bean and Rice Bake",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "id": "wikibooks:a485e96ae9340402a1674968c28c772528a01a7493547fc54f47f088c8ef1d4d",
+              "title": "Jambalaya I",
+              "lexicalScore": 0.4,
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chicken",
+                "rice"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 23,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -2987,7 +3075,17 @@
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 0.68,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0.8,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake",
+                "salt"
+              ],
+              "missingQueryTerms": [
+                "halve"
+              ]
             }
           ],
           "relevantCount": 1,
@@ -3012,22 +3110,31 @@
               "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
               "title": "Acorn Squash with Orange Marmalade",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
               "title": "African Cabbage Stew",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
               "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": null,
           "broad": true
@@ -3049,22 +3156,31 @@
               "id": "wikibooks:0e8f67d0aa18042a2dfb8554a816c695f349bf576ab47d04e8e392ad558f31dc",
               "title": "Bean Soup (Vegetarian)",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:f9f30ab3cbaad43c6ff2892cbefc183d992887aee02a26a959321cf40b318724",
               "title": "Saffron Rice and Beans",
               "lexicalScore": 0.4,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
               "title": "Acorn Squash with Orange Marmalade",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 111,
+          "relevantCount": 3,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": true
@@ -3309,33 +3425,14 @@
           "query": "Beef Wellington",
           "expectedOutcome": "no_match",
           "expectedTitles": [],
-          "accepted": true,
-          "outcomePass": false,
+          "accepted": false,
+          "outcomePass": true,
           "expectedHitAt3": null,
           "exactTitleTopOnePass": null,
           "labeledPrecisionAt3": null,
           "exclusionsPass": true,
-          "top3": [
-            {
-              "id": "wikibooks:59ca03dcc3e1b85c33cd6785c38fbccffcb2b62bce0c74138c7a61d55051fa0e",
-              "title": "Beef Fajitas",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:242652b720c4e5e9d651e7d9879da1b7c3318ee5fe301ed68674f6895e2512cb",
-              "title": "Beef Stew II",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:5e5568b4d99ee446109712a203d08c1a951f44b41720c7544a7c5ceb91ebac84",
-              "title": "Hearty Beef Vegetable Soup",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            }
-          ],
-          "relevantCount": 3,
+          "top3": [],
+          "relevantCount": 0,
           "maxLexicalScore": 0.5,
           "maxSemanticScore": null,
           "broad": false
@@ -3460,8 +3557,8 @@
       "expectedHitAt3": 1,
       "exactTitleCases": 9,
       "exactTitleTopOne": 1,
-      "labeledPrecisionAt3": 0.4907407407407406,
-      "labeledPrecisionPenalty": 0.5092592592592594,
+      "labeledPrecisionAt3": 0.9259259259259258,
+      "labeledPrecisionPenalty": 0.07407407407407418,
       "gatesPassed": true,
       "results": [
         {
@@ -3476,29 +3573,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:4ec487abf6cce4ea9799a28990e70064bae7f24fed8ed8ea572e2ce695da775f",
               "title": "Cauliflower Cheese",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:a3735e353c5fa530f3f9a9d294ae63d85878caf98dc853130418ad85e3ab0fe5",
-              "title": "Cauliflower Rice",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:e16e48caabeed787529a9bfdcf62cd7117fba66adc2f1c67088671312606147c",
-              "title": "Cheese Enchilada",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "cauliflower",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 7,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3522,7 +3613,12 @@
               "id": "wikibooks:8209ab1dc69cd5a4fb340157761361b5d7354fbc56e6337b19ff1d7b68648b6c",
               "title": "Calzone",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "calzone"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -3549,7 +3645,13 @@
               "id": "wikibooks:2de88beb6bc5f17528755d229109645e1c9102cd52bebf08d96ff1f9baca3cf2",
               "title": "Baba Ganoush",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "baba",
+                "ganoush"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -3576,7 +3678,13 @@
               "id": "wikibooks:e3bc856301f50cc100aec7daba34e1c9e6387b05664f3a69e8c8053f522d4137",
               "title": "Buckwheat Crêpes",
               "lexicalScore": 1,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "buckwheat",
+                "crepe"
+              ],
+              "missingQueryTerms": []
             }
           ],
           "relevantCount": 1,
@@ -3597,29 +3705,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:cc3c677dc061dfbd52f25cd000d7e40ab20c9ce28c4790c1df59ab9147e7b881",
               "title": "Eggplant and Chickpea Skillet",
               "lexicalScore": 0.6666666666666666,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:1ab6b0ac4b715b25ce1551db741b62f3530f71ff55d5e5aa3a9c97fa7ebae4b7",
-              "title": "Hamburger Skillet Dinner",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:8a2d3f013cd058a11b61d5777e271c98ac85c8e9b00171987eec2cb92394b982",
-              "title": "Basic Indian Tomato Gravy",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "chickpea",
+                "skillet"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 1,
           "maxLexicalScore": 0.6666666666666666,
           "maxSemanticScore": null,
           "broad": false
@@ -3636,29 +3739,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:c281c34bec657fddb2b85048683329336561b2019ccd35dde2e402aa9030038e",
               "title": "Garlic Parmesan Pasta",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:db3201ae26d783a5a1e71b702edb8a37e6b5fdbbfdfc89520330b44c779ee44b",
-              "title": "Kale and Garlic Pasta",
-              "lexicalScore": 0.8,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
-              "title": "Creamy Mushroom Pasta",
-              "lexicalScore": 0.6,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "garlic",
+                "parmesan",
+                "pasta"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 12,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3675,29 +3773,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:69d0b0541fb5752961ef6050d797ffad0f65f315bb9fc25bf978eda93ef38ae9",
               "title": "Easy Onion Chicken",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:c185347dd282ff694b676f06fa3222f2dab0587e31f71d132cc4dde65996bf86",
-              "title": "Chicken Fajitas",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:3c2ba4a993df1f624fff4bd6e802b961b51c03addf6cdbed1a7e8b848436a145",
-              "title": "French Onion Soup",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "easy",
+                "onion",
+                "chicken"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 9,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3714,29 +3807,25 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:b27c7ae1898acf042beb0484a8918f578c8806a487fbebe3e9888d9c40b95c99",
               "title": "Yellow Split Pea Soup",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:2a1fe46b0017768f64d5193cb2cbccdfc3d2d6fd99590def2e08b255b886292e",
-              "title": "Kik Alicha (Yellow Split Pea Stew)",
-              "lexicalScore": 0.75,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:0306f09bf0725f6f789b2ccda6b340112346d22f97ca3ef9738b691b824a7a5a",
-              "title": "Mango and Yellow Split Pea Curry",
-              "lexicalScore": 0.75,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "yellow",
+                "split",
+                "pea",
+                "soup"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 5,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3753,29 +3842,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": true,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f52cd202673c0cc106f083263394ce6818449c18ce33476284979bbe7831b44",
               "title": "Bean Chili",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
-              "title": "Bean and Rice Bake",
-              "lexicalScore": 0.7,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:830696d244406662b74fd806246c19f51414ea96e2d9634d0f8425d7b536ae07",
-              "title": "Bean Balls",
-              "lexicalScore": 0.7,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "bean",
+                "chili"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 14,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3792,29 +3875,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
               "title": "Egyptian Lentil Soup",
               "lexicalScore": 0.35,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:3c2ba4a993df1f624fff4bd6e802b961b51c03addf6cdbed1a7e8b848436a145",
-              "title": "French Onion Soup",
-              "lexicalScore": 0.35,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "soup",
+                "lentil"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
               "title": "Red Lentil Soup",
               "lexicalScore": 0.35,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "soup",
+                "lentil"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 3,
+          "relevantCount": 2,
           "maxLexicalScore": 0.35,
           "maxSemanticScore": null,
           "broad": false
@@ -3831,29 +3920,26 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
               "title": "Creamy Mushroom Pasta",
               "lexicalScore": 0.75,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:2a5fe775c0fc148c3879006cc9df30d42b584a1aec31938fc5edc6e73c2484d5",
-              "title": "Pasta in Gorgonzola Cheese Sauce (Pasta Alla Gorgonzola)",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4f4ba566aa281bf40a12bee1d54bd95ec5ed99f8a0369b1d7353d08875ddfd02",
-              "title": "Inguday Tibs (Ethiopian Mushroom Stir-Fry)",
-              "lexicalScore": 0.35,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0.75,
+              "matchedQueryTerms": [
+                "pasta",
+                "cream",
+                "mushroom"
+              ],
+              "missingQueryTerms": [
+                "sauce"
+              ]
             }
           ],
-          "relevantCount": 4,
+          "relevantCount": 1,
           "maxLexicalScore": 0.75,
           "maxSemanticScore": null,
           "broad": false
@@ -3873,29 +3959,47 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.6666666666666666,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
               "title": "Breakfast Burrito",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:adf8f834da28246d398fe46aee9472eb7b0af5c9fe73279d55a19c6676859a37",
               "title": "Macaroni and Cheese (Baked)",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             },
             {
-              "id": "wikibooks:4ec487abf6cce4ea9799a28990e70064bae7f24fed8ed8ea572e2ce695da775f",
-              "title": "Cauliflower Cheese",
+              "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
+              "title": "Cheese Omelette",
               "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "egg",
+                "cheese"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 8,
+          "relevantCount": 3,
           "maxLexicalScore": 0.4666666666666667,
           "maxSemanticScore": null,
           "broad": false
@@ -3912,29 +4016,35 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 0.5,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
               "title": "Cholley (Chickpea Curry)",
               "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             },
             {
-              "id": "wikibooks:350527e1bac4b4fe1422e8616500ea7cbb17b6842eb8be500d0792f7357c2462",
-              "title": "Carrots Cooked Kinpira Style",
+              "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
+              "title": "Yogurt Curry Soup (Kadhi)",
               "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:bf05b9912b7ed81f618e581f78511056ced17284985f59f19a622b9777c3cc9c",
-              "title": "Malai Mixed Vegetable Curry",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "chickpea",
+                "curry"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 7,
+          "relevantCount": 2,
           "maxLexicalScore": 0.4666666666666667,
           "maxSemanticScore": null,
           "broad": false
@@ -3951,23 +4061,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.5,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:7f623a6802b2722793574a76d9d927a7e1fe8c61ba6759d601462b129df22708",
               "title": "Blueberry Muffin",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:58ae59f8ed23fe947b0039d75f104609b10c870e6d71e6a201ebb094ca1831af",
-              "title": "Blueberry Pancakes",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "blueberry",
+                "muffin"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 2,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -3984,29 +4094,23 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:8a2d3f013cd058a11b61d5777e271c98ac85c8e9b00171987eec2cb92394b982",
               "title": "Basic Indian Tomato Gravy",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4818040b014a4f1d31f366be13faa5ed45512e3312ef5d8851ef09f0e4193b82",
-              "title": "Cashew Gravy",
-              "lexicalScore": 0.5,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-              "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-              "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "tomato",
+                "gravy"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 5,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -4023,29 +4127,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
               "title": "Chicken Fried Rice",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4dfc645ae543c3a3c466117c8a1f33fde2b54ff99688ad70c508cfcdace756e6",
-              "title": "Bhel Puri (Indian Puffed Rice and Vegetable Snack)",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:69d0b0541fb5752961ef6050d797ffad0f65f315bb9fc25bf978eda93ef38ae9",
-              "title": "Easy Onion Chicken",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "rice",
+                "fried",
+                "chicken"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 19,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -4062,29 +4161,24 @@
           "outcomePass": true,
           "expectedHitAt3": true,
           "exactTitleTopOnePass": null,
-          "labeledPrecisionAt3": 0.3333333333333333,
+          "labeledPrecisionAt3": 1,
           "exclusionsPass": true,
           "top3": [
             {
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 1,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:812688099adfd380dfb5111b15f30a0dd27742586c6a6227504d534ec65c1c35",
-              "title": "Bean and Rice Bake",
-              "lexicalScore": 0.4666666666666667,
-              "semanticScore": null
-            },
-            {
-              "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
-              "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
-              "lexicalScore": 0.3333333333333333,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 1,
+              "matchedQueryTerms": [
+                "pasta",
+                "bake",
+                "zucchini"
+              ],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 12,
+          "relevantCount": 1,
           "maxLexicalScore": 1,
           "maxSemanticScore": null,
           "broad": false
@@ -4108,7 +4202,17 @@
               "id": "wikibooks:d6789056d00d6a371883eb7a9e18181522d36440202ff9eca1e22fc69562a2a6",
               "title": "Zucchini Pasta Bake",
               "lexicalScore": 0.5,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0.6,
+              "matchedQueryTerms": [
+                "zucchini",
+                "pasta",
+                "bake"
+              ],
+              "missingQueryTerms": [
+                "scale",
+                "eight"
+              ]
             }
           ],
           "relevantCount": 1,
@@ -4133,22 +4237,31 @@
               "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
               "title": "Acorn Squash with Orange Marmalade",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
               "title": "African Cabbage Stew",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
               "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": null,
           "broad": true
@@ -4170,22 +4283,31 @@
               "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
               "title": "Acorn Squash with Orange Marmalade",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
               "title": "African Cabbage Stew",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             },
             {
               "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
               "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
               "lexicalScore": 0,
-              "semanticScore": null
+              "semanticScore": null,
+              "queryCoverage": 0,
+              "matchedQueryTerms": [],
+              "missingQueryTerms": []
             }
           ],
-          "relevantCount": 166,
+          "relevantCount": 3,
           "maxLexicalScore": 0,
           "maxSemanticScore": null,
           "broad": true
@@ -4563,8 +4685,8 @@
     "expectedHitAt3": 1,
     "exactTitleCases": 11,
     "exactTitleTopOne": 1,
-    "labeledPrecisionAt3": 0.5333333333333333,
-    "labeledPrecisionPenalty": 0.4666666666666667,
+    "labeledPrecisionAt3": 0.9166666666666666,
+    "labeledPrecisionPenalty": 0.08333333333333337,
     "gatesPassed": true,
     "results": [
       {
@@ -4579,29 +4701,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
             "title": "Cheese Omelette",
             "lexicalScore": 1,
-            "semanticScore": 0.8971878375547688
-          },
-          {
-            "id": "wikibooks:db82826ed6cd1a83f6e13d826fafdf4a698a7fb1fecd84cae6d8eefffafbb7dd",
-            "title": "Cheese Spaetzle",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8369329010383003
-          },
-          {
-            "id": "wikibooks:dfd7acf6463fa043a97463a3c4e215b4313d8e542cb5028bb69d555ef0683752",
-            "title": "Chickpea Omelette",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8285501125284742
+            "semanticScore": 0.8971878375547688,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "cheese",
+              "omelet"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 9,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8971878375547688,
         "broad": false
@@ -4618,29 +4734,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:a56ea8e3be24bf941c8122afbd1c18aff5f0419b551e5c256051f8031a656450",
             "title": "Baked Ziti",
             "lexicalScore": 1,
-            "semanticScore": 0.8837072887279588
-          },
-          {
-            "id": "wikibooks:a9dbf0da5089a8e6607d04b33f27612addc7c69b894b2a52600f323892a3db99",
-            "title": "Baked Brie in Puff Pastry",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.7893978626772593
-          },
-          {
-            "id": "wikibooks:c267dd90d2438599c158140dc4aeaf34a1a6caaf8638b83afb2fc66e47cae4e6",
-            "title": "Baked Penne",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.7891443960580785
+            "semanticScore": 0.8837072887279588,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "baked",
+              "ziti"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 8,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8837072887279588,
         "broad": false
@@ -4664,7 +4774,12 @@
             "id": "wikibooks:8209ab1dc69cd5a4fb340157761361b5d7354fbc56e6337b19ff1d7b68648b6c",
             "title": "Calzone",
             "lexicalScore": 1,
-            "semanticScore": 0.8454085432145176
+            "semanticScore": 0.8454085432145176,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "calzone"
+            ],
+            "missingQueryTerms": []
           }
         ],
         "relevantCount": 1,
@@ -4684,29 +4799,24 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
             "title": "Red Lentil Soup",
             "lexicalScore": 1,
-            "semanticScore": 0.8888072678142098
-          },
-          {
-            "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
-            "title": "Egyptian Lentil Soup",
-            "lexicalScore": 0.8,
-            "semanticScore": 0.8747310071000821
-          },
-          {
-            "id": "wikibooks:b75e51ac0e3f788316b0936c7f1f0508205d720f338c3311e08cf77e2d53413d",
-            "title": "Pasta and Bean Soup (Pasta e Fagioli)",
-            "lexicalScore": 0.4666666666666667,
-            "semanticScore": 0.8207813502475256
+            "semanticScore": 0.8888072678142098,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "red",
+              "lentil",
+              "soup"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 23,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8888072678142098,
         "broad": false
@@ -4723,29 +4833,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:4ec487abf6cce4ea9799a28990e70064bae7f24fed8ed8ea572e2ce695da775f",
             "title": "Cauliflower Cheese",
             "lexicalScore": 1,
-            "semanticScore": 0.8847304130084686
-          },
-          {
-            "id": "wikibooks:a3735e353c5fa530f3f9a9d294ae63d85878caf98dc853130418ad85e3ab0fe5",
-            "title": "Cauliflower Rice",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8296544312848835
-          },
-          {
-            "id": "wikibooks:e16e48caabeed787529a9bfdcf62cd7117fba66adc2f1c67088671312606147c",
-            "title": "Cheese Enchilada",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8087589548638668
+            "semanticScore": 0.8847304130084686,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "cauliflower",
+              "cheese"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 7,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8847304130084686,
         "broad": false
@@ -4762,29 +4866,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
             "title": "Chickpea Stew",
             "lexicalScore": 1,
-            "semanticScore": 0.9061392538157205
-          },
-          {
-            "id": "wikibooks:d122dd44ad577c08a6b557ce9a5f82536e3a209b3c0a23e7af3b9e0405cc992b",
-            "title": "Garbanzo Bean Stew",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8682121062007455
-          },
-          {
-            "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
-            "title": "Cholley (Chickpea Curry)",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.857195978382209
+            "semanticScore": 0.9061392538157205,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "chickpea",
+              "stew"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 11,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.9061392538157205,
         "broad": false
@@ -4808,7 +4906,13 @@
             "id": "wikibooks:e3bc856301f50cc100aec7daba34e1c9e6387b05664f3a69e8c8053f522d4137",
             "title": "Buckwheat Crêpes",
             "lexicalScore": 1,
-            "semanticScore": 0.8813660765032145
+            "semanticScore": 0.8813660765032145,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "buckwheat",
+              "crepe"
+            ],
+            "missingQueryTerms": []
           }
         ],
         "relevantCount": 1,
@@ -4835,7 +4939,13 @@
             "id": "wikibooks:2de88beb6bc5f17528755d229109645e1c9102cd52bebf08d96ff1f9baca3cf2",
             "title": "Baba Ganoush",
             "lexicalScore": 1,
-            "semanticScore": 0.8536337125997311
+            "semanticScore": 0.8536337125997311,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "baba",
+              "ganoush"
+            ],
+            "missingQueryTerms": []
           }
         ],
         "relevantCount": 1,
@@ -4855,23 +4965,24 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.5,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "themealdb:52774",
             "title": "Pad See Ew",
             "lexicalScore": 1,
-            "semanticScore": 0.7833721273305378
-          },
-          {
-            "id": "wikibooks:572e61f0518dc83a1dc6bb29ea8aecb015533acd63fef317481b0ebb7d0d099d",
-            "title": "Pad Thai",
-            "lexicalScore": 0.3333333333333333,
-            "semanticScore": 0.740208838629126
+            "semanticScore": 0.7833721273305378,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "pad",
+              "see",
+              "ew"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 2,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.7833721273305378,
         "broad": false
@@ -4888,23 +4999,25 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.5,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:aabef769c96c7f28f994d31e5291ebb344d5b77a94adf93f97e1068d435382a3",
             "title": "Boxty (Irish Potato Cakes)",
             "lexicalScore": 1,
-            "semanticScore": 0.9149017779242745
-          },
-          {
-            "id": "wikibooks:9c822816046cdcc98aa3e8f17bb4d4e8d9a4780ed3645192f007431b716ddf85",
-            "title": "Champ (Irish Mashed Potato with Scallion)",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8100976993104831
+            "semanticScore": 0.9149017779242745,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "boxty",
+              "irish",
+              "potato",
+              "cakes"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 2,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.9149017779242745,
         "broad": false
@@ -4922,29 +5035,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": true,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
             "title": "Tomato Pasta",
             "lexicalScore": 1,
-            "semanticScore": 0.8787341087995866
-          },
-          {
-            "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-            "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-            "lexicalScore": 1,
-            "semanticScore": 0.8645808980411527
-          },
-          {
-            "id": "themealdb:52777",
-            "title": "Mediterranean Pasta Salad",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8469123888431549
+            "semanticScore": 0.8787341087995866,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "tomato",
+              "pasta"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 15,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8787341087995866,
         "broad": false
@@ -4961,29 +5068,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
             "title": "Creamy Mushroom Pasta",
             "lexicalScore": 1,
-            "semanticScore": 0.8763230051477191
-          },
-          {
-            "id": "wikibooks:ecec1de1beeb094fcef4b5c25a17d6f458a7607e6b3151094037bc7a2296c31d",
-            "title": "Fresh Pasta with Mozzarella, Tomato and Basil",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8363263144048463
-          },
-          {
-            "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
-            "title": "Tomato Pasta",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8356476527195207
+            "semanticScore": 0.8763230051477191,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "mushroom",
+              "pasta"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 12,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8763230051477191,
         "broad": false
@@ -5008,22 +5109,40 @@
             "id": "wikibooks:8090f83d9fab363c0ba0518da9b03e6a1ad11215a8cc58590536716751105280",
             "title": "Loco Moco (Rice with Egg and Hamburger)",
             "lexicalScore": 1,
-            "semanticScore": 0.8457494018446411
+            "semanticScore": 0.8457494018446411,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "rice"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:8a569438074ba7887049b65810c2a28d3622d7b48e1524e029ec5618145bde87",
             "title": "Chicken Fried Rice",
             "lexicalScore": 0.7,
-            "semanticScore": 0.8259146685679533
+            "semanticScore": 0.8259146685679533,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "rice"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:1598486bff52edf8758b361023f753642a3c01d0d46599f6a7d55085e73cb16f",
             "title": "Lentil Rice Loaf",
             "lexicalScore": 0.7,
-            "semanticScore": 0.8067004796869919
+            "semanticScore": 0.8067004796869919,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "rice"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 13,
+        "relevantCount": 3,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8457494018446411,
         "broad": false
@@ -5040,29 +5159,35 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 0.5,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:e2a75284d1a1d25cb96f766f2773992a239342be434ea1d8f1e1bc30857852b0",
             "title": "Cholley (Chickpea Curry)",
             "lexicalScore": 1,
-            "semanticScore": 0.8846854254751332
+            "semanticScore": 0.8846854254751332,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "chickpea",
+              "curry"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
             "title": "Yogurt Curry Soup (Kadhi)",
             "lexicalScore": 0.7,
-            "semanticScore": 0.860439598030527
-          },
-          {
-            "id": "wikibooks:9915ec9d3dd1b06cf0d6839aaf95f07bb3108ab9c8743fc4f6cc090822bb56fa",
-            "title": "Chickpea Stew",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8726535909824655
+            "semanticScore": 0.860439598030527,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "chickpea",
+              "curry"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 9,
+        "relevantCount": 2,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8846854254751332,
         "broad": false
@@ -5080,29 +5205,33 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.6666666666666666,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:58ae59f8ed23fe947b0039d75f104609b10c870e6d71e6a201ebb094ca1831af",
             "title": "Blueberry Pancakes",
             "lexicalScore": 0.5,
-            "semanticScore": 0.8478641231867565
+            "semanticScore": 0.8478641231867565,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "blueberry"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:7f623a6802b2722793574a76d9d927a7e1fe8c61ba6759d601462b129df22708",
             "title": "Blueberry Muffin",
             "lexicalScore": 0.5,
-            "semanticScore": 0.8401071605641965
-          },
-          {
-            "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
-            "title": "Breakfast Burrito",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.7739620933529834
+            "semanticScore": 0.8401071605641965,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "blueberry"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 3,
+        "relevantCount": 2,
         "maxLexicalScore": 0.5,
         "maxSemanticScore": 0.8478641231867565,
         "broad": false
@@ -5119,29 +5248,35 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 0.5,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:f37f7aadb4d1241e5e8a5075730f4000cc1f6b2b96a086eb7ac9e6e3fb461516",
             "title": "Egyptian Lentil Soup",
             "lexicalScore": 0.6666666666666666,
-            "semanticScore": 0.8506919060050557
+            "semanticScore": 0.8506919060050557,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "lentil",
+              "soup"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:9018d6e617622d549b4f2e8854dc6138c0a159570f9b015b8e1b75f7bbf351cf",
             "title": "Red Lentil Soup",
             "lexicalScore": 0.6666666666666666,
-            "semanticScore": 0.8440608354086532
-          },
-          {
-            "id": "wikibooks:03c426564a5a582d312a0d598a7874c9cb9c2945ad6b877b0ec9b8b764d0c228",
-            "title": "Yogurt Curry Soup (Kadhi)",
-            "lexicalScore": 0.3333333333333333,
-            "semanticScore": 0.8183420390243845
+            "semanticScore": 0.8440608354086532,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "lentil",
+              "soup"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 22,
+        "relevantCount": 2,
         "maxLexicalScore": 0.6666666666666666,
         "maxSemanticScore": 0.8506919060050557,
         "broad": false
@@ -5158,29 +5293,24 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:9d9b7be9fe961e0d07424269e4de93d27a1332ae47ae96e052ae8c72bd261cd2",
             "title": "Creamy Mushroom Pasta",
             "lexicalScore": 0.6666666666666666,
-            "semanticScore": 0.897802809690346
-          },
-          {
-            "id": "wikibooks:2a5fe775c0fc148c3879006cc9df30d42b584a1aec31938fc5edc6e73c2484d5",
-            "title": "Pasta in Gorgonzola Cheese Sauce (Pasta Alla Gorgonzola)",
-            "lexicalScore": 0.3333333333333333,
-            "semanticScore": 0.8510286095878811
-          },
-          {
-            "id": "themealdb:52777",
-            "title": "Mediterranean Pasta Salad",
-            "lexicalScore": 0.3333333333333333,
-            "semanticScore": 0.8475976494113746
+            "semanticScore": 0.897802809690346,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "cream",
+              "pasta",
+              "mushroom"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 13,
+        "relevantCount": 1,
         "maxLexicalScore": 0.6666666666666666,
         "maxSemanticScore": 0.897802809690346,
         "broad": false
@@ -5207,22 +5337,40 @@
             "id": "wikibooks:c0ea792a68713f6a27ec48ca279181ab412864e9611469edcc623894287aec47",
             "title": "Cheese Omelette",
             "lexicalScore": 0.3333333333333333,
-            "semanticScore": 0.8561166511056345
+            "semanticScore": 0.8561166511056345,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "cheese"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:4db132ff312d84e29ea1f144fe4226c3a7da9e7ddf9444aa2a5af8c5a03631fb",
             "title": "Breakfast Burrito",
             "lexicalScore": 0.4666666666666667,
-            "semanticScore": 0.8397086089451915
+            "semanticScore": 0.8397086089451915,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "cheese"
+            ],
+            "missingQueryTerms": []
           },
           {
             "id": "wikibooks:adf8f834da28246d398fe46aee9472eb7b0af5c9fe73279d55a19c6676859a37",
             "title": "Macaroni and Cheese (Baked)",
             "lexicalScore": 0.4666666666666667,
-            "semanticScore": 0.8361681155944676
+            "semanticScore": 0.8361681155944676,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "egg",
+              "cheese"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 10,
+        "relevantCount": 3,
         "maxLexicalScore": 0.4666666666666667,
         "maxSemanticScore": 0.8561166511056345,
         "broad": false
@@ -5249,7 +5397,12 @@
             "id": "wikibooks:b435e83a39247f75648881d678b3b40aace6e5c3f33542ddd3891076be248f6f",
             "title": "Pancakes (Vegan)",
             "lexicalScore": 1,
-            "semanticScore": 0.8679903159764115
+            "semanticScore": 0.8679903159764115,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "pancake"
+            ],
+            "missingQueryTerms": []
           }
         ],
         "relevantCount": 1,
@@ -5272,29 +5425,23 @@
         "outcomePass": true,
         "expectedHitAt3": true,
         "exactTitleTopOnePass": null,
-        "labeledPrecisionAt3": 0.3333333333333333,
+        "labeledPrecisionAt3": 1,
         "exclusionsPass": true,
         "top3": [
           {
             "id": "wikibooks:8a2d3f013cd058a11b61d5777e271c98ac85c8e9b00171987eec2cb92394b982",
             "title": "Basic Indian Tomato Gravy",
             "lexicalScore": 1,
-            "semanticScore": 0.8654931719892949
-          },
-          {
-            "id": "wikibooks:0b8cb41f7f3eaddef8030534c589edcdce9e44fa003c96975ccf8574d75386b3",
-            "title": "Herbed Tomato Soup",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8066946820827399
-          },
-          {
-            "id": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
-            "title": "Tomato Pasta",
-            "lexicalScore": 0.5,
-            "semanticScore": 0.8052131782827896
+            "semanticScore": 0.8654931719892949,
+            "queryCoverage": 1,
+            "matchedQueryTerms": [
+              "tomato",
+              "gravy"
+            ],
+            "missingQueryTerms": []
           }
         ],
-        "relevantCount": 4,
+        "relevantCount": 1,
         "maxLexicalScore": 1,
         "maxSemanticScore": 0.8654931719892949,
         "broad": false
@@ -5318,22 +5465,31 @@
           "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
           "title": "Acorn Squash with Orange Marmalade",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
           "title": "African Cabbage Stew",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
           "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         }
       ],
-      "relevantCount": 166,
+      "relevantCount": 3,
       "maxLexicalScore": 0,
       "maxSemanticScore": null,
       "broad": true,
@@ -5355,22 +5511,31 @@
           "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
           "title": "Acorn Squash with Orange Marmalade",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
           "title": "African Cabbage Stew",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
           "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         }
       ],
-      "relevantCount": 166,
+      "relevantCount": 3,
       "maxLexicalScore": 0,
       "maxSemanticScore": null,
       "broad": true,
@@ -5392,22 +5557,31 @@
           "id": "wikibooks:ff875a5911c602acb450ff108d9234e5b8b111d7934cc3bf1dc9f0e5456afc8a",
           "title": "Acorn Squash with Orange Marmalade",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:b92ccb9d467fc908b99473d117b810317538391bc28a744a2230e965dc7e6a1a",
           "title": "African Cabbage Stew",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         },
         {
           "id": "wikibooks:4a9bb5efb26c9fcb02477bf947bcc5ba5b7f8cebbeb6ec9d389f978c5b9256d9",
           "title": "Agnolotti Pasta Soup (Agnolotti in Brodo)",
           "lexicalScore": 0,
-          "semanticScore": null
+          "semanticScore": null,
+          "queryCoverage": 0,
+          "matchedQueryTerms": [],
+          "missingQueryTerms": []
         }
       ],
-      "relevantCount": 166,
+      "relevantCount": 3,
       "maxLexicalScore": 0,
       "maxSemanticScore": null,
       "broad": true,
@@ -5494,5 +5668,63 @@
       "pantryNames": 1110
     }
   ],
-  "gatesPassed": true
+  "gatesPassed": true,
+  "comparison": {
+    "baselineReportSha256": "77a885a027b3a9d33a685b6dd0a54dbaf6722f7934a99ed970717e010eb5d7dd",
+    "definition": "Candidate-context precision under the same non-exhaustive title labels, not generated-answer accuracy. Baseline Chef exact-title filtering is accounted for.",
+    "metrics": {
+      "semantic": {
+        "calibration": {
+          "labeledCases": 18,
+          "baselineRawRankerPrecisionAt3": 0.4629629629629629,
+          "baselineChefContextPrecisionAt3": 0.7777777777777779,
+          "currentChefContextPrecisionAt3": 0.8611111111111112,
+          "meanContextSizeBefore": 1.7777777777777777,
+          "meanContextSizeAfter": 1.4444444444444444,
+          "retentionBefore": 1,
+          "retentionAfter": 1,
+          "abstentionBefore": 0.95,
+          "abstentionAfter": 1
+        },
+        "heldout": {
+          "labeledCases": 18,
+          "baselineRawRankerPrecisionAt3": 0.5277777777777777,
+          "baselineChefContextPrecisionAt3": 0.7129629629629632,
+          "currentChefContextPrecisionAt3": 0.9166666666666666,
+          "meanContextSizeBefore": 1.9444444444444444,
+          "meanContextSizeAfter": 1.2777777777777777,
+          "retentionBefore": 1,
+          "retentionAfter": 1,
+          "abstentionBefore": 1,
+          "abstentionAfter": 1
+        }
+      },
+      "forcedLexical": {
+        "calibration": {
+          "labeledCases": 18,
+          "baselineRawRankerPrecisionAt3": 0.4629629629629629,
+          "baselineChefContextPrecisionAt3": 0.7777777777777779,
+          "currentChefContextPrecisionAt3": 0.8796296296296295,
+          "meanContextSizeBefore": 1.7777777777777777,
+          "meanContextSizeAfter": 1.4444444444444444,
+          "retentionBefore": 1,
+          "retentionAfter": 1,
+          "abstentionBefore": 0.95,
+          "abstentionAfter": 1
+        },
+        "heldout": {
+          "labeledCases": 18,
+          "baselineRawRankerPrecisionAt3": 0.4907407407407406,
+          "baselineChefContextPrecisionAt3": 0.675925925925926,
+          "currentChefContextPrecisionAt3": 0.9259259259259258,
+          "meanContextSizeBefore": 1.9444444444444444,
+          "meanContextSizeAfter": 1.2222222222222223,
+          "retentionBefore": 1,
+          "retentionAfter": 1,
+          "abstentionBefore": 1,
+          "abstentionAfter": 1
+        }
+      }
+    }
+  }
 }

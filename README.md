@@ -189,6 +189,17 @@ stay focused on that dish. This is deliberately narrow, not a general intent
 parser. Explicit substitution/change wording enables adaptations; ordinary
 recommendations cannot generate unsolicited changes.
 
+The public search endpoint and Chef share final shortlist selection. Exact named
+recipes return one source record. Other targeted searches return at most three;
+additional recommendations must cover all normalized query terms. Lexical
+admission requires at least two-thirds query-term coverage as well as the
+existing lexical score threshold, so sharing only **beef** cannot admit a dish
+for **Beef Wellington**. Ordinary plurals and a small set of search aliases
+normalize for retrieval only. Semantic admission retains its existing threshold.
+Specific searches prioritize complete query coverage and relevance ahead of
+pantry usefulness; broad browsing retains reviewed dinner roles and pantry
+ordering. Fewer than three results is valid.
+
 - Missing embeddings or an unavailable Ollama service use lexical/pantry search.
 - Failed, invalid, or incomplete generation produces explicitly labeled
   **Catalog suggestions**.
@@ -385,12 +396,20 @@ verification evaluates the deployed, frozen thresholds on 40 calibration queries
 fallback. Exact named recipes must rank first. Query embeddings use the same
 parsed positive query as production. Add `--calibrate --report NEW_PATH` to
 evaluate a threshold candidate selected only from calibration cases; this never
-rewrites deployed thresholds. Calibration candidates are reported separately
-from the configuration being verified.
+rewrites deployed thresholds. Candidate threshold searches run only when
+`--calibrate` is supplied. Normal verification uses the same final shortlist
+selector as production and records matched/missing query terms per result.
 The committed report records corpus/source hashes, model version, outcomes and
 strict labeled precision. Held-out retention/abstention gates are 95%; the report
-also discloses imperfect precision and the calibration false positive for Beef
-Wellington. This corpus is a test fixture, not an application seed.
+also discloses imperfect precision. The current shortlist policy abstains on the
+previous Beef Wellington false positive. Add `--baseline REPORT_PATH` to record
+a comparison against a report with matching corpus, labels and embedding model.
+Comparisons account for the previous Chef's exact-title filtering: candidate
+context precision on the existing held-out labels improves from 71.3% to 91.7%
+with semantic retrieval, and from 67.6% to 92.6% with forced lexical fallback.
+These non-exhaustive labels measure candidate relevance, not generated-answer
+accuracy or culinary suitability. This corpus is a test fixture, not an
+application seed.
 
 ### Project layout
 
