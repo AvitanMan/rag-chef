@@ -1,0 +1,24 @@
+Third-party recipe content
+
+Wikibooks Cookbook
+The Wikibooks entries in tools/recipes/fixtures/relevance-catalog.json and the
+source excerpts in tools/recipes/core-dinners.v1.json are attributed to Wikibooks
+contributors under CC BY-SA 4.0. Each record retains its source URL and attribution;
+the source page history identifies contributors. Extraction normalizes formatting.
+https://creativecommons.org/licenses/by-sa/4.0/
+https://en.wikibooks.org/wiki/Wikibooks:Copyrights
+
+TheMealDB
+Six entries in tools/recipes/fixtures/relevance-catalog.json originate from
+TheMealDB's official API. Each retains its source attribution and links.
+They are not represented as CC BY-SA content. TheMealDB's terms govern API content
+use, including keeping copyright/trademark notices; any third-party material has
+its own permission requirements. The app's adapter uses the documented development
+API and does not grant a license to the upstream collection or artwork.
+https://www.themealdb.com/api.php
+https://www.themealdb.com/terms_of_use.php
+
+The frozen corpus is an evaluation fixture, not an application seed or a copy of
+the user's kitchen. Dependency licenses and notices remain with their packages.
+The MIT license in LICENSE applies to original app code, not the third-party
+recipe corpus, source excerpts or dependencies described above.

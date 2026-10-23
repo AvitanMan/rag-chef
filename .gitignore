@@ -31,6 +31,7 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+.dev.vars*
 
 # vercel
 .vercel
@@ -47,3 +48,18 @@ next-env.d.ts
 /.venv-recipes/
 /recipe-runs/
 __pycache__/
+*.py[cod]
+/.venv/
+/.pnpm-store/
+
+# Local databases, kitchen backups, and tool logs
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+*.key
+rag-chef-kitchen-backup*.json
+/links.txt

@@ -1,5 +1,7 @@
 # RAG Chef
 
+![RAG Chef — Cook with what you have](public/og.png)
+
 A local-first cooking app for turning pantry ingredients into dinner ideas,
 weekly plans, and shopping lists. Optional AI recommendations use an approved
 recipe catalog, with source instructions and attribution preserved.
@@ -34,7 +36,8 @@ planning, and shopping do not require an AI model.
 
 ### Requirements
 
-- Node.js **22.13 or newer** and **pnpm**.
+- Node.js **22.13 or newer** (Node 22 is selected in `.nvmrc`) and
+  **pnpm 11.25.0**, pinned in `package.json`.
 - **Ollama**, optional, for local AI and semantic search.
 - **Python 3.10 or newer**, only for collecting recipes with Scrapling.
 
@@ -43,7 +46,7 @@ planning, and shopping do not require an AI model.
 From the project directory:
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm db:migrate
 pnpm dev
 ```
@@ -98,6 +101,10 @@ Edit the local file and restart the app. Model choices already saved in your
 browser can be changed in **Settings**. For the optional OpenAI provider, configure
 a server-side key and a model available to your account, then select it in Settings.
 Keep keys out of browser code, `NEXT_PUBLIC_` variables, and version control.
+The standalone `pnpm start` preview reads Wrangler configuration from `.dev.vars`;
+copy `.env.example` there instead when configuring that mode. Both local files
+are ignored. Maintenance scripts read exported shell variables rather than
+automatically loading either file.
 
 ### Production-style local preview
 
@@ -398,6 +405,7 @@ app instead of port 3000. The collector uses its separate `--app` option.
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm exec playwright install chromium
 pnpm test:e2e
 pnpm recipes:test
 ```
@@ -410,6 +418,13 @@ an ephemeral loopback port. AI providers are mocked; personal data and `.env`
 files are not copied. Browser artifacts live in ignored `output/playwright/`.
 Collector tests need the Python environment above. Only a direct app build needs
 the production preview stopped.
+
+GitHub Actions runs type checking, lint, source tests, isolated build/browser
+checks, and the Python collector tests on pushes and pull requests. It installs
+Chromium and its Linux dependencies using the
+[Playwright CI setup](https://playwright.dev/docs/ci-intro).
+The workflow needs no app secrets, Cloudflare account, downloaded AI models, or
+personal database. Local-Ollama evaluation commands below remain separate.
 
 With the app running and the relevant recipes imported:
 
@@ -481,6 +496,10 @@ in an isolated Python environment. No separate vector database is required.
 
 ## Attribution and prototype limits
 
+See [NOTICE](NOTICE) for the recipe fixtures and their source-specific terms.
+Original app code is licensed under the [MIT License](LICENSE). Third-party
+recipe content and dependencies retain their separate licenses and terms.
+
 Wikibooks imports preserve contributor attribution, a source/history link,
 **CC BY-SA 4.0** licensing, and a normalization notice. Retain those notices when
 reusing imported text; see the
@@ -499,3 +518,23 @@ browser writes and requires a token for non-loopback requests, but that is
 application-wide access control, storage/indexing/embedding rights, image
 permissions, and commercial use. Source approvals here cover the local prototype,
 not a public release.
+
+## GitHub preparation
+
+The repository includes source code, migrations, tests, reviewed metadata and a
+frozen attributed evaluation corpus. It does not include your local kitchen,
+database, browser storage, private configuration, imported recipe runs or backups.
+The evaluation corpus is not loaded into the app on startup.
+
+Keep `.env.local`, `.dev.vars`, `.wrangler/`, `recipe-runs/`, `work/`, local
+databases, kitchen backup exports and test artifacts out of commits. `.env.example`
+contains public defaults and empty secret fields only. Sharing the repository
+does not deploy the app; it remains intended for loopback use.
+
+Before uploading, inspect `git status` and the staged file list. To repeat the
+secret scan with [Gitleaks](https://github.com/gitleaks/gitleaks) installed:
+
+```bash
+gitleaks git . --log-opts=--all --redact
+gitleaks git . --staged --redact
+```

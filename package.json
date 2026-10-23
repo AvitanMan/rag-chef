@@ -2,6 +2,8 @@
   "name": "rag-chef-local",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22.13.0"
   },
