@@ -13,7 +13,7 @@ for (const name of ["kitchen-state", "kitchen-types", "quantities"]) {
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(directory, `${name}.mjs`), compiled);
 }
-const { addDateDays, weekStart, createPlannedMeal, migrateLegacyKitchen, rankWeeklyCandidates, dinnerSelectionStatus, placePlannedDinner } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
+const { defaultDinnerDate, addDateDays, weekStart, createPlannedMeal, migrateLegacyKitchen, rankWeeklyCandidates, dinnerSelectionStatus, placePlannedDinner } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
 
 const recipe = { id: "themealdb:123", title: "Test dinner", image: null, category: "", cuisine: "", ingredients: [{ name: "Rice", measure: "400 g" }], instructions: ["Cook rice."], tags: [], source: { name: "Test", url: "https://example.com" }, sourceUrl: "https://example.com" };
 
@@ -114,4 +114,17 @@ test("new planning ingredients keep source wording; legacy migration does not ch
   assert.deepEqual(meal.recipe.ingredients, source.ingredients);
   const legacy = migrateLegacyKitchen({ plan: { Mon: "123" } }, [source], "2026-10-19");
   assert.equal(legacy.meals["2026-10-19"].planningIngredients, undefined);
+});
+
+
+test("picker defaults prefer upcoming empty dates and require explicit historical or occupied choices", () => {
+  const today = "2026-10-25";
+  const week = "2026-10-19";
+  assert.equal(defaultDinnerDate(week, today, {}), today);
+  assert.equal(defaultDinnerDate(week, today, { [today]: { locked: false, status: "planned" } }), "");
+  assert.equal(defaultDinnerDate("2026-10-26", today, {}), "2026-10-26");
+  assert.equal(defaultDinnerDate("2026-10-26", today, { "2026-10-26": { locked: true } }), "2026-10-27");
+  assert.equal(defaultDinnerDate("2026-10-12", today, {}), "");
+  const occupied = Object.fromEntries(Array.from({ length: 7 }, (_, index) => [addDateDays("2026-10-26", index), { status: "planned" }]));
+  assert.equal(defaultDinnerDate("2026-10-26", today, occupied), "");
 });

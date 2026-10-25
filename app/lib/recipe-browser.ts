@@ -17,12 +17,12 @@ export function normalizeRecipeSearch(value: string): string {
 
 /** Name coverage only: this never claims that pantry quantities cover a dinner. */
 export function recipePantryDetails(recipe: Recipe, pantry: string[]) {
-  const identity = (name: string) => canonicalIngredient(normalizeRecipeSearch(name));
+  const identity = (name: string) => canonicalIngredient(name.normalize("NFKD").replace(/\p{M}/gu, ""));
   const stock = new Set(pantry.map(identity).filter(Boolean));
   const matched: string[] = [];
   const missing: string[] = [];
   for (const ingredient of recipe.ingredients) {
-    const name = identity(ingredient.name);
+    const name = identity(normalizePlanningIngredient(ingredient).name);
     (name && stock.has(name) ? matched : missing).push(ingredient.name);
   }
   const total = recipe.ingredients.length;

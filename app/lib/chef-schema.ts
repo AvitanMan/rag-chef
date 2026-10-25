@@ -58,6 +58,25 @@ export type ChefRequest = {
   candidates: RecipeCandidate[];
   provider: ChefProvider;
   model?: string;
+  context?: ChefDinnerContext;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  refinements?: string[];
+};
+
+export type ChefDinnerContext = {
+  purpose?: "planning" | "cooking";
+  recipeId?: string;
+  recipeHash?: string;
+  mealHash?: string;
+  mealDate?: string;
+  mealId?: string;
+  kitchenRevision?: number;
+  targetDate?: string;
+  today?: string;
+  servings?: number;
+  batches?: number;
+  stepEvidenceId?: string;
+  previousRecipeIds?: string[];
 };
 
 export type ChefSourceFact = {
@@ -94,6 +113,7 @@ export type ChefStructuredAnswer = {
   recommendations: ChefRecommendation[];
   citations: ChefCitation[];
   warnings: string[];
+  answerStatus?: "answered" | "needs_clarification" | "unsupported";
 };
 
 export type RankedRecipe = {
@@ -104,6 +124,10 @@ export type RankedRecipe = {
 };
 
 export type ChefApiResponse = ChefStructuredAnswer & {
+  resolvedContext?: ChefDinnerContext;
+  readinessByRecipeId?: Record<string, import("./quantities").MealReadiness>;
+  selectedEvidenceByRecipeId?: Record<string, string[]>;
+  promptBytes?: number;
   recipes: Recipe[];
   metadataByRecipeId: RecipeMetadataMap;
   outcome: "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
@@ -117,6 +141,7 @@ export type ChefApiResponse = ChefStructuredAnswer & {
     embedModel: string;
     ranked: RankedRecipe[];
     allergyExcludedCount: number;
+    constraintExcludedCount: number;
     sourceExcludedCount: number;
   };
 };
@@ -232,7 +257,45 @@ export function parseChefRequest(value: unknown): ChefRequest {
     ids.add(candidate.id);
   }
 
-  return { query, pantry, profile, candidates, provider, model };
+  let context: ChefDinnerContext | undefined;
+  if (value.context !== undefined) {
+    if (!isRecord(value.context)) throw new ChefValidationError("context must be an object.");
+    const row = value.context;
+    const allowed = ["purpose", "recipeId", "recipeHash", "mealHash", "mealDate", "mealId", "kitchenRevision", "targetDate", "today", "servings", "batches", "stepEvidenceId", "previousRecipeIds"];
+    if (Object.keys(row).some((key) => !allowed.includes(key))) throw new ChefValidationError("Unknown dinner context field.");
+    context = {};
+    if (row.purpose !== undefined) {
+      if (row.purpose !== "planning" && row.purpose !== "cooking") throw new ChefValidationError("Invalid dinner context purpose.");
+      context.purpose = row.purpose;
+    }
+    for (const key of ["recipeId", "recipeHash", "mealHash", "mealId", "stepEvidenceId"] as const) {
+      if (row[key] !== undefined) context[key] = requiredString(row[key], `context.${key}`, key.endsWith("Hash") ? 64 : 200);
+    }
+    if ([context.recipeHash, context.mealHash].some((hash) => hash !== undefined && !/^[a-f0-9]{64}$/.test(hash))) throw new ChefValidationError("Invalid recipe version.");
+    if (context.stepEvidenceId && !/^S[1-9]\d{0,2}$/.test(context.stepEvidenceId)) throw new ChefValidationError("Invalid source step.");
+    for (const key of ["mealDate", "targetDate", "today"] as const) if (row[key] !== undefined) {
+      const date = requiredString(row[key], `context.${key}`, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(new Date(`${date}T12:00:00Z`).getTime()) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new ChefValidationError("Invalid dinner date.");
+      context[key] = date;
+    }
+    for (const key of ["kitchenRevision", "servings", "batches"] as const) if (row[key] !== undefined) {
+      const number = row[key];
+      if (typeof number !== "number" || !Number.isSafeInteger(number) || number < (key === "kitchenRevision" ? 0 : 1) || number > (key === "kitchenRevision" ? Number.MAX_SAFE_INTEGER : 100)) throw new ChefValidationError(`Invalid context.${key}.`);
+      context[key] = number;
+    }
+    if (row.previousRecipeIds !== undefined) context.previousRecipeIds = stringArray(row.previousRecipeIds, "previous recipes", 3, 200);
+    if ((context.stepEvidenceId || context.recipeHash) && !context.recipeId || Boolean(context.mealDate) !== Boolean(context.mealId)) throw new ChefValidationError("Incomplete recipe context.");
+  }
+  let history: ChefRequest["history"];
+  if (value.history !== undefined) {
+    if (!Array.isArray(value.history) || value.history.length > 6) throw new ChefValidationError("Keep at most three discussion turns.");
+    history = value.history.map((item) => {
+      if (!isRecord(item) || item.role !== "user" && item.role !== "assistant") throw new ChefValidationError("Invalid discussion turn.");
+      return { role: item.role, content: requiredString(item.content, "discussion text", 1000) };
+    });
+  }
+  const refinements = value.refinements === undefined ? undefined : stringArray(value.refinements, "refinements", 6, 200);
+  return { query, pantry, profile, candidates, provider, model, ...(context ? { context } : {}), ...(history ? { history } : {}), ...(refinements ? { refinements } : {}) };
 }
 
 function parseProvider(value: unknown): ChefProvider {
@@ -261,7 +324,7 @@ function parsePantry(value: unknown): PantryItem[] {
     const quantity =
       typeof item.quantity === "number" && Number.isFinite(item.quantity)
         ? item.quantity
-        : optionalString(item.quantity, 40);
+        : optionalString(item.quantity, 160);
     return {
       name: requiredString(item.name, `pantry[${index}].name`, 120),
       ...(quantity !== undefined ? { quantity } : {}),

@@ -21,6 +21,11 @@ export function weekStart(date = localDate()): string {
   return addDateDays(date, -((day + 6) % 7));
 }
 
+/** Past dates and occupied days require an explicit choice in the picker. */
+export function defaultDinnerDate(week: string, today: string, meals: Record<string, PlannedMeal>): string {
+  return Array.from({ length: 7 }, (_, index) => addDateDays(week, index)).find((date) => date >= today && !meals[date]) ?? "";
+}
+
 export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true): PlannedMeal {
   const baseServings = recipe.servings && recipe.servings > 0 ? recipe.servings : null;
   return {

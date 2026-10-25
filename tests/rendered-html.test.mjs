@@ -33,11 +33,12 @@ test("server-renders the RAG Chef application shell", async () => {
   const html = await response.text();
   assert.match(html, /<title>RAG Chef — Cook with what you have<\/title>/i);
   assert.match(html, /RAG Chef/);
-  assert.match(html, /Weekly plan/);
-  assert.match(html, /Choose dinner/);
+  assert.match(html, /Ask Chef/);
+  assert.match(html, /Dinner context/);
+  assert.match(html, /Find my dinner/);
   assert.doesNotMatch(html, /What sounds good tonight\?/);
   assert.doesNotMatch(html, /Make the week easier|Your kitchen, organized/);
-  assert.match(html, /This week<\/button>/);
+  assert.match(html, /New dinner search/);
   assert.match(html, /Approved catalog/);
   assert.match(html, /Persistent recipes \+ local fallback/);
   assert.doesNotMatch(html, /Codex is working|loading skeleton|codex-preview/i);

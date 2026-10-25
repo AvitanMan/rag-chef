@@ -9,14 +9,19 @@ export interface FilledWeeklyPlan {
   reasons: Record<string, string>;
 }
 
-function weeklyTie(week: string, recipeId: string): number {
-  let hash = 2166136261;
-  for (const character of `${week}:${recipeId}`) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-  return hash >>> 0;
+/** A click gets a fresh seed; replaying its state update keeps the same draw. */
+export function planningRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = Math.imul(state ^ (state >>> 15), 1 | state);
+    value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /** Saved dinners reserve stock before new suggestions; no real state is changed. */
-export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate()): FilledWeeklyPlan {
+export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate(), random: () => number = Math.random): FilledWeeklyPlan {
   const dates = Array.from({ length: 7 }, (_, index) => addDateDays(week, index));
   const saved = Object.values(meals).filter((meal) => dates.includes(meal.date));
   const used = new Set(saved.map((meal) => meal.recipeId));
@@ -25,13 +30,20 @@ export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: st
   const additions: PlannedMeal[] = [];
   const reasons: Record<string, string> = {};
   for (const date of dates.filter((day) => day >= today && !meals[day])) {
-    const choices = [...new Map(recipes.map((recipe) => [recipe.id, recipe])).values()].filter((recipe) => !used.has(recipe.id)).map((recipe) => {
+    const choices = [...new Map(recipes.map((recipe) => [recipe.id, recipe])).values()].filter((recipe) => !used.has(recipe.id)).sort((a, b) => a.id.localeCompare(b.id)).map((recipe) => {
       const meal = createPlannedMeal(date, recipe);
       const allocation = allocateMealStock(meal, virtualPantry, today);
       const reuse = allocation.ingredientIdentities.filter((identity) => identities.has(identity)).length;
-      return { recipe, meal, allocation, reuse, tie: weeklyTie(week, recipe.id) };
-    }).sort((a, b) => b.allocation.useSoonCoverage - a.allocation.useSoonCoverage || b.allocation.coverage - a.allocation.coverage || b.reuse - a.reuse || a.tie - b.tie || a.recipe.id.localeCompare(b.recipe.id));
-    const chosen = choices[0];
+      return { recipe, meal, allocation, reuse };
+    });
+    // Preserve the waste and stock priorities, but sample broadly within each
+    // available tier rather than always picking the same highest-scoring meal.
+    const urgent = choices.filter((choice) => choice.allocation.useSoonCoverage > 0);
+    const covered = choices.filter((choice) => choice.allocation.coverage > 0);
+    const pool = urgent.length ? urgent : covered.length ? covered : choices;
+    const weighted = pool.map((choice) => ({ choice, weight: 1 + choice.allocation.useSoonCoverage * 4 + choice.allocation.coverage * 3 + Math.min(choice.reuse, 3) * 0.5 }));
+    let draw = random() * weighted.reduce((sum, item) => sum + item.weight, 0);
+    const chosen = weighted.find((item) => { draw -= item.weight; return draw < 0; })?.choice ?? weighted.at(-1)?.choice;
     if (!chosen) break;
     additions.push(chosen.meal);
     used.add(chosen.recipe.id);

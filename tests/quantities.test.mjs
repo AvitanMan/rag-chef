@@ -127,6 +127,46 @@ test("canonical matching is exact, with a small explicit plural alias set", () =
   assert.equal(buildShoppingList([meal()], [pantry("500 g", "rice vinegar")])[0].measure, "400 g");
 });
 
+test("preparation identities match equivalent wording without merging cooked and uncooked quantities", () => {
+  for (const names of [
+    ["rice", "raw rice", "uncooked rice", "rice, uncooked", "dry rice", "rice (raw)"],
+    ["cooked rice", "rice, cooked", "rice,cooked", "rice cooked", "rice (cooked)", "rice(cooked)"],
+    ["chickpea", "dried chickpeas", "uncooked chickpeas"],
+    ["cooked chickpea", "chickpeas, cooked"],
+    ["raw chicken", "chicken, uncooked"],
+  ]) for (const name of names) assert.equal(canonicalIngredient(name), canonicalIngredient(names[0]), name);
+  for (const [a, b] of [
+    ["rice", "cooked rice"], ["cooked rice", "uncooked rice"], ["pasta", "cooked pasta"],
+    ["dried chickpeas", "cooked chickpeas"], ["dried basil", "basil"], ["dried mushrooms", "mushroom"],
+    ["dried apples", "apple"], ["canned beans", "beans"], ["rice flour", "rice"],
+    ["cooked or uncooked rice", "cooked rice"], ["cooked raw rice", "cooked rice"],
+  ]) assert.notEqual(canonicalIngredient(a), canonicalIngredient(b), `${a} / ${b}`);
+  assert.deepEqual(normalizePlanningIngredient({ name: "200 g uncooked rice", measure: "" }), { name: "uncooked rice", measure: "200 g" });
+});
+
+test("shopping and completion allocate only the requested preparation and explain mismatches", () => {
+  const cooked = meal({ recipe: { ...meal().recipe, ingredients: [{ name: "Rice, cooked", measure: "400 g" }] } });
+  const stock = [pantry("1 kg"), pantry("100 g", "cooked rice", "leftovers")];
+  const [item] = buildShoppingList([cooked], stock);
+  assert.equal(item.measure, "300 g");
+  assert.equal(item.pantryMeasure, "100 g");
+  assert.equal(item.needsReview, true);
+  assert.match(item.preparationNote, /Cooked and uncooked amounts are kept separate/);
+  const preview = consumptionPreview(cooked, stock);
+  assert.deepEqual(preview.deductions.map((d) => d.pantryId), ["leftovers"]);
+  const initial = state(cooked, stock);
+  const completed = completeMeal(initial, cooked.date, true);
+  assert.equal(completed.pantry[0].measure, "1 kg");
+  assert.equal(completed.pantry[1].measure, "0 g");
+  assert.deepEqual(undoMeal(completed, cooked.date).pantry, stock);
+  const uncooked = meal({ recipe: { ...meal().recipe, ingredients: [{ name: "uncooked rice", measure: "400 g" }] } });
+  assert.equal(buildShoppingList([uncooked], stock).length, 0);
+  assert.deepEqual(consumptionPreview(uncooked, stock).deductions.map((d) => d.pantryId), ["rice-stock"]);
+  const combined = buildShoppingList([cooked, uncooked], []);
+  assert.equal(combined.length, 2);
+  assert.deepEqual(combined.map((row) => row.measure), ["400 g", "400 g"]);
+});
+
 test("packaging and counts are separate and a pantry record is counted only once", () => {
   const planned = meal({ ingredientOverrides: { "0": "3 cans" } });
   const items = buildShoppingList([planned], [pantry("1 can"), pantry("1 can"), pantry("4 cloves", "rice", "cloves-stock")]);

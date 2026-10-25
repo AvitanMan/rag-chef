@@ -1,20 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Modal } from "./Modal";
+import { ThemeToggle } from "./ThemeToggle";
 import { mealScale } from "../lib/kitchen-types";
 import { normalizePlanningIngredient, resolvedMealIngredients } from "../lib/quantities";
+import type { ChefApiResponse } from "../lib/chef-schema";
+import { cookingSourceStep } from "../lib/chef-context";
 import { remainingTimerMs, stepTimerSeconds, timerAction, type CookingSession } from "../lib/cooking-session";
 
-export function CookingWorkspace({ session, visible, onChange, close, finish }: {
+export function CookingWorkspace({ session, visible, onChange, close, finish, chefBusy = false, chefError = "", chefReply = null, askChefStep }: {
   session: CookingSession;
   visible: boolean;
+  chefBusy?: boolean;
+  chefError?: string;
+  chefReply?: Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus"> | null;
+  askChefStep?: (question: string) => void;
   onChange: (session: CookingSession) => void;
   close: () => void;
   finish: () => void;
 }) {
   const [now, setNow] = useState(Date.now);
-  const [secondsInput, setSecondsInput] = useState(String(session.timer.durationMs / 1000));
+  const [helpQuestion, setHelpQuestion] = useState("");
+  const [minutesInput, setMinutesInput] = useState(String(Math.floor(session.timer.durationMs / 60_000)));
+  const [secondsInput, setSecondsInput] = useState(String(Math.floor(session.timer.durationMs / 1000) % 60));
   const [timerError, setTimerError] = useState("");
+  const content = useRef<HTMLElement>(null);
   const audio = useRef<AudioContext | null>(null);
   const notified = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
@@ -67,6 +78,9 @@ export function CookingWorkspace({ session, visible, onChange, close, finish }: 
     return () => { active = false; document.removeEventListener("visibilitychange", acquire); void lock?.release(); };
   }, [visible]);
   useEffect(() => () => { void audio.current?.close(); }, []);
+  useEffect(() => {
+    if (visible) content.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [visible, session.id, session.step]);
 
   if (!visible) return null;
   const remaining = Math.ceil(remainingTimerMs(session.timer, now) / 1000);
@@ -80,23 +94,34 @@ export function CookingWorkspace({ session, visible, onChange, close, finish }: 
     try {
       const time = Date.now();
       const timer = timerAction({ ...session.timer, status: "idle" }, "start", time, seconds * 1000);
-      setNow(time); setTimerError(""); onChange({ ...session, timer });
+      setNow(time); setMinutesInput(String(Math.floor(seconds / 60))); setSecondsInput(String(seconds % 60)); setTimerError(""); onChange({ ...session, timer });
     } catch (error) { setTimerError(error instanceof Error ? error.message : "Choose a valid duration."); }
   };
-  return <div className="cooking-mode" role="dialog" aria-modal="true" aria-label={`Cooking ${session.recipe.title}`}>
-    <header><button onClick={close}>← Exit cooking</button><div><span>Cooking now{session.method && session.method !== "Main method" ? ` · ${session.method}` : ""}</span><strong>{session.recipe.title}</strong></div><span>{session.step + 1} / {session.instructions.length}</span></header>
+  return <Modal className="cooking-mode" label={`Cooking ${session.recipe.title}`} close={close}>
+    <header><button onClick={close}>← Exit cooking</button><div><span>Cooking now{session.method && session.method !== "Main method" ? ` · ${session.method}` : ""}</span><strong>{session.recipe.title}</strong></div><div className="cook-header-actions"><span>{session.step + 1} / {session.instructions.length}</span><ThemeToggle /></div></header>
     <div className="cook-progress"><span style={{ width: `${((session.step + 1) / session.instructions.length) * 100}%` }} /></div>
-    <main>
+    <main ref={content}>
       <div className="cook-step-number">Step {session.step + 1}</div><p>{session.instructions[session.step]}</p>
-      <details className="cook-ingredients" open><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
+      <details className="cook-ingredients"><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
         <p className="quantity-note">{session.plannedMeal ? session.plannedMeal.servings ? `${session.plannedMeal.servings} servings` : `${mealScale(session.plannedMeal)} recipe batches` : "Original recipe quantities"}. Source directions retain their original wording.</p>
         <ul className="ingredient-list">{ingredients.map((ingredient, index) => <li key={index}><strong>{ingredient.name}</strong><small>{ingredient.measure || "Amount needs review"}{ingredient.needsReview && ingredient.measure ? " · review amount" : ""}</small></li>)}</ul>
       </section></details>
+      {askChefStep && <details className="cook-help"><summary>Ask about this step</summary><section aria-label="Cooking step help">
+        <p className="quantity-note">{cookingSourceStep(session.recipe, session.instructions, session.step) ? "Uses this source step and nearby directions. Timers keep running." : "This step cannot be mapped uniquely; Chef will use the recipe context."}</p>
+        <form onSubmit={(event) => { event.preventDefault(); if (helpQuestion.trim()) { askChefStep(helpQuestion); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
+        {chefError && <p role="alert">{chefError}</p>}
+        {chefReply && chefReply.resolvedContext?.stepEvidenceId === cookingSourceStep(session.recipe, session.instructions, session.step) && <div className="step-chef-reply" aria-live="polite"><strong>{chefReply.generation === "ai" ? "Chef help · Source grounded" : "Source recipe · AI help unavailable"}</strong><p>{chefReply.answer}</p>{chefReply.sourceFacts.map((fact, index) => <blockquote key={index}>{fact.fact}</blockquote>)}{chefReply.chefChanges.map((change, index) => <div key={index}><b>Suggested change — original recipe unchanged</b><p>{change.change} {change.reason}</p></div>)}{chefReply.citations.map((citation) => <a key={citation.recipeId} href={citation.sourceUrl} target="_blank" rel="noreferrer">{citation.sourceName} · Original source</a>)}</div>}
+      </section></details>}
       <section className="cook-timer" aria-label="Cooking timer"><span>Timer</span><strong role="timer" aria-label="Time remaining">{display}</strong>
         {session.timer.status === "finished" && <p role="status">Timer finished. Check your food; dinner stays planned until you confirm it cooked.</p>}
-        <label>Timer duration (seconds)<input type="number" min="1" max="86400" value={secondsInput} onChange={(event) => setSecondsInput(event.target.value)} /></label>
+        <div className="timer-duration"><label>Minutes<input type="number" min="0" max="1440" step="1" value={minutesInput} onChange={(event) => setMinutesInput(event.target.value)} /></label><label>Seconds<input type="number" min="0" max="59" step="1" value={secondsInput} onChange={(event) => setSecondsInput(event.target.value)} /></label></div>
+        <div className="timer-presets" aria-label="Quick timers">{[1, 5, 10, 15].map((minutes) => <button key={minutes} onClick={() => start(minutes * 60)}>Start {minutes} min timer</button>)}</div>
         {timerError && <p role="alert">{timerError}</p>}
-        <div>{sourceSeconds && <button onClick={() => start(sourceSeconds)}>Start {sourceSeconds % 60 === 0 ? `${sourceSeconds / 60} min` : `${sourceSeconds} sec`} from this step</button>}<button onClick={() => start(Number(secondsInput))}>Start custom timer</button><button disabled={session.timer.status !== "running" && session.timer.status !== "paused"} aria-label={session.timer.status === "running" ? "Pause timer" : "Resume timer"} onClick={() => { setNow(Date.now()); onChange({ ...session, timer: timerAction(session.timer, session.timer.status === "running" ? "pause" : "start") }); }}>{session.timer.status === "running" ? "Pause" : "Resume"}</button><button aria-label="Reset timer" onClick={() => onChange({ ...session, timer: timerAction(session.timer, "reset") })}>Reset</button></div>
+        <div>{sourceSeconds && <button onClick={() => start(sourceSeconds)}>Start {sourceSeconds % 60 === 0 ? `${sourceSeconds / 60} min` : `${sourceSeconds} sec`} from this step</button>}<button onClick={() => {
+          const mins = Number(minutesInput), secs = Number(secondsInput);
+          if (!minutesInput.trim() || !secondsInput.trim() || !Number.isInteger(mins) || !Number.isInteger(secs) || mins < 0 || secs < 0 || secs > 59) { setTimerError("Enter whole minutes and seconds from 0 to 59."); return; }
+          start(mins * 60 + secs);
+        }}>Start custom timer</button><button disabled={session.timer.status !== "running" && session.timer.status !== "paused"} aria-label={session.timer.status === "running" ? "Pause timer" : "Resume timer"} onClick={() => { setNow(Date.now()); onChange({ ...session, timer: timerAction(session.timer, session.timer.status === "running" ? "pause" : "start") }); }}>{session.timer.status === "running" ? "Pause" : "Resume"}</button><button aria-label="Reset timer" onClick={() => onChange({ ...session, timer: timerAction(session.timer, "reset") })}>Reset</button></div>
         <label className="timer-sound"><input type="checkbox" checked={session.soundEnabled} onChange={(event) => {
           if (event.target.checked) { try { audio.current ??= new AudioContext(); void audio.current.resume(); } catch { /* Optional sound. */ } }
           onChange({ ...session, soundEnabled: event.target.checked });
@@ -104,5 +129,5 @@ export function CookingWorkspace({ session, visible, onChange, close, finish }: 
       </section>
     </main>
     <footer><button className="secondary-button" onClick={() => onChange({ ...session, step: Math.max(0, session.step - 1) })} disabled={session.step === 0}>Previous</button><span>Screen stays awake where supported</span><button className="primary-button" onClick={() => session.step === session.instructions.length - 1 ? finish() : onChange({ ...session, step: session.step + 1 })}>{session.step === session.instructions.length - 1 ? "Finish cooking" : "Next step →"}</button></footer>
-  </div>;
+  </Modal>;
 }

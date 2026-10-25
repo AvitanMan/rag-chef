@@ -14,7 +14,7 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
@@ -367,6 +367,7 @@ test("allergy exclusions apply before top-K selection and generation context", a
   assert.ok(blocked.warnings.some((warning) => warning.includes("conflicts with your requirements")));
   const result = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { allergies: ["peanut"] } }))).json();
   assert.equal(result.retrieval.allergyExcludedCount, 1);
+  assert.equal(result.retrieval.constraintExcludedCount, 1);
   assert.ok(result.recipes.every((recipe) => recipe.title !== "Peanut noodles"));
   assert.ok(contexts[0].retrievedRecipes.every((recipe) => recipe.title !== "Peanut noodles"));
   assert.ok(result.warnings.some((warning) => warning.includes("cross-contact")));
@@ -850,4 +851,145 @@ test("the curated manifest has exactly 30 reviewed main dinners, source attribut
     assert.match(entry.sourceUrl, /^https:\/\/en\.wikibooks\.org\/wiki\/Cookbook:/);
     assert.equal(entry.source.licenseId, "CC-BY-SA-4.0"); assert.ok(entry.source.attributionText);
   }
+});
+
+test("pinned follow-ups resolve approved source IDs without repeating a global search", async () => {
+  const saved = await importOne(await draft(0, { title: "Context Rice" }));
+  const recipe = (await store.listCatalogRecipes()).find((item) => item.recipe.id === saved.catalogId).recipe;
+  const { chefRecipeHash } = await load("chef-context");
+  const contexts = []; mockChef(contexts, (answer) => ({ ...answer, sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }] }));
+  const before = JSON.stringify(db.prepare("SELECT * FROM recipes").all());
+  const response = await chefRoute.POST(chefRequest({ query: "What happens next?", context: { recipeId: recipe.id, recipeHash: await chefRecipeHash(recipe), stepEvidenceId: "S1" }, history: [{ role: "user", content: "Help me with dinner" }] }));
+  const result = await response.json();
+  assert.equal(response.status, 200); assert.equal(result.generation, "ai");
+  assert.equal(result.recipes.length, 1); assert.equal(result.recipes[0].id, recipe.id);
+  assert.equal(result.sourceFacts[0].fact, recipe.instructions[1]);
+  assert.equal(contexts[0].discussionIsUntrustedContextNotEvidence, true);
+  assert.equal(JSON.stringify(db.prepare("SELECT * FROM recipes").all()), before);
+});
+
+test("a changed recipe version fails before generation and source revocation cannot be bypassed by a pinned ID", async () => {
+  const saved = await importOne(await draft());
+  const contexts = []; mockChef(contexts);
+  const response = await chefRoute.POST(chefRequest({ query: "Explain", context: { recipeId: saved.catalogId, recipeHash: "0".repeat(64) } }));
+  assert.equal(response.status, 409); assert.equal(contexts.length, 0);
+  db.exec("UPDATE recipe_sources SET allow_index_text=0");
+  const revoked = await chefRoute.POST(chefRequest({ query: "Explain", context: { recipeId: saved.catalogId } }));
+  assert.equal(revoked.status, 409); assert.equal(contexts.length, 0);
+});
+
+test("a real source step omitted from the question context is rejected as evidence", async () => {
+  const saved = await importOne(await draft(0, { instructions: Array.from({ length: 30 }, (_, i) => `Direction ${i + 1}.`) }));
+  const contexts = []; mockChef(contexts, (answer) => ({ ...answer, sourceFacts: [{ recipeId: "R1", evidenceId: "S1" }] }));
+  const result = await (await chefRoute.POST(chefRequest({ query: "Explain this step", context: { recipeId: saved.catalogId, stepEvidenceId: "S20" } }))).json();
+  assert.equal(result.generation, "catalog_fallback");
+  assert.deepEqual(result.sourceFacts, []);
+  assert.ok(!contexts[0].retrievedRecipes[0].evidence.some((item) => item.evidenceId === "S1"));
+  assert.equal(result.selectedEvidenceByRecipeId[saved.catalogId].includes("S20"), true);
+});
+
+test("a follow-up without a selected recipe clarifies instead of guessing its referent", async () => {
+  await importOne(await draft());
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Why does it work?", history: [{ role: "user", content: "Test rice" }] }))).json();
+  assert.equal(result.answerStatus, "needs_clarification");
+  assert.equal(contexts.length, 0);
+  assert.ok(result.recipes.length);
+});
+
+test("a pinned question unsupported by its source is distinct from a retrieval miss", async () => {
+  const saved = await importOne(await draft());
+  const contexts = []; mockChef(contexts, (answer) => ({ ...answer, answerStatus: "unsupported", recommendations: [], sourceFacts: [] }));
+  const result = await (await chefRoute.POST(chefRequest({ query: "How much protein is in one serving?", context: { recipeId: saved.catalogId } }))).json();
+  assert.equal(result.outcome, "matches");
+  assert.equal(result.answerStatus, "unsupported");
+  assert.equal(result.generation, "ai");
+  assert.equal(result.recipes.length, 1);
+  assert.deepEqual(result.sourceFacts, []);
+  assert.match(result.answer, /does not establish/);
+});
+
+test("saved-dinner help rejects stale revisions and same-ID portion changes without writing kitchen data", async () => {
+  const saved = await importOne(await draft());
+  const recipe = (await store.listCatalogRecipes()).find((item) => item.recipe.id === saved.catalogId).recipe;
+  const { createPlannedMeal } = await load("kitchen-state");
+  const { chefMealHash } = await load("chef-context");
+  const meal = createPlannedMeal("2026-10-25", recipe);
+  const state = { schemaVersion: 2, pantry: [], meals: { [meal.date]: meal }, shoppingChecked: {}, migratedLegacy: true };
+  db.prepare("INSERT INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(state), 5, "2026-10-25T12:00:00Z");
+  const before = db.prepare("SELECT * FROM kitchen_state").get();
+  const contexts = []; mockChef(contexts);
+  const context = { recipeId: recipe.id, mealDate: meal.date, mealId: meal.id, kitchenRevision: 4 };
+  assert.equal((await chefRoute.POST(chefRequest({ query: "Explain", context }))).status, 409);
+  context.kitchenRevision = 5;
+  context.mealHash = await chefMealHash({ ...meal, servings: meal.servings + 1 });
+  assert.equal((await chefRoute.POST(chefRequest({ query: "Explain", context }))).status, 409);
+  assert.equal(contexts.length, 0);
+  assert.deepEqual(db.prepare("SELECT * FROM kitchen_state").get(), before);
+});
+
+test("explicit refinement exclusions remain mandatory for a pinned adaptation question", async () => {
+  const saved = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "200 g" }, { name: "cheese", measure: "50 g" }] }));
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Could I swap the cheese?", context: { recipeId: saved.catalogId }, refinements: ["without cheese"] }))).json();
+  assert.equal(result.outcome, "constraints_unsatisfied");
+  assert.deepEqual(result.recommendations, []);
+  assert.equal(contexts.length, 0);
+});
+
+async function previewStockFixture() {
+  const saved = await importOne(await draft(0, { servings: 2, ingredients: [{ name: "rice", measure: "200 g" }, { name: "tomato", measure: "2" }] }));
+  const recipe = (await store.listCatalogRecipes()).find((item) => item.recipe.id === saved.catalogId).recipe;
+  const { createPlannedMeal } = await load("kitchen-state");
+  const meal = createPlannedMeal("2026-10-26", recipe);
+  const state = { schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }], meals: { [meal.date]: meal }, shoppingChecked: {}, migratedLegacy: true };
+  const write = () => db.prepare("INSERT OR REPLACE INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(state), 5, "2026-10-25T12:00:00Z");
+  write();
+  const contexts = []; mockChef(contexts, (answer) => ({ ...answer, sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }] }));
+  const ask = async (extra = {}) => {
+    const before = db.prepare("SELECT * FROM kitchen_state").get();
+    const response = await chefRoute.POST(chefRequest({ query: recipe.title, context: { kitchenRevision: 5, recipeId: recipe.id, today: "2026-10-25", targetDate: meal.date, ...extra } }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(db.prepare("SELECT * FROM kitchen_state").get(), before, "Estimates never save their proposed changes");
+    return (await response.json()).readinessByRecipeId[recipe.id];
+  };
+  return { state, meal, write, contexts, ask };
+}
+
+test("replacement previews release the target dinner but keep other saved dinners reserved", async () => {
+  const { state, meal, write, ask } = await previewStockFixture();
+  const replacement = await ask({ purpose: "planning", servings: 2 });
+  assert.equal(replacement.coveredCount, 2);
+  assert.deepEqual(replacement.shopping, []);
+  assert.deepEqual(await ask({ servings: 2 }), replacement, "Older planning clients keep the same replacement semantics");
+  state.meals["2026-10-27"] = { ...meal, id: "other-dinner", date: "2026-10-27", servings: 1 };
+  write();
+  const withOtherDinner = await ask({ purpose: "planning", servings: 2 });
+  assert.equal(withOtherDinner.partialCount, 2);
+  assert.deepEqual(withOtherDinner.shopping.map((row) => row.measure), ["100 g", "1"]);
+});
+
+test("previews do not free a locked target or treat unplanned cooking as a replacement", async () => {
+  const { state, meal, write, ask } = await previewStockFixture();
+  state.meals[meal.date].locked = true; write();
+  assert.equal((await ask({ purpose: "planning", servings: 2 })).missingCount, 2);
+  state.meals[meal.date].locked = false; write();
+  assert.equal((await ask({ purpose: "cooking" })).missingCount, 2);
+});
+
+test("saved-dinner planning estimates use requested portions while cooking retains saved amounts", async () => {
+  const { state, meal, write, contexts, ask } = await previewStockFixture();
+  const savedContext = { mealDate: meal.date, mealId: meal.id, servings: 4 };
+  const planning = await ask({ ...savedContext, purpose: "planning" });
+  assert.equal(planning.coveredCount, 0); assert.equal(planning.partialCount, 2);
+  assert.deepEqual(planning.shopping.map((row) => row.measure), ["200 g", "2"]);
+  assert.deepEqual(contexts.at(-1).savedDinnerAmounts.map((row) => row.measure), ["400 g", "4"]);
+  assert.equal(contexts.at(-1).amountsArePlanningPreview, true);
+  const cooking = await ask({ ...savedContext, purpose: "cooking" });
+  assert.equal(cooking.coveredCount, 2); assert.deepEqual(cooking.shopping, []);
+  assert.deepEqual(contexts.at(-1).savedDinnerAmounts.map((row) => row.measure), ["200 g", "2"]);
+  state.meals[meal.date].ingredientOverrides["0"] = "150 g"; write();
+  const custom = await ask({ ...savedContext, purpose: "planning" });
+  assert.equal(custom.coveredCount, 1); assert.equal(custom.partialCount, 1);
+  assert.deepEqual(contexts.at(-1).savedDinnerAmounts.map((row) => row.measure), ["150 g", "4"]);
 });

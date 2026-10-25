@@ -155,6 +155,12 @@ function measure(value: unknown, path: string): void {
   }
 }
 
+/** The editor and persistence boundary accept the same numeric and free-text amounts. */
+export function measureInputProblem(value: string): string {
+  try { measure(value, "Amount"); return ""; }
+  catch (error) { return error instanceof Error ? error.message : "Enter a valid amount."; }
+}
+
 export function validateRecipeSnapshot(value: unknown, path = "recipe"): asserts value is Recipe {
   const item = record(value, path);
   fields(

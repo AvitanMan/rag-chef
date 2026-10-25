@@ -56,6 +56,8 @@ export interface RecipeConstraints {
 }
 
 export interface RecipeSearchOptions {
+  recipeId?: string;
+  stockContext?: { pantry: import("./kitchen-types").PantryStock[]; meals: import("./kitchen-types").PlannedMeal[]; targetDate: string; today: string; servings?: number; batches?: number };
   allergies?: string[];
   pantry?: string[];
   query?: string;

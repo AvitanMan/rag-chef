@@ -16,7 +16,7 @@ for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-sto
 const load = (name) => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
 const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients } = await load("quantities");
 const { createPlannedMeal } = await load("kitchen-state");
-const { fillEmptyDays } = await load("kitchen-planning");
+const { fillEmptyDays, planningRandom } = await load("kitchen-planning");
 const { availablePantryNames } = await load("kitchen-stock");
 const { validateKitchenState } = await load("kitchen-validation");
 const { parseKitchenBackup, serializeKitchenBackup } = await load("kitchen-backup");
@@ -153,27 +153,46 @@ test("suggestions cannot count the same packet for two dinners", () => {
   assert.deepEqual(pantry, [stock("rice", "rice", "200 g"), stock("beans", "beans", "200 g")]);
 });
 
-test("use-soon stock leads, then quantity coverage and existing ingredient reuse", () => {
+test("use-soon stock leads while ingredient reuse is a preference rather than a fixed choice", () => {
   const urgent = recipe("urgent", [{ name: "rice", measure: "200 g" }, { name: "tomato", measure: "1" }]);
   const covered = recipe("covered", [{ name: "beans", measure: "200 g" }]);
   const result = fillEmptyDays([covered, urgent], [stock("rice", "rice", "200 g", "2026-10-29"), stock("beans", "beans", "200 g")], "2026-10-26", {}, "2026-10-22");
   assert.equal(result.additions[0].recipeId, "urgent");
   assert.match(result.reasons["2026-10-26"], /within three days/);
   const saved = meal("2026-10-30", recipe("saved", [{ name: "onion", measure: "1" }]));
-  const reuse = fillEmptyDays([recipe("carrot", [{ name: "carrot", measure: "1" }]), recipe("onion", [{ name: "onion", measure: "1" }])], [], "2026-10-26", { [saved.date]: saved }, "2026-10-22");
-  assert.equal(reuse.additions[0].recipeId, "onion");
+  const choices = [recipe("carrot", [{ name: "carrot", measure: "1" }]), recipe("onion", [{ name: "onion", measure: "1" }])];
+  const reuse = fillEmptyDays(choices, [], "2026-10-26", { [saved.date]: saved }, "2026-10-22", () => 0.45);
+  assert.equal(reuse.additions[0].recipeId, "onion", "ingredient reuse increases a candidate's chance");
+  const variety = fillEmptyDays(choices, [], "2026-10-26", { [saved.date]: saved }, "2026-10-22", () => 0);
+  assert.equal(variety.additions[0].recipeId, "carrot", "a new ingredient can still be chosen");
 });
 
-test("weekly fill is deterministic, keeps cooked meals and leaves past weeks untouched", () => {
+test("a fill seed replays independently of catalog order, keeps cooked meals and leaves past weeks untouched", () => {
   const recipes = Array.from({ length: 9 }, (_, index) => recipe(`r${index}`));
   const saved = meal("2026-10-27", recipes[0]);
   saved.status = "cooked";
   saved.completion = { id: "cooked", at: "2026-10-22T10:00:00.000Z", deductions: [] };
   const meals = { [saved.date]: saved };
-  const forward = fillEmptyDays(recipes, [], "2026-10-26", meals, "2026-10-22");
-  const reversed = fillEmptyDays([...recipes].reverse(), [], "2026-10-26", meals, "2026-10-22");
+  const forward = fillEmptyDays(recipes, [], "2026-10-26", meals, "2026-10-22", planningRandom(42));
+  const reversed = fillEmptyDays([...recipes].reverse(), [], "2026-10-26", meals, "2026-10-22", planningRandom(42));
   assert.deepEqual(forward.additions.map((item) => item.recipeId), reversed.additions.map((item) => item.recipeId));
   assert.equal(new Set(forward.additions.map((item) => item.recipeId)).size, 6);
   assert.strictEqual(forward.meals[saved.date], saved);
   assert.deepEqual(fillEmptyDays(recipes, [], "2026-10-12", {}, "2026-10-22").additions, []);
+});
+
+
+test("new fill seeds vary both the selection and order while keeping every week repeat-free", () => {
+  const recipes = Array.from({ length: 12 }, (_, index) => recipe(`variety-${index}`));
+  const firstDinners = new Set(), combinations = new Set(), orders = new Set();
+  for (let seed = 0; seed < 32; seed++) {
+    const fill = fillEmptyDays(recipes, [], "2026-10-26", {}, "2026-10-22", planningRandom(seed));
+    const ids = fill.additions.map((meal) => meal.recipeId);
+    assert.equal(ids.length, 7);
+    assert.equal(new Set(ids).size, 7);
+    firstDinners.add(ids[0]); combinations.add([...ids].sort().join(",")); orders.add(ids.join(","));
+  }
+  assert.ok(firstDinners.size >= 8, "variety must not be a fixed first dinner with shuffled later slots");
+  assert.ok(combinations.size >= 20, "vary which dinners are chosen, not only their order");
+  assert.equal(orders.size, 32);
 });

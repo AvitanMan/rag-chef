@@ -344,6 +344,6 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   }, [refreshRecovery]);
 
   const saveState: KitchenSaveState = savePhase === "saved" && JSON.stringify(state) !== savedSnapshot ? "pending" : savePhase;
-  return { state, update, ready, status, saveState, backupAvailable, conflict, resolveConflict, retrySave: () => setRetry((value) => value + 1),
+  return { state, update, ready, status, saveState, getRevision: () => revision.current, backupAvailable, conflict, resolveConflict, retrySave: () => setRetry((value) => value + 1),
     busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoverDraft, discardDraft, restoreBackup };
 }

@@ -53,16 +53,49 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Plan**. Choose a day, select a recipe, then open **Shopping**.
-You can also choose **Add to plan** from Recipes. **Ask Chef** opens from Recipes
-and keeps your recipe search intact during the current session.
+The app opens on **Chef**. Choose a dinner day (today by default), ask for ideas,
+then choose a dinner, review shopping, and cook. **Plan** remains directly accessible.
+You can also choose **Add to plan** from Recipes. Open **Chef** directly from
+navigation, or **Ask Chef** from Recipes. Your recipe search stays intact during
+the current session.
 Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pantry
 is empty, using the loaded catalog without a model call. Saved exclusions and
 dislikes still apply. Use **Find my dinner** for a specific request, or leave it
 blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
+After a request, **How Chef found this** shows the actual retrieval method,
+catalog and shortlist counts, requirement exclusions, and whether an AI answer
+or a catalog fallback was used. **Recipe evidence** puts source excerpts and
+original links beside the answer. Cited excerpts are copied from the source;
+fallback excerpts are explicitly labeled as retrieved recipe text. Open an
+evidence title to inspect the full recipe. No confidence percentage is implied.
 When choosing a day, Chef keeps that date visible and its recipe cards offer
 **Add to [day]** directly. Opening recipe details is optional. Without a selected
-day, **Add to plan** opens the day picker. Replacing a dinner still needs confirmation.
+day, Chef uses the visible date, defaulting to today. Adding from the Recipes
+browser without a selected day still opens the day picker. Replacing a dinner
+still needs confirmation.
+
+**Ask about this recipe** pins a discussion to one approved source recipe.
+Follow-up questions retain the latest three question/answer pairs while navigating
+between Chef, recipe details, and cooking. Earlier questions are collapsed;
+reloading starts a new discussion. **New dinner search** clears the recipe,
+selected day, portions, and refinements. Explicit refinements appear as removable
+filters and cannot relax saved exclusions.
+
+Chef uses saved, measured pantry stock for its request estimates, after reserving
+stock for other saved dinners in the target week. A replacement preview releases
+the dinner being replaced and applies the selected portions; cooking help uses
+the saved dinner's actual amounts. Cards distinguish covered,
+partial, missing, and review-needed requirements; unknown yields use recipe
+batches. **Cook for** changes deterministic planning quantities, while Chef's
+substitution advice remains separate and never rewrites a meal.
+
+Cooking has **Ask about this step** inside its existing scrolling area. Questions
+use the pinned recipe and original step references, leaving timers and progress
+running. Older sessions are mapped back to source steps where unambiguous;
+otherwise help uses the recipe context. Changed dinner portions, source versions,
+or source permissions are rechecked before an answer. Saved directions remain
+available when Chef cannot verify a version. Relevant source steps retain their
+original IDs, and an omitted step cannot be cited as supplied evidence.
 
 ### Populate a fresh installation
 
@@ -119,6 +152,37 @@ disposable copies and leave this preview and its database untouched.
 
 ## Planning and shopping rules
 
+Use the **Dark mode** toggle in the top bar or cooking header to switch themes.
+The app follows your system preference until you choose a theme, then remembers
+that choice in this browser. Theme preferences are separate from kitchen backups.
+
+An empty week has a compact, expandable checklist for preferences, pantry,
+dinner, and shopping. **Today’s dinner** gives immediate access to tonight;
+saving a dinner reveals its card. The day picker defaults to an upcoming empty
+date. Historical or occupied dates require an explicit selection.
+
+In **Settings**, cooking preferences come first. Enter allergies and dislikes as editable chips: Enter,
+comma, or leaving the field saves an ingredient. Select a chip to edit it, or
+use its × button to remove it.
+
+In **Pantry**, paste ingredients separated by new lines, commas, or semicolons.
+Amounts are optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported.
+Multiple ingredients and measured entries open an editable confirmation preview
+whose actions remain visible while the ingredient rows scroll.
+Existing stock stays intact; confirmed entries create separate stock rows.
+Removing pantry rows or unlocked dinners (including **Clear unlocked**) offers
+**Undo** in a visible recovery bar until dismissed or the page is reloaded.
+Earlier removals remain available in the bar. Undo preserves later edits and
+never replaces a dinner subsequently added to the same date.
+
+Quantity fields keep invalid drafts beside the field without blocking other
+valid edits from saving. Correct the draft or press Escape to restore its saved
+value. Free-text notes such as `to taste` remain valid, unquantified amounts.
+
+Chef’s instant dinner picks favor eligible reviewed main dishes. If the Chef
+API is unavailable, local picks remain available with **Retry Chef**; saved
+exclusions and the failed request’s dietary and ingredient restrictions still apply.
+
 Recipe search ignores case, accents, and punctuation. Every search word must
 appear in the title or ingredient names. Exact names lead, then pantry coverage
 and alphabetical ties. **Show more** reveals another 24 cards. Pantry matches
@@ -131,7 +195,9 @@ Past-dated stock stays excluded for unfinished historical dinners. Cooking
 deductions use the actual cooking date, including when a dinner is cooked early.
 Automatic planning reserves measured stock for saved dinners, then fills upcoming
 empty days in date order without spending the same stock twice. Stock due within
-three days leads, followed by quantity coverage, ingredient reuse and stable ties.
+three days leads, then meals using remaining measured stock. Each fill makes a
+fresh weighted random draw within the available group, favoring quantity
+coverage and ingredient reuse without always choosing the same dinners.
 Past days remain manually editable; locked, cooked and saved dinners stay intact.
 
 Use **Cook for** when the source provides an explicit serving count. Unknown
@@ -144,13 +210,26 @@ pantry amounts never count as sufficient stock. Missing measures, ranges, and
 conflicting units stay marked for review. Cups use 240 ml, tablespoons 15 ml,
 and teaspoons 5 ml; volume is never assumed to equal mass.
 
+Ingredient matching keeps cooked and uncooked stock separate. For example,
+`cooked rice` matches `rice, cooked`, while `uncooked rice` and `dry rice` match
+ordinary `rice`. This uncooked default applies to an explicit set of grain,
+pasta and pulse staples; dried herbs, fruit, mushrooms and canned foods retain
+their own identities. No cooked-to-dry weight or volume ratio is assumed.
+Shopping flags a preparation mismatch for review instead of subtracting the
+wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
+
 Checked items move into **Bought** without changing pantry stock. Completing a
 dinner can deduct confirmed stock; **Undo cooked** restores that deduction.
 Saved meals retain independent recipe snapshots, so catalog updates do not
 silently rewrite existing dinners or historical quantities.
 
 Cooking mode shows the same final amounts and overrides as the dinner details.
-Custom timers accept 1 second to 24 hours and use a saved deadline, so time does
+Ingredients start collapsed and expand into the main cooking panel. That panel
+is the single scrolling area; the header and step controls stay visible, and
+changing steps returns to the top. Background page scrolling is locked while
+a dialog is open.
+Custom timers have minutes and seconds controls, plus 1, 5, 10, and 15 minute
+presets. They accept 1 second to 24 hours and use a saved deadline, so time does
 not depend on background interval ticks. Single explicit source-step durations
 offer shortcuts; ranges and ambiguous durations require a custom timer. Sound is
 optional and requires browser audio support. Timer completion never marks dinner
@@ -158,6 +237,9 @@ cooked. **Exit cooking** preserves progress; **Resume cooking** or **Discard
 cooking session** appears after reopening. Starting another dinner asks before
 replacing progress. Changed meal identities or quantities require reopening the
 current dinner before completion and pantry deduction.
+
+Dialogs support Escape to close, keep Tab focus inside, and return focus to the
+opening control when it is still available. Exiting cooking preserves the timer.
 
 ## How Chef works
 

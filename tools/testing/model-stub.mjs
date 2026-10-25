@@ -26,9 +26,9 @@ export async function startModelStub() {
         const context = JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2));
         const recipe = context.retrievedRecipes?.[0];
         const evidenceSchema = body.format?.properties?.sourceFacts?.items?.properties?.evidenceId;
-        const sourceFacts = recipe && evidenceSchema ? [{ recipeId: recipe.recipeId, evidenceId: mode === "invalid_evidence" ? "I999" : "I1" }] : [];
+        const sourceFacts = recipe && evidenceSchema && mode !== "unsupported" ? [{ recipeId: recipe.recipeId, evidenceId: mode === "invalid_evidence" ? "I999" : "I1" }] : [];
         const chefChanges = recipe && context.requestIntent?.adaptationDiets?.includes("vegan") ? [{ recipeId: recipe.recipeId, change: "Consider a plant-based cheese substitute.", reason: "An advisory adaptation; original source ingredients are unchanged." }] : [];
-        send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify({ answer: "This catalog recipe matches your request.", sourceFacts, chefChanges, recommendations: recipe ? [{ recipeId: recipe.recipeId, reason: "Matches the requested recipe." }] : [], warnings: [] }) } }); return;
+        send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify({ answer: mode === "unsupported" ? "The source does not establish this answer." : "This catalog recipe matches your request.", ...(body.format?.properties?.answerStatus ? { answerStatus: mode === "unsupported" ? "unsupported" : "answered" } : {}), sourceFacts, chefChanges, recommendations: recipe ? [{ recipeId: recipe.recipeId, reason: "Matches the requested recipe." }] : [], warnings: [] }) } }); return;
       }
       send(404, { error: "Unknown test-provider endpoint" });
     } catch (error) { send(400, { error: error.message }); }
