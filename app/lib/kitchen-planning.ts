@@ -1,7 +1,7 @@
 import type { KitchenState, PantryStock, PlannedMeal } from "./kitchen-types";
-import type { Recipe } from "./recipe-types";
+import type { Recipe, RecipeMetadataMap } from "./recipe-types";
 import { addDateDays, createPlannedMeal, localDate } from "./kitchen-state";
-import { allocateMealStock, allocateStockForMeals, canonicalIngredient } from "./quantities";
+import { allocateMealStock, allocateStockForMeals, canonicalIngredient, mealReadiness } from "./quantities";
 
 export interface FilledWeeklyPlan {
   meals: KitchenState["meals"];
@@ -21,7 +21,7 @@ export function planningRandom(seed: number): () => number {
 }
 
 /** Saved dinners reserve stock before new suggestions; no real state is changed. */
-export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate(), random: () => number = Math.random): FilledWeeklyPlan {
+export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate(), random: () => number = Math.random, options: { metadataByRecipeId?: RecipeMetadataMap; preferReviewedMains?: boolean } = {}): FilledWeeklyPlan {
   const dates = Array.from({ length: 7 }, (_, index) => addDateDays(week, index));
   const saved = Object.values(meals).filter((meal) => dates.includes(meal.date));
   const used = new Set(saved.map((meal) => meal.recipeId));
@@ -38,13 +38,19 @@ export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: st
     });
     // Preserve the waste and stock priorities, but sample broadly within each
     // available tier rather than always picking the same highest-scoring meal.
-    const urgent = choices.filter((choice) => choice.allocation.useSoonCoverage > 0);
-    const covered = choices.filter((choice) => choice.allocation.coverage > 0);
-    const pool = urgent.length ? urgent : covered.length ? covered : choices;
+    const metadata = options.metadataByRecipeId ?? {};
+    const mains = choices.filter(({ recipe }) => metadata[recipe.id]?.coreDinner || metadata[recipe.id]?.dinnerRole === "main");
+    const dinnerChoices = options.preferReviewedMains === false ? choices : mains.length ? mains
+      : choices.filter(({ recipe }) => !metadata[recipe.id] || metadata[recipe.id].dinnerRole === "unknown");
+    const urgent = dinnerChoices.filter((choice) => choice.allocation.useSoonCoverage > 0);
+    const covered = dinnerChoices.filter((choice) => choice.allocation.coverage > 0);
+    const pool = urgent.length ? urgent : covered.length ? covered : dinnerChoices;
     const weighted = pool.map((choice) => ({ choice, weight: 1 + choice.allocation.useSoonCoverage * 4 + choice.allocation.coverage * 3 + Math.min(choice.reuse, 3) * 0.5 }));
     let draw = random() * weighted.reduce((sum, item) => sum + item.weight, 0);
     const chosen = weighted.find((item) => { draw -= item.weight; return draw < 0; })?.choice ?? weighted.at(-1)?.choice;
     if (!chosen) break;
+    const readiness = mealReadiness(chosen.meal, virtualPantry, today);
+    const pantrySummary = `Pantry covers ${readiness.coveredCount} ingredient${readiness.coveredCount === 1 ? "" : "s"}; ${readiness.missingCount + readiness.partialCount} still to buy${readiness.reviewCount ? `; ${readiness.reviewCount} amounts to review` : ""}.`;
     additions.push(chosen.meal);
     used.add(chosen.recipe.id);
     for (const identity of chosen.allocation.ingredientIdentities) identities.add(identity);
@@ -53,6 +59,9 @@ export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: st
       : chosen.allocation.coverage > 0 ? "Uses remaining measured pantry stock after saved dinners are reserved."
       : chosen.reuse > 0 ? "Shares ingredients with this week’s dinners; additional stock may be needed."
       : "Adds a different eligible dinner; check the shopping list for its ingredients.";
+    const role = metadata[chosen.recipe.id];
+    const roleLabel = role?.coreDinner || role?.dinnerRole === "main" ? "Reviewed main. " : role && role.dinnerRole !== "unknown" ? `Reviewed ${role.dinnerRole}. ` : "Dinner role not reviewed. ";
+    reasons[date] = `${roleLabel}${reasons[date]} ${pantrySummary}`;
   }
   return { meals: { ...meals, ...Object.fromEntries(additions.map((meal) => [meal.date, meal])) }, additions, reasons };
 }

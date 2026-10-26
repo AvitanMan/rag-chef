@@ -2,7 +2,7 @@ import { normalizeRecipeSearch } from "./recipe-browser";
 import { normalizeConstraints, normalizeEquipmentName } from "./recipe-constraints";
 import type { RecipeConstraints } from "./recipe-types";
 
-export const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend some something suggest suggestions that the to tonight use want what when which with would dinner ideas using".split(" "));
+export const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend some something suggest suggestions that the to tonight use want what when which with would dinner dinners idea ideas option options choice choices using".split(" "));
 const REQUEST_EQUIPMENT = new Set(["oven", "stovetop", "microwave", "blender", "slow cooker", "pressure cooker", "air fryer", "grill"]);
 
 export interface RecipeQueryIntent {
@@ -14,12 +14,18 @@ export interface RecipeQueryIntent {
   diets: string[];
   adaptationDiets: string[];
   maxTotalMinutes?: number;
+  requestedCount?: number;
 }
 
 export function queryRequestsAdaptation(query: string, hasRecipeFocus = false): boolean {
-  const request = query.replace(/\bwithout\s+(?:changing|rewriting|altering|modifying)\b[^.;!?]*/gi, "");
-  return /\b(substitut\w*|replac\w*|instead|swap\w*|adapt\w*|chang\w*|can i use|could i use|scal(?:e|ing)|halv(?:e|ing)|doubl(?:e|ing))\b/i.test(request)
-    || hasRecipeFocus && /\bmake\b.+\b(?:vegan|vegetarian|meatless|meat[ -]free|gluten[ -]free|dairy[ -]free)\b/i.test(request)
+  const request = query
+    .replace(/\b(?:change|swap|replace)\s+(?:(?:the|my|this|that)\s+)?recipe\s+(?:with|for|to)\s+(?![^.;!?]*\b(?:vegan|vegetarian|meatless|gluten[ -]free|dairy[ -]free|ingredients?|amounts?|method|technique)\b)[^.;!?]+/gi, "")
+    .replace(/\b(?:change|swap|replace)\s+(?:(?:the|my|this|that)\s+)?recipe(?:\s+instead)?(?=\s*[.;!?]|\s*$)/gi, "")
+    .replace(/\bwithout\s+(?:changing|rewriting|altering|modifying)\b[^.;!?]*/gi, "")
+    .replace(/\b(?:for\s+)?(?:tonight|tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:night|dinner))?\s+instead\b/gi, "")
+    .replace(/\b(?:change|swap|replace|move)\s+(?:(?:the|my|this|tonight[’']s|tomorrow[’']s)\s+)?(?:dinner|meal|day|date|plan)(?![^.;!?]*\b(?:vegan|vegetarian|meatless|gluten[ -]free|dairy[ -]free|ingredients?|amounts?|method|technique|reduce|substitut\w*)\b)(?:\s+[^.;!?]*)?/gi, "");
+  return /\b(?:substitut\w*|replac(?:e|es|ed|ing)|swap\w*|adapt\w*|can i use|could i use|scal(?:e|ing)|halv(?:e|ing)|doubl(?:e|ing))\b|\breplacements?\s+for\s+(?!(?:(?:the|my|this|that)\s+)?(?:recipe|dinner|meal)\b)|\binstead of\b|\bchang\w*\b.+\b(?:ingredient|amount|method|technique|cooking|baking|frying)\b/i.test(request)
+    || hasRecipeFocus && /\b(?:make|change|adapt)\b.+\b(?:vegan|vegetarian|meatless|meat[ -]free|gluten[ -]free|dairy[ -]free)\b/i.test(request)
     || /\b(?:halve|reduce|cut)\b.+\b(?:salt|sugar|butter|oil|amount)\b/i.test(request);
 }
 
@@ -54,10 +60,13 @@ export function recipeQueryIntent(query: string, hasRecipeFocus = false): Recipe
     ...( /\blow carb\b/.test(normalized) ? ["low_carb"] : []),
   ];
   const dairyFree = /\bdairy free\b/.test(normalized);
-  const topic = normalized.replace(/\b(?:under|within|less than|up to|in)\s+\d{1,3}\s*(?:minutes?|mins?)\b/g, " ")
+  const countMatch = normalized.match(/\b(one|two|three|[1-9]\d*)\s+(?:different\s+)?(?:(?:vegan|vegetarian|meatless|gluten free|dairy free|low carb)\s+)?(?:dinners?|meals?|recipes?|ideas?|options?|choices?)\b/);
+  const requestedCount = countMatch ? Math.min(3, Number(({ one: 1, two: 2, three: 3 } as Record<string, number>)[countMatch[1]] ?? countMatch[1])) : undefined;
+  const topic = normalized.replace(/\b(?:one|two|three|[1-9]\d*)\s+(?:different\s+)?(?=(?:(?:vegan|vegetarian|meatless|gluten free|dairy free|low carb)\s+)?(?:dinners?|meals?|recipes?|ideas?|options?|choices?)\b)/g, " ")
+    .replace(/\bdifferent\s+(?=(?:(?:vegan|vegetarian|meatless)\s+)?(?:dinners?|meals?|recipes?|ideas?|options?|choices?)\b)/g, " ").replace(/\b(?:under|within|less than|up to|in)\s+\d{1,3}\s*(?:minutes?|mins?)\b/g, " ")
     .replace(/\b(?:vegan|vegetarian|meatless|meat free|dairy free|gluten free|low carb)\b/g, " ")
     .split(" ").filter((word) => word && word !== "but" && !STOP_WORDS.has(word)).join(" ");
-  return { topic, broad: !topic, mode, excludedIngredients: namedAdaptation ? [] : [...new Set([...excluded, ...(dairyFree ? ["dairy"] : [])])], ...(excludedEquipment.length ? { excludedEquipment: [...new Set(excludedEquipment)] } : {}), diets: namedAdaptation ? [] : diets, adaptationDiets: namedAdaptation ? [...diets, ...(dairyFree ? ["dairy_free"] : [])] : [], ...(time && Number(time[1]) > 0 ? { maxTotalMinutes: Number(time[1]) } : {}) };
+  return { topic, broad: !topic, mode, ...(requestedCount ? { requestedCount } : {}), excludedIngredients: namedAdaptation ? [] : [...new Set([...excluded, ...(dairyFree ? ["dairy"] : [])])], ...(excludedEquipment.length ? { excludedEquipment: [...new Set(excludedEquipment)] } : {}), diets: namedAdaptation ? [] : diets, adaptationDiets: namedAdaptation ? [...diets, ...(dairyFree ? ["dairy_free"] : [])] : [], ...(time && Number(time[1]) > 0 ? { maxTotalMinutes: Number(time[1]) } : {}) };
 }
 
 export function constraintsForRecipeQuery(query: string, constraints: RecipeConstraints, hasRecipeFocus = false): RecipeConstraints {
@@ -69,5 +78,5 @@ export function constraintsForRecipeQuery(query: string, constraints: RecipeCons
 
 export function recipeRetrievalQuery(query: string, hasRecipeFocus = false): string {
   const intent = recipeQueryIntent(query, hasRecipeFocus);
-  return intent.excludedIngredients.length || intent.excludedEquipment?.length ? intent.topic : query.trim();
+  return intent.broad || intent.requestedCount || intent.excludedIngredients.length || intent.excludedEquipment?.length ? intent.topic : query.trim();
 }

@@ -220,3 +220,57 @@ test("theme toggle remains usable when preference storage cannot be written", as
   await page.getByRole("button", { name: "Dark mode", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
+
+test("removal recovery stays available across navigation without covering the Chef action", async ({ page, request }) => {
+  await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
+  await page.goto("/"); await navigate(page, "Pantry");
+  await page.getByRole("button", { name: "Remove rice", exact: true }).click();
+  await navigate(page, "Chef");
+  const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+  await input.fill("Tomato Rice");
+  const submit = page.getByRole("button", { name: "Find my dinner", exact: true });
+  await submit.scrollIntoViewIfNeeded();
+  expect(await submit.evaluate(el => { const box = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)); })).toBe(true);
+  const recovery = page.getByRole("region", { name: "Recently removed", exact: true });
+  await recovery.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(input).toHaveValue("Tomato Rice");
+  await expect.poll(async () => (await read(request)).state.pantry[0]?.measure).toBe("500 g");
+});
+
+test("pantry date controls show a full date with a separate readable label at all widths", async ({ page, request }) => {
+  await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g", useBy: "2026-10-30" }] });
+  await page.goto("/"); await navigate(page, "Pantry");
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const date = page.getByRole("textbox", { name: "Use by rice", exact: true });
+    await expect(date).toHaveValue("2026-10-30");
+    const box = await date.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(190);
+    expect(await date.evaluate(el => {
+      const label = el.closest("label")!;
+      const range = document.createRange(); range.selectNode(label.firstChild!);
+      return range.getBoundingClientRect().bottom <= el.getBoundingClientRect().top;
+    })).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
+
+test("automatic filling prefers reviewed mains and the wider collection is an explicit choice", async ({ page, request }) => {
+  const catalog = await (await request.get("/api/recipes/catalog")).json();
+  const mains = ["fixture-vegan-beans", "fixture-eggplant"];
+  const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { coreDinner: mains.includes(r.id), dinnerRole: mains.includes(r.id) ? "main" : "side", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
+  await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
+  await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
+  await page.goto("/"); await navigate(page, "Plan");
+  const preference = page.getByRole("checkbox", { name: "Prefer reviewed mains", exact: true });
+  await expect(preference).toBeChecked();
+  await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toMatch(/fixture-(vegan-beans|eggplant)/);
+  await expect(page.getByRole("article", { name: "Sun, Oct 25", exact: true })).toContainText("Reviewed main.");
+  await page.getByRole("region", { name: "Plan actions", exact: true }).getByText("More", { exact: true }).click();
+  await page.getByRole("button", { name: "Clear unlocked", exact: true }).click();
+  await page.getByRole("button", { name: "Remove unlocked meals", exact: true }).click();
+  await preference.uncheck();
+  await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toMatch(/fixture-(tomato-rice|fish-bowl)/);
+});

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { journeyRecipes, journeyMetadata } from "./journey-fixtures.mjs";
 
 // Original, synthetic test recipes. These are never imported into a user kitchen.
 export const fixtureRecipes = [
@@ -13,14 +14,20 @@ export const fixtureRecipes = [
 ];
 
 const quote = (value) => value === null || value === undefined ? "NULL" : typeof value === "number" ? String(value) : `'${String(value).replaceAll("'", "''")}'`;
-export function fixtureSql() {
+export function fixtureSql({ grounding = false, journeys = false } = {}) {
   const statements = [
     `INSERT INTO recipe_sources (id,name,url,license_id,license_url,attribution_text,permission_basis,approval_status,approved_by,allow_display,allow_cache,allow_index_text,allow_embed,allow_derive,created_at,updated_at) VALUES ('test-fixtures','Original test fixtures','https://example.invalid/fixtures','CC0-1.0','https://creativecommons.org/publicdomain/zero/1.0/','Original synthetic recipes created for automated tests.','Original test content','approved','test-runner',1,1,1,1,1,1,1);`,
   ];
-  for (const recipe of fixtureRecipes) {
+  const groundingRecipes = grounding ? [{ id: "fixture-oven-dinner", title: "Source Oven Dinner", ingredients: [{ name: "rice", measure: "200 g" }, { name: "vegetable stock", measure: "400 ml" }], tags: ["vegan"], servings: 2,
+    instructions: Array.from({ length: 30 }, (_, index) => index === 19 ? "Preheat the oven to 180°C. Bake for 25–30 minutes until golden." : `Source direction ${index + 1}: continue preparing the ingredients.`) }] : [];
+  for (const recipe of [...fixtureRecipes, ...groundingRecipes, ...(journeys ? journeyRecipes : [])]) {
     const contentHash = createHash("sha256").update(JSON.stringify(recipe)).digest("hex");
     const values = [recipe.id, "test-fixtures", recipe.id, `https://example.invalid/fixtures/${recipe.id}`, recipe.title, "Test", "Test", JSON.stringify(recipe.tags), `${recipe.title} ${recipe.ingredients.map((row) => row.name).join(" ")} ${recipe.instructions.join(" ")}`, contentHash, recipe.servings, 1, 1, 1];
     statements.push(`INSERT INTO recipes (id,source_id,source_record_id,source_url,title,category,cuisine,tags_json,search_text,normalized_content_sha256,servings,created_at,updated_at,last_seen_at) VALUES (${values.map(quote).join(",")});`);
+    if (journeys && journeyRecipes.some(row => row.id === recipe.id)) {
+      const metadata = journeyMetadata(recipe, contentHash);
+      statements.push(`INSERT INTO recipe_metadata (recipe_id,revision,source_content_sha256,payload_json,reviewed_by,reviewed_at) VALUES (${[recipe.id, 1, contentHash, JSON.stringify(metadata), metadata.reviewedBy, metadata.reviewedAt].map(quote).join(",")});`);
+    }
     recipe.ingredients.forEach((row, position) => statements.push(`INSERT INTO recipe_ingredients (recipe_id,position,original_name,normalized_name,original_measure) VALUES (${[recipe.id, position, row.name, row.name, row.measure].map(quote).join(",")});`));
     const section = `${recipe.id}-steps`;
     statements.push(`INSERT INTO recipe_instruction_sections (id,recipe_id,position) VALUES (${[section, recipe.id, 0].map(quote).join(",")});`);

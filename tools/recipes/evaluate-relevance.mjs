@@ -115,7 +115,7 @@ export function calibrateThresholds(semanticRecords, lexicalRecords, { decide, s
 
 export async function loadPureRanker() {
   const directory = await mkdtemp(join(tmpdir(), "rag-chef-relevance-"));
-  const names = ["recipe-query", "catalog-search", "recipe-embeddings", "recipe-browser", "recipe-constraints", "recipe-safety", "quantities", "kitchen-types"];
+  const names = ["retrieval-ranking", "recipe-query", "catalog-search", "recipe-embeddings", "recipe-browser", "recipe-constraints", "recipe-safety", "quantities", "kitchen-types"];
   try {
     for (const name of names) {
       const source = await readFile(join(ROOT, "app/lib", `${name}.ts`), "utf8");
@@ -203,7 +203,7 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
     const report = { reportVersion: 1, generatedAt: new Date().toISOString(), evaluatorSha256: hash(await readFile(fileURLToPath(import.meta.url), "utf8")),
       corpus: { file: "tools/recipes/fixtures/relevance-catalog.json", sha256: hash(corpusText), recipeCount: recipes.length, attributionPreserved: true },
       labels: { file: "tools/recipes/quality-cases.mjs", sha256: hash(await readFile(join(ROOT, "tools/recipes/quality-cases.mjs"), "utf8")), total: qualityCases.length, splitBeforeCalibration: true },
-      ranker: { sourceSha256: hash((await Promise.all(["catalog-search", "recipe-query"].map((name) => readFile(join(ROOT, `app/lib/${name}.ts`), "utf8")))).join("\n")),
+      ranker: { sourceSha256: hash((await Promise.all(["catalog-search", "recipe-query", "retrieval-ranking"].map((name) => readFile(join(ROOT, `app/lib/${name}.ts`), "utf8")))).join("\n")),
         embeddingSourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-embeddings.ts"), "utf8")),
         constraintsSourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-constraints.ts"), "utf8")),
         safetySourceSha256: hash(await readFile(join(ROOT, "app/lib/recipe-safety.ts"), "utf8")),
@@ -224,6 +224,9 @@ export async function runEvaluation({ reportPath = join(ROOT, "tools/recipes/rel
     if (baselinePath) {
       const baselineText = await readFile(baselinePath, "utf8");
       report.comparison = { baselineReportSha256: hash(baselineText), ...compareRetrievalReports(JSON.parse(baselineText), report) };
+      report.comparison.nonRegressionPassed = Object.values(report.comparison.metrics).every((mode) => Object.values(mode).every((row) =>
+        row.currentChefContextPrecisionAt3 + 1e-9 >= row.baselineChefContextPrecisionAt3 && row.retentionAfter >= row.retentionBefore && row.abstentionAfter >= row.abstentionBefore));
+      report.gatesPassed &&= report.comparison.nonRegressionPassed;
     }
     await mkdir(dirname(reportPath), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);

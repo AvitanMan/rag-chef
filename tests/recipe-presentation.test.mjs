@@ -16,8 +16,8 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding"].map((name) => ["components", name, "tsx"]),
-  ...["chef-context", "recipe-query", "pantry-input", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "kitchen-planning", "recipe-constraints", "recipe-safety"].map((name) => ["lib", name, "ts"]),
+  ...["ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts"].map((name) => ["components", name, "tsx"]),
+  ...["retrieval-ranking", "chef-context", "recipe-query", "pantry-input", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "kitchen-planning", "recipe-constraints", "recipe-safety"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -69,6 +69,14 @@ test("catalog fallback retains real recipe excerpts and never claims an AI answe
   assert.match(html, /Retrieved recipe excerpt/);
   assert.match(html, /<blockquote>100 g rice<\/blockquote>/);
   assert.doesNotMatch(html, /Cited recipe excerpt|AI answer from retrieved recipes|Meaning, keywords/);
+});
+
+test("an unverified AI answer is distinct from a missing source or unavailable provider", () => {
+  const html = grounding({ generation: "catalog_fallback", answerStatus: "unverified", sourceFacts: [], resolvedContext: { recipeId: recipe.id } });
+  assert.match(html, /AI answer withheld · Original source available/);
+  assert.match(html, /The AI answer could not be verified/);
+  assert.match(html, /Retrieved recipe excerpt/);
+  assert.doesNotMatch(html, /Question unsupported|No supported match|AI answer from retrieved recipes/);
 });
 
 test("no match stops without fabricating evidence, and missing semantic scores do not claim meaning search", () => {
@@ -153,7 +161,7 @@ test("the changes panel appears only for actual changes to the selected recipe",
   assert.doesNotMatch(drawer({ chefResult: { ...chefResult, chefChanges: [{ ...chefResult.chefChanges[0], recipeId: "other" }] } }), /changes-panel|Use less salt/);
 });
 
-const planProps = { week: "2026-10-19", today: "2026-10-21", setWeek: noop, meals: {}, update: noop, chooseMeal: noop, chooseDay: noop, cookMeal: noop, reviewDate: null, setReviewDate: noop, generatePlan: noop, openMeal: noop, markCooked: noop, undoCooked: noop, goShopping: noop, catalogState: "ready", retryCatalog: noop, planningNotice: "" };
+const planProps = { week: "2026-10-19", today: "2026-10-21", setWeek: noop, meals: {}, update: noop, chooseMeal: noop, chooseDay: noop, cookMeal: noop, reviewDate: null, setReviewDate: noop, generatePlan: noop, preferReviewedMains: true, setPreferReviewedMains: noop, openMeal: noop, markCooked: noop, undoCooked: noop, goShopping: noop, catalogState: "ready", retryCatalog: noop, planningNotice: "" };
 const plan = (props = {}) => renderToStaticMarkup(createElement(DurablePlanView, { ...planProps, ...props }));
 
 test("compact weekly plan marks only today and provides a current-week shortcut", () => {
@@ -251,4 +259,19 @@ test("an unsupported pinned question keeps the original source accessible withou
   assert.match(html, /Open evidence for Test Rice/);
   assert.match(html, /Original source/);
   assert.doesNotMatch(html, /<blockquote>/);
+});
+
+test("calculated dinner amounts label overrides separately from original source evidence", async () => {
+  const { PlanningFacts } = await import(pathToFileURL(join(directory, "PlanningFacts.mjs")).href);
+  const html = renderToStaticMarkup(createElement(PlanningFacts, { result: { resolvedContext: { servings: 4 }, planningFacts: [{ recipeId: recipe.id, ingredientIndex: 0, name: "rice", measure: "350 g", needsReview: false, basis: "saved_override" }] } }));
+  assert.match(html, /Your dinner amounts/); assert.match(html, /4 servings/); assert.match(html, /350 g/); assert.match(html, /Saved amount override/);
+  const source = grounding({ answerKind: "planning_quantities", generation: "catalog_fallback", resolvedContext: { recipeId: recipe.id }, evidenceRetrieval: { [recipe.id]: { method: "full_recipe", complete: false } } });
+  assert.match(source, /No AI calculation/); assert.match(source, /Original ingredient evidence/); assert.match(source, /100 g rice/);
+  assert.doesNotMatch(source, /Catalog fallback|Complete recipe evidence/);
+});
+
+test("structured AI discovery identifies selection separately from a verified factual answer", () => {
+  const html = grounding({ answerStatus: "answered", verification: { status: "not_required" } });
+  assert.match(html, /AI selected recipes · Original source excerpts/);
+  assert.doesNotMatch(html, /AI answer from retrieved recipes|Answer evidence checked/);
 });

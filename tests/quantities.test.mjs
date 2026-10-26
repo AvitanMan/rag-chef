@@ -127,6 +127,20 @@ test("canonical matching is exact, with a small explicit plural alias set", () =
   assert.equal(buildShoppingList([meal()], [pantry("500 g", "rice vinegar")])[0].measure, "400 g");
 });
 
+test("reviewed size and cutting descriptions match while material food differences stay separate", () => {
+  for (const [description, food] of [
+    ["any small pasta", "pasta"], ["medium zucchini, grated", "zucchini"],
+    ["large onions, finely chopped", "onion"], ["cheese, grated", "cheese"],
+    ["carrots, thinly sliced", "carrot"], ["cooked medium zucchini, grated", "cooked zucchini"],
+  ]) assert.equal(canonicalIngredient(description), canonicalIngredient(food), description);
+  for (const [description, food] of [
+    ["cooked zucchini, grated", "zucchini"], ["dried tomato, chopped", "tomato"],
+    ["canned tomatoes, chopped", "tomato"], ["cheese, melted", "cheese"],
+    ["onion, chopped or cooked", "onion"], ["onion and garlic, minced", "onion"],
+    ["ground beef", "beef"], ["large eggs", "egg"], ["rice flour", "rice"],
+  ]) assert.notEqual(canonicalIngredient(description), canonicalIngredient(food), description);
+});
+
 test("preparation identities match equivalent wording without merging cooked and uncooked quantities", () => {
   for (const names of [
     ["rice", "raw rice", "uncooked rice", "rice, uncooked", "dry rice", "rice (raw)"],

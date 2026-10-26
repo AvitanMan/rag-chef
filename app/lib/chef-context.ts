@@ -28,13 +28,31 @@ export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: s
   if (!stepId && (all.length <= 12 || /\b(?:full|complete|all)\s+(?:directions|instructions|method)|\bhow\b.*\b(?:make|cook|prepare)\b/i.test(query))) return all;
   const forms: Record<string, string> = { baking: "bake", baked: "bake", boiling: "boil", boiled: "boil", frying: "fry", fried: "fry", simmering: "simmer", simmered: "simmer", melting: "melt", melted: "melt", mixing: "mix", mixed: "mix", draining: "drain", drained: "drain", cooling: "cool", cooled: "cool", stirring: "stir", stirred: "stir" };
   const words = (text: string) => (text.toLowerCase().match(/[a-z]{3,}/g) ?? []).map((word) => forms[word] ?? word);
-  const terms = new Set(words(query).filter((term) => !["what", "which", "does", "this", "that", "with", "recipe", "source", "step", "please", "explain", "mentions"].includes(term)));
+  const stopWords = new Set("what which does this that with recipe source step steps direction directions instruction instructions method please explain mentions how long much time should would could can the and for are was were have has from into say says tell me about".split(" "));
+  const terms = new Set(words(query).filter((term) => !stopWords.has(term)));
   const selected = new Set(recipe.ingredients.map((_, index) => `I${index + 1}`));
   const current = stepId ? Number(stepId.slice(1)) - 1 : -1;
-  if (current >= 0) for (const index of [current - 1, current, current + 1]) if (recipe.instructions[index]) selected.add(`S${index + 1}`);
-  const scored = recipe.instructions.map((text, index) => ({ index, score: [...terms].filter((term) => words(text).includes(term)).length }));
+  const addStep = (index: number) => {
+    for (const nearby of [index - 1, index, index + 1]) if (recipe.instructions[nearby]) selected.add(`S${nearby + 1}`);
+  };
+  if (current >= 0) addStep(current);
+  const requestedStep = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
+  if (requestedStep && recipe.instructions[Number(requestedStep[1]) - 1]) addStep(Number(requestedStep[1]) - 1);
+  const timing = /\b(?:how long|how much time|duration|timing|minutes?|hours?|seconds?)\b/i.test(query);
+  const temperature = /\b(?:temperature|degrees?|what heat|how hot|oven setting|preheat)\b/i.test(query);
+  const doneness = /\b(?:done|doneness|ready|finished|tender|cooked through)\b/i.test(query);
+  const scored = recipe.instructions.map((text, index) => ({ index, score: [...terms].filter((term) => words(text).includes(term)).length
+    + (timing && /\b(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|overnight)\b/i.test(text) ? 3 : 0)
+    + (temperature && /\b(?:preheat|temperature|degrees?)\b|°\s*[cf]\b|\b\d+\s*[cf]\b|\bgas mark\b/i.test(text) ? 3 : 0)
+    + (doneness && /\b(?:until|golden|tender|crisp|browned|set|cooked through)\b/i.test(text) ? 2 : 0) }));
   for (const item of scored.filter((item) => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 6)) {
-    for (const index of [item.index - 1, item.index, item.index + 1]) if (recipe.instructions[index]) selected.add(`S${index + 1}`);
+    addStep(item.index);
+  }
+  // A weak match is not evidence that the source lacks an answer. Fall back to
+  // the complete method when it fits; keep large methods explicitly partial.
+  if (selected.size === recipe.ingredients.length) {
+    if (all.reduce((size, item) => size + item.text.length, 0) <= 16_000) return all;
+    for (const index of [0, 1, 2, recipe.instructions.length - 2, recipe.instructions.length - 1]) addStep(index);
   }
   return all.filter((item) => selected.has(item.evidenceId));
 }

@@ -18,7 +18,7 @@ export function dateLabel(date: string, options: Intl.DateTimeFormatOptions = { 
   return new Date(`${date}T12:00:00`).toLocaleDateString("en", options);
 }
 
-export function DurablePlanView({ week, today, setWeek, meals, update, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate }: {
+export function DurablePlanView({ week, today, setWeek, meals, update, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate }: {
   today?: string;
   focusDate?: string | null;
   clearFocusDate?: () => void;
@@ -37,6 +37,8 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   reviewDate: string | null;
   setReviewDate: Dispatch<SetStateAction<string | null>>;
   generatePlan: () => void;
+  preferReviewedMains: boolean;
+  setPreferReviewedMains: (value: boolean) => void;
   openMeal: (date: string) => void;
   markCooked: (date: string) => void;
   undoCooked: (date: string) => void;
@@ -85,6 +87,8 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
       <section className="planner-intro" aria-label="Plan actions">
         <p>Choose a day to add dinner.</p>
         <div className="planner-actions"><button className="secondary-button" onClick={generatePlan} disabled={count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
+        <label className="planner-preference"><input type="checkbox" checked={preferReviewedMains} onChange={(event) => setPreferReviewedMains(event.target.checked)} />Prefer reviewed mains</label>
+        <p className="quantity-note">{preferReviewedMains ? "Reviewed mains come first. If they run out, unreviewed recipes can fill the remaining days; known sides and desserts stay out." : "Use the wider collection, including sides and desserts. Check that each choice makes a complete dinner."}</p>
       </section>
       {catalogState !== "ready" && <div className="inline-confirm" role="status"><span>{catalogState === "loading" ? "Loading the full recipe catalog…" : "The full recipe catalog could not load. Your saved dinners are unchanged."}</span>{catalogState === "error" && <button className="secondary-button" onClick={retryCatalog}>Retry catalog</button>}</div>}
       {planningNotice && <p role="status">{planningNotice}</p>}

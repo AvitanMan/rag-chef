@@ -711,7 +711,7 @@ img {
 .flow-back { margin-bottom: 20px; }
 .recipe-add-action { width: 100%; margin-top: 12px; }
 .unified-pantry-list { display: grid; gap: 12px; margin-top: 24px; }
-.unified-pantry-item { display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); padding: 12px 0; }
+.unified-pantry-item { display: grid; grid-template-columns: minmax(0, 1fr) 210px auto; align-items: center; gap: 16px; border-bottom: 1px solid var(--line); padding: 12px 0; }
 .unified-pantry-item label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 250px); align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .unified-pantry-item input { min-width: 0; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; background: var(--paper); }
 .unified-pantry-item small { grid-column: 1 / -1; color: var(--ink-soft); }
@@ -2160,7 +2160,7 @@ img {
 .recipe-quality { display: block; color: var(--ink-soft); margin: 10px 0; font-size: 0.8rem; line-height: 1.6; }
 .equipment-options { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
 .equipment-options label { display: flex; align-items: center; gap: 6px; }
-.pantry-use-by { max-width: 200px; }
+.unified-pantry-item .pantry-use-by { grid-template-columns: minmax(0, 1fr); gap: 6px; max-width: none; }
 .pantry-use-by input { width: 100%; }
 .cook-ingredients { width: 100%; text-align: left; padding: 16px; margin-bottom: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
 .cook-ingredients > summary { cursor: pointer; font-weight: 600; }
@@ -2202,8 +2202,6 @@ img {
 .cooking-mode > main { justify-content: flex-start; width: 100%; min-height: 0; height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; margin: 0 auto; }
 .cooking-mode > footer { position: sticky; bottom: 0; gap: 10px; }
 @media (max-width: 650px) {
-  .unified-pantry-item { flex-wrap: wrap; gap: 12px; }
-  .pantry-use-by { flex-basis: 160px; }
   .cooking-mode > main { padding: 20px 16px; }
   .cooking-mode > footer > span { display: none; }
 }
@@ -2274,13 +2272,21 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .day-card { scroll-margin-block: 30px 120px; }
 .secondary-preferences { border-top: 1px solid var(--line); padding-top: 12px; }
 .secondary-preferences summary { min-height: 44px; cursor: pointer; align-content: center; }
-.removal-recovery { position: fixed; z-index: 70; right: 24px; bottom: 24px; width: min(560px, calc(100% - 48px)); max-height: 45dvh; overflow: auto; background: var(--paper-strong); border: 1px solid var(--line-dark); border-radius: 16px; box-shadow: var(--shadow); padding: 12px 16px; font-size: 14px; }
+.removal-recovery { margin-bottom: 20px; scroll-margin-top: 12px; background: var(--paper-strong); border: 1px solid var(--line-dark); border-radius: 16px; padding: 12px 16px; font-size: 14px; }
 .removal-message { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .removal-message > span { flex: 1; min-width: 120px; }
 .removal-message > div { display: flex; gap: 6px; }
 .removal-recovery summary { padding: 10px 0; cursor: pointer; }
 .earlier-removals { max-height: 160px; overflow: auto; border-top: 1px solid var(--line); }
-.has-removals .main-content { padding-bottom: 270px; }
+.planner-preference { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 14px; }
+@media (max-width: 1100px) {
+  .unified-pantry-item { grid-template-columns: minmax(190px, 1fr) auto; gap: 12px; }
+  .unified-pantry-item > label:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 380px) {
+  .unified-pantry-item { grid-template-columns: minmax(0, 1fr); }
+  .unified-pantry-item > button { justify-self: end; }
+}
 .accessible-modal .pantry-import-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0; width: min(100%, 620px); max-height: min(900px, calc(100dvh - 48px)); overflow: hidden; }
 .pantry-import-modal > header { padding: 18px 22px 10px; border-bottom: 1px solid var(--line); }
 .pantry-import-modal h2 { margin: 0 0 8px; font-size: 24px; }
@@ -2357,7 +2363,6 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
   .theme-toggle-label { display: none; }
   .today-summary { flex-wrap: wrap; }
   .today-summary strong { font-size: 19px; }
-  .removal-recovery { right: 12px; bottom: calc(88px + env(safe-area-inset-bottom)); width: calc(100% - 24px); max-height: 40dvh; }
   .preference-chips button { min-width: 44px; min-height: 44px; }
   .pantry-import-modal > header { padding: 16px 18px 10px; }
   .pantry-import-rows { padding: 14px 18px; }

@@ -172,7 +172,7 @@ test("Chef evidence quotes approved source records and keeps ingredient quantiti
   const grounding = page.getByRole("region", { name: "How Chef found this", exact: true });
   await expect(grounding).toContainText(`${answer.retrieval.catalogCount} approved recipes checked`);
   await expect(grounding).toContainText(`${answer.recipes.length} source recipe retrieved`);
-  await expect(grounding).toContainText("AI answer from retrieved recipes");
+  await expect(grounding).toContainText("AI selected recipes · Original source excerpts");
   await expect(grounding.locator("blockquote").first()).toHaveText(answer.sourceFacts[0].fact);
   await expect(grounding.getByRole("link")).toHaveAttribute("href", answer.citations[0].sourceUrl);
   await expect(grounding.getByText("Cited recipe excerpt", { exact: true })).toBeVisible();
@@ -274,7 +274,7 @@ test("request exclusions filter source recipes before Chef sees them and stay en
     for (const recipe of found.recipes) expect(forbidden).not.toContain(recipe.title);
     const status = await (await fetch(`${modelURL}/__test/control`)).json() as { calls: Array<{ path: string; body: { messages?: Array<{ role: string; content: string }> } }> };
     const chats = status.calls.filter((call) => call.path === "/api/chat");
-    const prompt = chats.at(-1)!.body.messages!.find((message) => message.role === "user")!.content;
+    const prompt = chats.filter(call => !call.body.messages!.find(message => message.role === "user")!.content.startsWith('{"task":"verify_recipe_answer"')).at(-1)!.body.messages!.find((message) => message.role === "user")!.content;
     const context = JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2));
     expect(context.adaptationRequested).toBe(false);
     for (const recipe of context.retrievedRecipes) expect(forbidden).not.toContain(recipe.title);

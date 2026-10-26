@@ -23,9 +23,12 @@
     "recipes:embed": "node tools/recipes/embed.mjs",
     "recipes:eval": "node tools/recipes/evaluate.mjs",
     "recipes:chef-eval": "node tools/recipes/evaluate-chef.mjs",
+    "recipes:rag-eval": "node tools/recipes/evaluate-rag.mjs",
+    "recipes:grounding-eval": "node tools/testing/run-isolated.mjs chef",
     "recipes:curate": "node tools/recipes/curate.mjs",
     "recipes:relevance-eval": "node tools/recipes/evaluate-relevance.mjs",
-    "recipes:test": ".venv-recipes/bin/python -m unittest discover -s tools/recipes/tests -v"
+    "recipes:test": ".venv-recipes/bin/python -m unittest discover -s tools/recipes/tests -v",
+    "recipes:journey-eval": "node tools/testing/run-isolated.mjs journeys"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

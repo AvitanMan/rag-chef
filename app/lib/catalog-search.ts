@@ -1,3 +1,4 @@
+import { bm25Scores, reciprocalRanks, retrievalTerms } from "./retrieval-ranking";
 import { STOP_WORDS, recipeQueryIntent, constraintsForRecipeQuery, recipeRetrievalQuery } from "./recipe-query";
 export { recipeQueryIntent, queryRequestsAdaptation, constraintsForRecipeQuery, recipeRetrievalQuery, type RecipeQueryIntent } from "./recipe-query";
 import { buildRecipeEmbeddingText, buildRecipeQueryText, cosineSimilarity, embedTextsWithOllama, isValidEmbeddingVector } from "./recipe-embeddings";
@@ -10,9 +11,11 @@ import { allocateStockForMeals, mealReadiness, normalizePlanningIngredient, type
 export type CatalogRetrievalMethod = "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
 export type CatalogSearchOutcome = "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
 export const catalogRelevanceThresholds = { lexical: 0.333333, semantic: 0.82855, version: "recipe-relevance-v1" } as const;
-export const catalogShortlistPolicy = { version: "recipe-shortlist-v1", lexicalQueryCoverage: 2 / 3, secondaryQueryCoverage: 1, maximumTargetedResults: 3 } as const;
+export const catalogShortlistPolicy = { version: "recipe-shortlist-v2", lexicalQueryCoverage: 2 / 3, secondaryQueryCoverage: 1, maximumTargetedResults: 3 } as const;
 export interface CatalogRankedRecipe {
   readiness?: MealReadiness;
+  bm25Score?: number;
+  fusionScore?: number;
   recipe: Recipe;
   score: number;
   pantryScore: number;
@@ -47,14 +50,10 @@ export function queryRelevanceDecision(item: Pick<CatalogRankedRecipe, "exactTit
 
 // Search-only normalization. These aliases never change cooking amounts,
 // ingredient identity, allergy rules or the original recipe text.
-const QUERY_FORMS: Record<string, string> = {
-  mushrooms: "mushroom", tomatoes: "tomato", onions: "onion", eggs: "egg", lentils: "lentil", beans: "bean", chickpeas: "chickpea", garbanzo: "chickpea", garbanzos: "chickpea",
-  potatoes: "potato", carrots: "carrot", crepes: "crepe", pancakes: "pancake", muffins: "muffin", omelette: "omelet", omelettes: "omelet", omelets: "omelet", curries: "curry", curried: "curry", creamy: "cream",
-};
 const QUERY_DESCRIPTORS = new Set("cozy comforting warming warm made cooked served breakfast lunch brunch supper bowl based style people person".split(" "));
 
 function searchTerms(text: string): string[] {
-  return normalizeRecipeSearch(text).replace(/\bblack eyed peas?\b/g, "bean").split(" ").filter(Boolean).map((word) => QUERY_FORMS[word] ?? word);
+  return retrievalTerms(text);
 }
 
 export function recipeQueryEvidence(query: string, recipe: Recipe): Pick<CatalogRankedRecipe, "queryCoverage" | "matchedQueryTerms" | "missingQueryTerms"> {
@@ -84,6 +83,7 @@ export function selectCatalogShortlist(ranked: CatalogRankedRecipe[], query: str
   if (focus) return [focus];
   if (recipeQueryIntent(query).broad) return relevant.slice(0, maximum);
   relevant.sort((a, b) => Number(b.queryCoverage === 1) - Number(a.queryCoverage === 1)
+    || (b.fusionScore ?? 0) - (a.fusionScore ?? 0)
     || (b.semanticScore ?? b.lexicalScore) - (a.semanticScore ?? a.lexicalScore)
     || b.lexicalScore - a.lexicalScore || b.score - a.score
     || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
@@ -122,7 +122,8 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
     const role = metadataByRecipeId[recipe.id]?.dinnerRole;
     return role === "main" ? 0 : !role || role === "unknown" ? 1 : 2;
   };
-  return recipes.map((recipe) => {
+  const bm25 = bm25Scores(recipes.map((recipe) => ({ id: recipe.id, title: recipe.title, ingredients: recipe.ingredients.map((item) => item.name).join(" "), other: [recipe.category, recipe.cuisine, ...recipe.tags].join(" ") })), lexicalQuery);
+  const ranked = recipes.map((recipe) => {
     const readiness = stock ? mealReadiness({ id: `preview:${recipe.id}`, date: stock.targetDate, recipeId: recipe.id, recipe, title: recipe.title,
       baseServings: recipe.servings ?? null, servings: recipe.servings ? stock.servings ?? recipe.servings : null, batches: recipe.servings ? 1 : stock.batches ?? 1,
       ingredientOverrides: {}, planningIngredients: recipe.ingredients.map(normalizePlanningIngredient), locked: false, status: "planned" }, remaining, stock.today) : undefined;
@@ -133,10 +134,17 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
     const semanticScore = queryVector && isValidEmbeddingVector(vector, queryVector.length) ? (cosineSimilarity(queryVector, vector) + 1) / 2 : null;
     const baseScore = query ? semanticScore === null ? 0.7 * lexicalScore + 0.3 * details.coverage : 0.74 * semanticScore + 0.21 * details.coverage + 0.05 * lexicalScore : details.coverage;
     const score = baseScore - 0.1 * eligibility.dislikedIngredients.length / Math.max(recipe.ingredients.length, 1);
-    return { recipe, score, lexicalScore, semanticScore, ...recipeQueryEvidence(query, recipe), pantryScore: details.coverage, pantryMatch: details.matched, missingIngredients: details.missing, exactTitle: recipe.id === focus, eligibility, ...(readiness ? { readiness } : {}) };
-  }).filter((item) => item.eligibility.eligible).sort((a, b) => Number(b.exactTitle) - Number(a.exactTitle) || dinnerPriority(a.recipe) - dinnerPriority(b.recipe)
+    return { recipe, score, lexicalScore, semanticScore, bm25Score: bm25.get(recipe.id) ?? 0, fusionScore: 0, ...recipeQueryEvidence(query, recipe), pantryScore: details.coverage, pantryMatch: details.matched, missingIngredients: details.missing, exactTitle: recipe.id === focus, eligibility, ...(readiness ? { readiness } : {}) };
+  }).filter((item) => item.eligibility.eligible);
+  const admitted = ranked.filter((item) => queryRelevanceDecision(item, query));
+  const fusion = reciprocalRanks([
+    [...admitted].filter((item) => item.bm25Score > 0).sort((a, b) => b.bm25Score - a.bm25Score || a.recipe.id.localeCompare(b.recipe.id)).map((item) => item.recipe.id),
+    [...admitted].filter((item) => item.semanticScore !== null).sort((a, b) => b.semanticScore! - a.semanticScore! || a.recipe.id.localeCompare(b.recipe.id)).map((item) => item.recipe.id),
+  ]);
+  for (const item of ranked) item.fusionScore = fusion.get(item.recipe.id) ?? 0;
+  return ranked.sort((a, b) => Number(b.exactTitle) - Number(a.exactTitle) || dinnerPriority(a.recipe) - dinnerPriority(b.recipe)
     || (broad && stock ? Number((b.readiness?.useSoonCoverage ?? 0) > 0) - Number((a.readiness?.useSoonCoverage ?? 0) > 0) || (b.readiness?.coverage ?? 0) - (a.readiness?.coverage ?? 0) : 0)
-    || b.score - a.score || (b.readiness?.coverage ?? 0) - (a.readiness?.coverage ?? 0) || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
+    || b.fusionScore - a.fusionScore || b.score - a.score || (b.readiness?.coverage ?? 0) - (a.readiness?.coverage ?? 0) || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
 }
 
 export async function searchRecipeCatalog(options: RecipeSearchOptions, embedModel: string): Promise<CatalogSearchResult> {
@@ -176,11 +184,14 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
       vectors = await loadPrecomputedRecipeEmbeddingMap(embedModel);
       result.embeddingCount = vectors.size;
       // Don't compare semantic scores with differently scaled partial-index scores.
-      if (!eligible.every((recipe) => vectors.has(recipe.id))) throw new Error("Search embeddings are pending.");
-      const query = await embedTextsWithOllama([buildRecipeQueryText(searchQuery, [])], { model: embedModel, timeoutMs: 8000 });
+      if (!vectors.size) throw new Error("Search embeddings are pending.");
+      const query = await embedTextsWithOllama([buildRecipeQueryText(searchQuery, [])], { model: embedModel, timeoutMs: 8000, signal: options.signal });
       queryVector = query.vectors[0] ?? null;
       const dimension = queryVector?.length;
-      if (!dimension || !eligible.every((recipe) => isValidEmbeddingVector(vectors.get(recipe.id), dimension))) throw new Error("Search embedding dimensions differ.");
+      if (!dimension) throw new Error("Search embedding dimensions differ.");
+      vectors = new Map([...vectors].filter(([, vector]) => isValidEmbeddingVector(vector, dimension)));
+      if (!vectors.size) throw new Error("Search embedding dimensions differ.");
+      if (!eligible.every((recipe) => vectors.has(recipe.id))) result.warning = [result.warning, "Some recipes have pending meaning-based indexes; those recipes use keywords."].filter(Boolean).join(" ");
     } catch {
       queryVector = null;
       result.warning = [result.warning, "Meaning-based search is unavailable or its index is pending. Results use recipe names, ingredients, and pantry matches."].filter(Boolean).join(" ");

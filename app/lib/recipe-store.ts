@@ -1,5 +1,5 @@
 import type { Recipe, RecipeMetadata } from "./recipe-types";
-import { RECIPE_EMBEDDING_KIND } from "./recipe-embeddings";
+import { RECIPE_EMBEDDING_KIND, RECIPE_STEP_EMBEDDING_KIND, isValidEmbeddingVector } from "./recipe-embeddings";
 import type {
   RecipeEmbeddingRecord,
   StoredRecipeEmbedding,
@@ -68,6 +68,8 @@ export interface CatalogStatus {
   activeRecipeCount: number;
   embeddingCount: number;
   staleEmbeddingCount: number;
+  stepEmbeddingCount: number;
+  staleStepEmbeddingCount: number;
   embeddingModel: string;
   embeddingKind: string;
   lastSync: {
@@ -125,6 +127,7 @@ type StepRow = {
 };
 
 type EmbeddingRow = {
+  chunk_index: number;
   kind: string;
   recipe_id: string;
   content_sha256: string;
@@ -427,7 +430,7 @@ export async function listCatalogRecipes(
            AND s.approval_status = 'approved'
            AND s.allow_display = 1
            AND s.allow_index_text = 1
-           ${options.forEmbedding ? "AND s.allow_embed = 1" : ""}
+           ${options.forEmbedding ? "AND s.allow_embed = 1 AND s.allow_cache = 1" : ""}
          ORDER BY r.updated_at DESC, r.id ASC
          LIMIT ?`,
       )
@@ -600,27 +603,31 @@ export async function reviewRecipeMetadata(entries: unknown[], preview = false) 
 
 export async function listStoredRecipeEmbeddings(
   model?: string,
+  kind = RECIPE_EMBEDDING_KIND,
+  recipeId?: string,
 ): Promise<StoredRecipeEmbedding[]> {
   await ensureRecipeCatalogSchema();
   const db = await catalogDb();
   const condition = model ? "AND e.model = ?" : "";
   const statement = db.prepare(
-    `SELECT e.recipe_id, e.content_sha256, e.model, e.dimensions, e.vector_json, e.kind
+    `SELECT e.recipe_id, e.content_sha256, e.model, e.dimensions, e.vector_json, e.kind, e.chunk_index
      FROM recipe_embeddings e
      JOIN recipes r ON r.id = e.recipe_id
      JOIN recipe_sources s ON s.id = r.source_id
      WHERE r.status = 'active'
        AND s.approval_status = 'approved'
        AND s.allow_embed = 1
-       AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
+       AND s.allow_display = 1 AND s.allow_cache = 1 AND s.allow_index_text = 1
+       AND e.kind = ?
        AND e.recipe_version = r.version
        AND e.content_sha256 = r.normalized_content_sha256
-       ${condition}
-     ORDER BY e.recipe_id`,
+       ${condition} ${recipeId ? "AND e.recipe_id = ?" : ""}
+     ORDER BY e.recipe_id, e.chunk_index`,
   );
-  const rows = await allRows<EmbeddingRow>(model ? statement.bind(model) : statement);
+  const rows = await allRows<EmbeddingRow>(statement.bind(kind, ...(model ? [model] : []), ...(recipeId ? [recipeId] : [])));
   return rows.map((row) => ({
     recipeId: row.recipe_id,
+    chunkIndex: row.chunk_index,
     contentHash: row.content_sha256,
     model: row.model,
     vector: parseNumberArray(row.vector_json, row.dimensions),
@@ -642,17 +649,27 @@ export async function saveRecipeEmbeddings(
   const db = await catalogDb();
   const ids = [...new Set(records.map((record) => record.recipeId))];
   const placeholders = ids.map(() => "?").join(", ");
-  const versions = await allRows<{ id: string; version: number }>(
+  const versions = await allRows<{ id: string; version: number; content_hash: string; permitted: number; step_count: number }>(
     db
-      .prepare(`SELECT id, version FROM recipes WHERE id IN (${placeholders})`)
+      .prepare(`SELECT r.id, r.version, r.normalized_content_sha256 AS content_hash,
+          (r.status = 'active' AND s.approval_status = 'approved' AND s.allow_display = 1 AND s.allow_cache = 1 AND s.allow_index_text = 1 AND s.allow_embed = 1) AS permitted,
+          ((SELECT COUNT(*) FROM recipe_instruction_steps st WHERE st.recipe_id = r.id) +
+            CASE WHEN (SELECT COUNT(*) FROM recipe_instruction_sections se WHERE se.recipe_id = r.id) > 1
+              THEN (SELECT COUNT(*) FROM recipe_instruction_sections se WHERE se.recipe_id = r.id AND se.title IS NOT NULL AND se.title <> '') ELSE 0 END) AS step_count
+          FROM recipes r JOIN recipe_sources s ON s.id = r.source_id WHERE r.id IN (${placeholders})`)
       .bind(...ids),
   );
-  const versionById = new Map(versions.map((row) => [row.id, row.version]));
+  const versionById = new Map(versions.map((row) => [row.id, row]));
   const statements = records.map((record) => {
-    const recipeVersion = versionById.get(record.recipeId);
+    const current = versionById.get(record.recipeId);
+    const recipeVersion = current?.version;
     if (!recipeVersion) {
       throw new Error(`Cannot store an embedding for missing recipe ${record.recipeId}.`);
     }
+    if (!current?.permitted || record.contentHash !== current.content_hash) throw new Error("Embedding source permission or recipe content changed during refresh.");
+    const chunk = record.chunkIndex ?? 0;
+    if (!Number.isInteger(chunk) || chunk < 0 || (record.kind === RECIPE_EMBEDDING_KIND ? chunk !== 0 : record.kind !== RECIPE_STEP_EMBEDDING_KIND || chunk >= current.step_count)
+      || !isValidEmbeddingVector(record.vector, record.dimensions)) throw new Error("Invalid embedding identity or vector.");
     const timestamp = Number.isFinite(Date.parse(record.embeddedAt))
       ? Date.parse(record.embeddedAt)
       : Date.now();
@@ -661,7 +678,7 @@ export async function saveRecipeEmbeddings(
         `INSERT INTO recipe_embeddings (
           recipe_id, recipe_version, kind, chunk_index, model, dimensions,
           content_sha256, vector_json, created_at, updated_at
-        ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(recipe_id, model, kind, chunk_index) DO UPDATE SET
           recipe_version = excluded.recipe_version,
           dimensions = excluded.dimensions,
@@ -673,6 +690,7 @@ export async function saveRecipeEmbeddings(
         record.recipeId,
         recipeVersion,
         record.kind,
+        record.chunkIndex ?? 0,
         record.model,
         record.dimensions,
         record.contentHash,
@@ -736,7 +754,13 @@ export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
       }>(),
   ]);
 
+  const [stepRecipes, stepVectors] = await Promise.all([listCatalogRecipes(1000, { forEmbedding: true }), listStoredRecipeEmbeddings(model, RECIPE_STEP_EMBEDDING_KIND)]);
+  const stepsByRecipe = new Map(stepRecipes.map((record) => [record.recipe.id, record.recipe.instructions.length]));
+  const currentSteps = stepVectors.filter((record) => record.chunkIndex !== undefined && record.chunkIndex >= 0 && record.chunkIndex < (stepsByRecipe.get(record.recipeId) ?? 0) && isValidEmbeddingVector(record.vector)).length;
+  const expectedSteps = stepRecipes.reduce((sum, record) => sum + record.recipe.instructions.length, 0);
   return {
+    stepEmbeddingCount: currentSteps,
+    staleStepEmbeddingCount: expectedSteps - currentSteps,
     approvedSourceCount: counts?.approved_source_count ?? 0,
     activeRecipeCount: counts?.active_recipe_count ?? 0,
     embeddingCount: counts?.embedding_count ?? 0,

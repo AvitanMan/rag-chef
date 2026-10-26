@@ -8,13 +8,14 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-kitchen-planning-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-stock", "kitchen-validation", "kitchen-backup", "kitchen-planning"]) {
+for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-stock", "kitchen-validation", "kitchen-backup", "kitchen-planning", "recipe-browser"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(dir, `${name}.mjs`), code);
 }
 const load = (name) => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
-const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients } = await load("quantities");
+const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients, mealReadiness } = await load("quantities");
+const { recipePantryDetails } = await load("recipe-browser");
 const { createPlannedMeal } = await load("kitchen-state");
 const { fillEmptyDays, planningRandom } = await load("kitchen-planning");
 const { availablePantryNames } = await load("kitchen-stock");
@@ -25,6 +26,21 @@ const recipe = (id, ingredients = [{ name: "rice", measure: "400 g" }]) => ({ id
 const meal = (date = "2026-10-22", value = recipe("rice")) => createPlannedMeal(date, value);
 const stock = (id, name, measure, useBy) => ({ id, name, measure, ...(useBy ? { useBy } : {}) });
 const kitchen = (pantry = [], meals = {}) => ({ schemaVersion: 2, pantry, meals, shoppingChecked: {}, migratedLegacy: true });
+
+test("source descriptions use the same pantry coverage, shopping and completion identity", () => {
+  const source = recipe("pasta-bake", [{ name: "any small pasta", measure: "400 g" }, { name: "medium zucchini, grated", measure: "3" }, { name: "cheese, grated", measure: "250 g" }]);
+  const original = structuredClone(source);
+  const dinner = meal("2026-10-26", source);
+  const pantry = [stock("pasta", "pasta", "500 g"), stock("zucchini", "zucchini", "3"), stock("cheese", "cheese", "500 g"), stock("cooked", "cooked pasta", "200 g")];
+  assert.equal(recipePantryDetails(source, pantry.map(row => row.name)).coverage, 1);
+  assert.equal(mealReadiness(dinner, pantry, dinner.date).coveredCount, 3);
+  assert.deepEqual(buildShoppingList([dinner], pantry, dinner.date), []);
+  const before = kitchen(pantry, { [dinner.date]: dinner });
+  const cooked = completeMeal(before, dinner.date, true, "2026-10-26T12:00:00Z");
+  assert.deepEqual(cooked.pantry.map(row => row.measure), ["100 g", "0", "250 g", "200 g"]);
+  assert.deepEqual(undoMeal(cooked, dinner.date).pantry, pantry);
+  assert.deepEqual(source, original, "attributed source wording stays unchanged");
+});
 
 test("optional pantry and deduction dates round-trip while old kitchens remain unchanged", () => {
   const original = kitchen([stock("old", "rice", "1 kg")]);
@@ -195,4 +211,32 @@ test("new fill seeds vary both the selection and order while keeping every week 
   assert.ok(firstDinners.size >= 8, "variety must not be a fixed first dinner with shuffled later slots");
   assert.ok(combinations.size >= 20, "vary which dinners are chosen, not only their order");
   assert.equal(orders.size, 32);
+});
+
+test("automatic dinners prefer reviewed mains before pantry-covered sides and retain variety", () => {
+  const mains = Array.from({ length: 10 }, (_, i) => recipe(`main-${i}`, [{ name: "beans", measure: "200 g" }]));
+  const side = recipe("side", [{ name: "rice", measure: "200 g" }]);
+  const metadataByRecipeId = Object.fromEntries([...mains.map(r => [r.id, { coreDinner: true, dinnerRole: "main" }]), [side.id, { coreDinner: false, dinnerRole: "side" }]]);
+  const pantry = [stock("rice", "rice", "2 kg", "2026-10-26")];
+  const firsts = new Set();
+  for (let seed = 0; seed < 12; seed++) {
+    const result = fillEmptyDays([side, ...mains], pantry, "2026-10-26", {}, "2026-10-26", planningRandom(seed), { metadataByRecipeId });
+    assert.equal(result.additions.length, 7);
+    assert.ok(result.additions.every(dinner => dinner.recipeId.startsWith("main-")));
+    assert.equal(new Set(result.additions.map(dinner => dinner.recipeId)).size, 7);
+    assert.match(result.reasons["2026-10-26"], /Reviewed main.*Pantry covers 0 ingredients; 1 still to buy/);
+    firsts.add(result.additions[0].recipeId);
+  }
+  assert.ok(firsts.size > 3);
+  const wider = fillEmptyDays([side, ...mains], pantry, "2026-10-26", {}, "2026-10-26", () => 0, { metadataByRecipeId, preferReviewedMains: false });
+  assert.equal(wider.additions[0].recipeId, side.id);
+  assert.match(wider.reasons["2026-10-26"], /Reviewed side/);
+});
+
+test("main-first fallback can use unknown recipes while known sides and desserts stay out", () => {
+  const recipes = [recipe("main"), recipe("unknown"), recipe("side"), recipe("dessert")];
+  const metadataByRecipeId = { main: { dinnerRole: "main" }, side: { dinnerRole: "side" }, dessert: { dinnerRole: "dessert" } };
+  const result = fillEmptyDays(recipes, [], "2026-10-26", {}, "2026-10-26", () => 0, { metadataByRecipeId });
+  assert.deepEqual(result.additions.map(dinner => dinner.recipeId), ["main", "unknown"]);
+  assert.match(result.reasons["2026-10-27"], /Dinner role not reviewed/);
 });

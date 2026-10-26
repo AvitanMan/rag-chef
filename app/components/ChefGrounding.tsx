@@ -2,12 +2,13 @@ import type { ChefApiResponse } from "../lib/chef-schema";
 import type { Recipe } from "../lib/recipe-types";
 
 type GroundingResult = Pick<ChefApiResponse, "recipes" | "citations" | "sourceFacts" | "generation" | "chefChanges">
-  & { retrieval?: Partial<ChefApiResponse["retrieval"]>; requestQuery?: string; selectedEvidenceByRecipeId?: ChefApiResponse["selectedEvidenceByRecipeId"]; resolvedContext?: ChefApiResponse["resolvedContext"]; answerStatus?: ChefApiResponse["answerStatus"] };
+  & { answerKind?: ChefApiResponse["answerKind"]; verification?: ChefApiResponse["verification"]; evidenceRetrieval?: ChefApiResponse["evidenceRetrieval"]; retrieval?: Partial<ChefApiResponse["retrieval"]>; requestQuery?: string; selectedEvidenceByRecipeId?: ChefApiResponse["selectedEvidenceByRecipeId"]; resolvedContext?: ChefApiResponse["resolvedContext"]; answerStatus?: ChefApiResponse["answerStatus"] };
 
 /** Display completed retrieval and canonical source text, never simulated progress. */
 export function ChefGrounding({ result, openRecipe }: { result: GroundingResult; openRecipe: (recipe: Recipe) => void }) {
   const retrieval = result.retrieval;
   const hasMatches = result.recipes.length > 0;
+  const selectionOnly = result.generation === "ai" && result.verification?.status === "not_required" && result.answerStatus === "answered" && !result.answerKind;
   const semantic = retrieval?.method === "precomputed_embeddings" && retrieval.ranked?.some((item) => typeof item.semanticScore === "number" && Number.isFinite(item.semanticScore));
   const method = result.resolvedContext?.recipeId ? "Selected recipe · Source lookup" : semantic ? "Meaning, keywords and pantry" : retrieval?.method === "lexical_pantry" || retrieval?.method === "precomputed_embeddings"
     ? "Keywords and pantry" : retrieval?.method === "catalog_order" ? "Catalog browsing" : "Catalog checked";
@@ -23,12 +24,16 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
     <ol className="grounding-steps">
       <li><span aria-hidden="true">1</span><div><strong>{result.resolvedContext?.recipeId ? "Use the selected source" : "Search real recipes"}</strong><p>{result.resolvedContext?.recipeId ? "Pinned recipe verified in approved collection" : retrieval?.catalogCount !== undefined ? `${retrieval.catalogCount} approved recipes checked` : "Approved recipe collection"}</p><small>{method}</small></div></li>
       <li><span aria-hidden="true">2</span><div><strong>Match your kitchen</strong><p>{result.recipes.length} source {result.recipes.length === 1 ? "recipe retrieved" : "recipes retrieved"}</p><small>{retrieval?.constraintExcludedCount ? `${retrieval.constraintExcludedCount} excluded by your requirements` : "Requirements applied before ranking"}</small></div></li>
-      <li><span aria-hidden="true">3</span><div><strong>{result.answerStatus === "needs_clarification" ? "Clarify the question" : result.answerStatus === "unsupported" && hasMatches ? "Stay within the source" : result.generation === "ai" ? "Answer with sources" : hasMatches ? "Use catalog results" : "Stop without guessing"}</strong><p>{result.answerStatus === "needs_clarification" ? "Select a recipe or clarify the question" : result.answerStatus === "unsupported" && hasMatches ? "Source material available · Question unsupported" : result.generation === "ai" ? "AI answer from retrieved recipes" : hasMatches ? "Catalog fallback · No AI answer used" : "No supported match · No AI answer used"}</p><small>{result.chefChanges.length ? "Proposed changes are labeled separately" : "Original recipes stay unchanged"}</small></div></li>
+      <li><span aria-hidden="true">3</span><div><strong>{result.answerKind === "planning_quantities" ? "Calculate dinner amounts" : result.answerStatus === "unverified" ? "Check original evidence" : result.answerStatus === "needs_clarification" ? "Clarify the question" : result.answerStatus === "unsupported" && hasMatches ? "Stay within the source" : selectionOnly ? "Select recipes with sources" : result.generation === "ai" ? "Answer with sources" : hasMatches ? "Use catalog results" : "Stop without guessing"}</strong><p>{result.answerKind === "planning_quantities" ? "Saved portions and overrides · No AI calculation" : result.answerStatus === "unverified" ? "AI answer withheld · Original source available" : result.answerStatus === "needs_clarification" ? "Select a recipe or clarify the question" : result.answerStatus === "unsupported" && hasMatches ? "Source material available · Question unsupported" : selectionOnly ? "AI selected recipes · Original source excerpts" : result.generation === "ai" ? "AI answer from retrieved recipes" : hasMatches ? "Catalog fallback · No AI answer used" : "No supported match · No AI answer used"}</p><small>{result.chefChanges.length ? "Proposed changes are labeled separately" : "Original recipes stay unchanged"}</small></div></li>
     </ol>
+    {result.verification?.status === "checked" && <p className="quantity-note">Answer evidence checked · Recipe claims were reviewed against the supplied evidence.</p>}
+    {result.verification?.status === "rejected" && <p className="quantity-note">The evidence check found unsupported claims. Read the original source or retry.</p>}
+    {result.verification?.status === "unavailable" && <p className="quantity-note">The evidence check was unavailable. Original sources remain available; you can retry.</p>}
     {sources.length > 0 && <div className="grounding-sources">
       <h4>Recipe evidence <span>({sources.length} {sources.length === 1 ? "source" : "sources"})</span></h4>
-      <p className="quantity-note">{result.answerStatus === "unsupported" ? "The recipe record is available, but it does not establish the requested answer." : "Read the original recipe behind a suggestion. Proposed changes are separate from these excerpts."}</p>
+      <p className="quantity-note">{result.answerStatus === "unverified" ? "The AI answer could not be verified. Read the original recipe evidence below." : result.answerStatus === "unsupported" ? "The recipe record is available, but it does not establish the requested answer." : "Read the original recipe behind a suggestion. Proposed changes are separate from these excerpts."}</p>
       <div className="grounding-source-grid">{sources.map(({ citation, recipe, facts }) => {
+        const evidenceSelection = result.evidenceRetrieval?.[recipe.id];
         const selectedIds = result.selectedEvidenceByRecipeId?.[recipe.id] ?? [];
         const preferred = result.resolvedContext?.stepEvidenceId ?? selectedIds.find((id) => id.startsWith("S")) ?? selectedIds[0] ?? "I1";
         const sourceIndex = Number(preferred.slice(1)) - 1;
@@ -37,6 +42,7 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
         const excerpt = facts[0]?.fact ?? (result.answerStatus === "unsupported" ? "" : selectedText ?? "");
         return <article className="grounding-source" key={recipe.id}>
           <button className="text-button evidence-recipe" aria-label={`Open evidence for ${recipe.title}`} onClick={() => openRecipe(recipe)}>{recipe.title} <span aria-hidden="true">↗</span></button>
+          {evidenceSelection && <small>{result.answerKind === "planning_quantities" ? "Original ingredient evidence" : evidenceSelection.method === "semantic_steps" ? "Steps matched by meaning and wording" : evidenceSelection.method === "lexical_steps" ? "Steps matched by wording" : "Complete recipe evidence"}{!evidenceSelection.complete ? " · Selected excerpts; open the full source for context" : ""}</small>}
           {excerpt && <><small className="evidence-kind">{facts.length ? "Cited recipe excerpt" : "Retrieved recipe excerpt"}</small><blockquote>{excerpt}</blockquote></>}
           {facts.length > 1 && <details><summary>More excerpts ({facts.length - 1})</summary>{facts.slice(1).map((fact, index) => <blockquote key={`${fact.evidenceId}-${index}`}>{fact.fact}</blockquote>)}</details>}
           <a href={citation.sourceUrl} target={citation.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{citation.sourceName} · Original source <span aria-hidden="true">↗</span></a>

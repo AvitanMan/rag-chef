@@ -4,6 +4,7 @@ import { normalizePlanningIngredient } from "./quantities";
 export const DEFAULT_RECIPE_EMBED_MODEL = "nomic-embed-text";
 export const DEFAULT_OLLAMA_EMBED_BASE_URL = "http://127.0.0.1:11434";
 export const RECIPE_EMBEDDING_KIND = "recipe-search-v2";
+export const RECIPE_STEP_EMBEDDING_KIND = "recipe-step-v1";
 
 const DEFAULT_EMBED_BATCH_SIZE = 32;
 const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
@@ -23,6 +24,7 @@ export type RecipeEmbeddingProviderErrorCode =
   | "invalid_provider_response";
 
 export interface StoredRecipeEmbedding {
+  chunkIndex?: number;
   recipeId: string;
   contentHash: string;
   model: string;
@@ -46,6 +48,7 @@ export interface RecipeEmbeddingRefreshPlan {
 }
 
 export interface RecipeEmbeddingRecord {
+  chunkIndex?: number;
   recipeId: string;
   contentHash: string;
   model: string;
@@ -81,6 +84,8 @@ export interface TextEmbeddingResult {
 }
 
 export interface OllamaEmbeddingOptions {
+  contentHashes?: ReadonlyMap<string, string>;
+  signal?: AbortSignal;
   model?: string;
   baseUrl?: string;
   batchSize?: number;
@@ -89,6 +94,7 @@ export interface OllamaEmbeddingOptions {
 }
 
 type ResolvedOllamaEmbeddingOptions = {
+  signal?: AbortSignal;
   model: string;
   baseUrl: string;
   batchSize: number;
@@ -235,7 +241,7 @@ export function cosineSimilarity(left: number[], right: number[]): number {
 export async function planRecipeEmbeddingRefresh(
   recipes: readonly Recipe[],
   existing: Iterable<StoredRecipeEmbedding> = [],
-  options: Pick<OllamaEmbeddingOptions, "model"> = {},
+  options: Pick<OllamaEmbeddingOptions, "model" | "contentHashes"> = {},
 ): Promise<RecipeEmbeddingRefreshPlan> {
   const model = resolveModel(options.model);
   const existingByRecipe = indexExistingEmbeddings(existing);
@@ -250,7 +256,7 @@ export async function planRecipeEmbeddingRefresh(
     seenRecipeIds.add(recipe.id);
 
     const searchText = buildRecipeEmbeddingText(recipe);
-    const contentHash = await recipeEmbeddingContentHash(recipe);
+    const contentHash = options.contentHashes?.get(recipe.id) ?? await recipeEmbeddingContentHash(recipe);
     const records = existingByRecipe.get(recipe.id) ?? [];
     const matchingModel = records.find((record) => record.model === model);
     const reason = refreshReason(records, matchingModel, contentHash);
@@ -312,6 +318,7 @@ export async function precomputeRecipeEmbeddings(
   const resolved = resolveOptions(options);
   const plan = await planRecipeEmbeddingRefresh(recipes, existing, {
     model: resolved.model,
+    contentHashes: options.contentHashes,
   });
   const embeddings: RecipeEmbeddingRecord[] = [];
   const failures: RecipeEmbeddingFailure[] = [];
@@ -367,6 +374,41 @@ export async function precomputeRecipeEmbeddings(
   };
 }
 
+/** Whole source steps, independently refreshable without rewriting recipes. */
+export function buildRecipeStepText(recipe: Recipe, index: number): string {
+  return `search_document: Title: ${recipe.title}\nSource step ${index + 1}: ${recipe.instructions[index]}`;
+}
+export async function precomputeRecipeStepEmbeddings(recipes: readonly Recipe[], existing: Iterable<StoredRecipeEmbedding> = [], options: OllamaEmbeddingOptions = {}): Promise<RecipeEmbeddingRunResult> {
+  const resolved = resolveOptions(options);
+  const previous = new Map([...existing].map((record) => [`${record.recipeId}:${record.chunkIndex ?? 0}:${record.model}`, record]));
+  const stale: Array<{ recipe: Recipe; chunkIndex: number; contentHash: string }> = [];
+  let checkedCount = 0;
+  for (const recipe of recipes) {
+    const contentHash = options.contentHashes?.get(recipe.id) ?? await recipeEmbeddingContentHash(recipe);
+    recipe.instructions.forEach((_, chunkIndex) => {
+      checkedCount++;
+      const record = previous.get(`${recipe.id}:${chunkIndex}:${resolved.model}`);
+      if (!record || record.kind !== RECIPE_STEP_EMBEDDING_KIND || record.contentHash !== contentHash || !isValidEmbeddingVector(record.vector)) stale.push({ recipe, chunkIndex, contentHash });
+    });
+  }
+  const embeddings: RecipeEmbeddingRecord[] = [], failures: RecipeEmbeddingFailure[] = [];
+  let dimension: number | null = null;
+  for (let offset = 0; offset < stale.length; offset += resolved.batchSize) {
+    const batch = stale.slice(offset, offset + resolved.batchSize);
+    try {
+      const result = await requestOllamaBatch(batch.map((item) => buildRecipeStepText(item.recipe, item.chunkIndex)), resolved, dimension);
+      dimension ??= result.dimension;
+      result.vectors.forEach((vector, index) => embeddings.push({ recipeId: batch[index].recipe.id, chunkIndex: batch[index].chunkIndex,
+        contentHash: batch[index].contentHash, model: resolved.model, kind: RECIPE_STEP_EMBEDDING_KIND, dimensions: vector.length, vector, embeddedAt: new Date().toISOString() }));
+    } catch (error) {
+      const problem = normalizeProviderError(error);
+      failures.push({ recipeIds: [...new Set(stale.slice(offset).map((item) => item.recipe.id))], code: problem.code, message: problem.message, retryable: problem.retryable });
+      break;
+    }
+  }
+  return { model: resolved.model, checkedCount, skippedCount: checkedCount - stale.length, requestedCount: stale.length, completedCount: embeddings.length, dimension, embeddings, failures };
+}
+
 function normalizeText(value: string): string {
   return value.normalize("NFKC").replace(/\s+/g, " ").trim();
 }
@@ -410,6 +452,7 @@ function resolveOptions(
   }
 
   return {
+    signal: options.signal,
     model: resolveModel(options.model),
     baseUrl,
     batchSize,
@@ -478,7 +521,7 @@ async function requestOllamaBatch(
         input: texts,
         truncate: false,
       }),
-      signal: controller.signal,
+      signal: options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
     });
 
     if (!response.ok) {

@@ -52,11 +52,28 @@ const INGREDIENT_ALIASES: Record<string, string> = {
   courgette: "zucchini",
   courgettes: "zucchini",
   zucchinis: "zucchini",
+  "any small pasta": "pasta",
 };
 
+// Only reviewed, non-transforming descriptions of these foods are equivalent.
+// Keep heat treatment, preservation, alternatives and different products intact.
+const PREPARABLE_FOODS = new Set(["onion", "red onion", "white onion", "yellow onion", "spring onion", "carrot", "potato", "zucchini", "tomato", "cucumber", "mushroom", "bell pepper", "garlic", "cheese"]);
+const SIZED_PRODUCE = new Set(["onion", "red onion", "white onion", "yellow onion", "carrot", "potato", "zucchini", "tomato", "cucumber", "bell pepper", "lemon", "lime"]);
+
 function ingredientLabel(name: string): string {
-  const normalized = name.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
-  return INGREDIENT_ALIASES[normalized] ?? normalized;
+  const normalized = name.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ");
+  const alias = (value: string) => INGREDIENT_ALIASES[value] ?? value;
+  const sized = (value: string) => {
+    const match = value.match(/^(?:small|medium|large) (.+)$/);
+    const food = alias(match?.[1] ?? value);
+    return match && SIZED_PRODUCE.has(food) ? food : alias(value);
+  };
+  const preparation = normalized.match(/^(.+?), (?:(?:finely|coarsely|roughly|thinly|freshly) )?(?:chopped|diced|minced|sliced|grated|shredded)$/);
+  if (preparation) {
+    const food = sized(preparation[1]);
+    if (PREPARABLE_FOODS.has(food)) return food;
+  }
+  return sized(normalized);
 }
 
 // These pantry staples conventionally mean the uncooked form. Keep this list

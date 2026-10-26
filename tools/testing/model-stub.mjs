@@ -23,12 +23,21 @@ export async function startModelStub() {
       if (request.url === "/api/chat") {
         if (mode === "hold") await new Promise((resolve) => pending.push(resolve));
         const prompt = body.messages?.find((item) => item.role === "user")?.content ?? "";
-        const context = JSON.parse(prompt.slice(prompt.lastIndexOf("\n\n") + 2));
+        const context = JSON.parse(prompt.startsWith("{") ? prompt : prompt.slice(prompt.lastIndexOf("\n\n") + 2));
+        if (context.task === "verify_recipe_answer") {
+          if (mode === "verification_hold") await new Promise((resolve) => pending.push(resolve));
+          if (mode === "verification_unavailable") { send(503, { error: "Verification unavailable" }); return; }
+          const sentences = context.sentences.map((claim) => ({ id: claim.id, verdict: ["verification_reject", "unverified_cause"].includes(mode) ? "unsupported" : "supported", supportRefs: mode === "mixed_help" ? context.evidence.filter(item => ["I1", "S1"].includes(item.evidenceId) || item.ref === "K1").map(item => item.ref) : [context.evidence.find(item => !claim.recipeId || item.recipeId === claim.recipeId).ref] }));
+          send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify({ sentences }) } }); return;
+        }
         const recipe = context.retrievedRecipes?.[0];
         const evidenceSchema = body.format?.properties?.sourceFacts?.items?.properties?.evidenceId;
-        const sourceFacts = recipe && evidenceSchema && mode !== "unsupported" ? [{ recipeId: recipe.recipeId, evidenceId: mode === "invalid_evidence" ? "I999" : "I1" }] : [];
-        const chefChanges = recipe && context.requestIntent?.adaptationDiets?.includes("vegan") ? [{ recipeId: recipe.recipeId, change: "Consider a plant-based cheese substitute.", reason: "An advisory adaptation; original source ingredients are unchanged." }] : [];
-        send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify({ answer: mode === "unsupported" ? "The source does not establish this answer." : "This catalog recipe matches your request.", ...(body.format?.properties?.answerStatus ? { answerStatus: mode === "unsupported" ? "unsupported" : "answered" } : {}), sourceFacts, chefChanges, recommendations: recipe ? [{ recipeId: recipe.recipeId, reason: "Matches the requested recipe." }] : [], warnings: [] }) } }); return;
+        const sourceFacts = recipe && evidenceSchema && mode !== "unsupported" ? (mode === "mixed_help" ? ["I1", "S1"] : [mode === "invalid_evidence" ? "I999" : "I1"]).map(evidenceId => ({ recipeId: recipe.recipeId, evidenceId })) : [];
+        const chefChanges = recipe && (context.requestIntent?.adaptationDiets?.includes("vegan") || mode === "replacement_advice" && context.adaptationRequested) ? [{ recipeId: recipe.recipeId, change: "Consider a plant-based cheese substitute.", reason: "An advisory adaptation; original source ingredients are unchanged." }] : [];
+        const amount = context.savedDinnerAmounts?.[0];
+        const unsafeStatus = mode === "unsafe_clarification" ? "needs_clarification" : mode === "unsafe_unsupported" ? "unsupported" : undefined;
+        const answer = mode === "unverified_cause" || unsafeStatus ? "Rinsing makes rice manufacture chlorophyll. Which pot do you use?" : mode === "unsupported" ? "The source does not establish this answer." : mode === "unverified_detail" ? "Cook for 99 minutes at 250°C." : mode === "mixed_help" && amount ? `Use ${amount.measure} ${amount.name}. ${recipe.evidence.find(item => item.evidenceId === "S1").text}` : "This catalog recipe matches your request.";
+        send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify({ answer, ...(body.format?.properties?.answerStatus ? { answerStatus: unsafeStatus ?? (mode === "unsupported" ? "unsupported" : "answered") } : {}), sourceFacts, chefChanges, recommendations: (context.retrievedRecipes ?? []).slice(0, body.format?.properties?.recommendations?.maxItems ?? 1).map(row => ({ recipeId: row.recipeId, reason: "Matches the requested recipe." })), warnings: unsafeStatus ? ["Rinsing manufactures chlorophyll."] : [] }) } }); return;
       }
       send(404, { error: "Unknown test-provider endpoint" });
     } catch (error) { send(400, { error: error.message }); }

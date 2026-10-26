@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { PlanningFacts } from "./PlanningFacts";
 import { Modal } from "./Modal";
 import { ThemeToggle } from "./ThemeToggle";
 import { mealScale } from "../lib/kitchen-types";
@@ -14,7 +15,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
   visible: boolean;
   chefBusy?: boolean;
   chefError?: string;
-  chefReply?: Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus"> | null;
+  chefReply?: Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus" | "answerKind" | "planningFacts"> | null;
   askChefStep?: (question: string) => void;
   onChange: (session: CookingSession) => void;
   close: () => void;
@@ -22,6 +23,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
 }) {
   const [now, setNow] = useState(Date.now);
   const [helpQuestion, setHelpQuestion] = useState("");
+  const [lastHelpQuestion, setLastHelpQuestion] = useState("");
   const [minutesInput, setMinutesInput] = useState(String(Math.floor(session.timer.durationMs / 60_000)));
   const [secondsInput, setSecondsInput] = useState(String(Math.floor(session.timer.durationMs / 1000) % 60));
   const [timerError, setTimerError] = useState("");
@@ -108,9 +110,9 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
       </section></details>
       {askChefStep && <details className="cook-help"><summary>Ask about this step</summary><section aria-label="Cooking step help">
         <p className="quantity-note">{cookingSourceStep(session.recipe, session.instructions, session.step) ? "Uses this source step and nearby directions. Timers keep running." : "This step cannot be mapped uniquely; Chef will use the recipe context."}</p>
-        <form onSubmit={(event) => { event.preventDefault(); if (helpQuestion.trim()) { askChefStep(helpQuestion); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
+        <form onSubmit={(event) => { event.preventDefault(); if (helpQuestion.trim()) { setLastHelpQuestion(helpQuestion); askChefStep(helpQuestion); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
         {chefError && <p role="alert">{chefError}</p>}
-        {chefReply && chefReply.resolvedContext?.stepEvidenceId === cookingSourceStep(session.recipe, session.instructions, session.step) && <div className="step-chef-reply" aria-live="polite"><strong>{chefReply.generation === "ai" ? "Chef help · Source grounded" : "Source recipe · AI help unavailable"}</strong><p>{chefReply.answer}</p>{chefReply.sourceFacts.map((fact, index) => <blockquote key={index}>{fact.fact}</blockquote>)}{chefReply.chefChanges.map((change, index) => <div key={index}><b>Suggested change — original recipe unchanged</b><p>{change.change} {change.reason}</p></div>)}{chefReply.citations.map((citation) => <a key={citation.recipeId} href={citation.sourceUrl} target="_blank" rel="noreferrer">{citation.sourceName} · Original source</a>)}</div>}
+        {chefReply && chefReply.resolvedContext?.stepEvidenceId === cookingSourceStep(session.recipe, session.instructions, session.step) && <div className="step-chef-reply" aria-live="polite"><strong>{chefReply.answerKind === "planning_quantities" ? "Saved dinner calculation" : chefReply.generation === "ai" ? "Chef help · Source grounded" : "Source recipe · No AI answer used"}</strong>{chefReply.answerKind === "planning_quantities" && <PlanningFacts result={chefReply} />}{(chefReply.answerKind !== "planning_quantities" || chefReply.answerStatus !== "answered") && <p>{chefReply.answer}</p>}{chefReply.answerStatus === "unverified" && lastHelpQuestion && <button className="secondary-button" disabled={chefBusy} onClick={() => askChefStep(lastHelpQuestion)}>Retry step answer</button>}{chefReply.sourceFacts.map((fact, index) => <blockquote key={index}>{fact.fact}</blockquote>)}{chefReply.chefChanges.map((change, index) => <div key={index}><b>Suggested change — original recipe unchanged</b><p>{change.change} {change.reason}</p></div>)}{chefReply.citations.map((citation) => <a key={citation.recipeId} href={citation.sourceUrl} target="_blank" rel="noreferrer">{citation.sourceName} · Original source</a>)}</div>}
       </section></details>}
       <section className="cook-timer" aria-label="Cooking timer"><span>Timer</span><strong role="timer" aria-label="Time remaining">{display}</strong>
         {session.timer.status === "finished" && <p role="status">Timer finished. Check your food; dinner stays planned until you confirm it cooked.</p>}

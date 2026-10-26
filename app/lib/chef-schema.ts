@@ -113,7 +113,7 @@ export type ChefStructuredAnswer = {
   recommendations: ChefRecommendation[];
   citations: ChefCitation[];
   warnings: string[];
-  answerStatus?: "answered" | "needs_clarification" | "unsupported";
+  answerStatus?: "answered" | "needs_clarification" | "unsupported" | "unverified";
 };
 
 export type RankedRecipe = {
@@ -123,7 +123,22 @@ export type RankedRecipe = {
   semanticScore: number | null;
 };
 
+export type ChefPlanningFact = {
+  recipeId: string;
+  ingredientIndex: number;
+  sourceEvidenceId: string;
+  name: string;
+  measure: string;
+  needsReview: boolean;
+  basis: "source_scaled" | "saved_override";
+};
+
 export type ChefApiResponse = ChefStructuredAnswer & {
+  answerKind?: "planning_quantities";
+  planningFacts?: ChefPlanningFact[];
+  verification?: import("./chef-verification").AnswerVerification;
+  evidenceRetrieval?: Record<string, Omit<import("./chef-evidence").EvidenceSelection, "items">>;
+  answerValidation?: { reason: import("./chef-grounding").ChefGroundingIssue };
   resolvedContext?: ChefDinnerContext;
   readinessByRecipeId?: Record<string, import("./quantities").MealReadiness>;
   selectedEvidenceByRecipeId?: Record<string, string[]>;
@@ -134,7 +149,7 @@ export type ChefApiResponse = ChefStructuredAnswer & {
   generation: "ai" | "catalog_fallback";
   provider: ChefProvider;
   model: string;
-  timings: { retrievalMs: number; generationMs: number; totalMs: number };
+  timings: { retrievalMs: number; generationMs: number; verificationMs?: number; totalMs: number };
   retrieval: {
     method: "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
     catalogCount: number;

@@ -2,6 +2,8 @@ import {
   DEFAULT_RECIPE_EMBED_MODEL,
   buildRecipeSearchText,
   precomputeRecipeEmbeddings,
+  precomputeRecipeStepEmbeddings,
+  RECIPE_STEP_EMBEDDING_KIND,
   sha256Hex,
 } from "@/app/lib/recipe-embeddings";
 import { searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
@@ -80,9 +82,12 @@ export async function POST(request: Request): Promise<Response> {
     await ensureRecipeCatalogSchema();
     if (embeddingsOnly) {
       const records = await listCatalogRecipes(1000, { forEmbedding: true });
-      const embedded = await precomputeRecipeEmbeddings(records.map((item) => item.recipe), await listStoredRecipeEmbeddings(model), { model, timeoutMs: embeddingTimeoutMs() });
+      const contentHashes = new Map(records.map((item) => [item.recipe.id, item.contentHash]));
+      const embedded = await precomputeRecipeEmbeddings(records.map((item) => item.recipe), await listStoredRecipeEmbeddings(model), { model, timeoutMs: embeddingTimeoutMs(), contentHashes });
       await saveRecipeEmbeddings(embedded.embeddings);
-      return json({ ok: embedded.failures.length === 0, embeddings: { model, checkedCount: embedded.checkedCount, skippedCount: embedded.skippedCount, requestedCount: embedded.requestedCount, completedCount: embedded.completedCount, failures: embedded.failures }, catalog: await getCatalogStatus(model) });
+      const steps = await precomputeRecipeStepEmbeddings(records.map((item) => item.recipe), await listStoredRecipeEmbeddings(model, RECIPE_STEP_EMBEDDING_KIND), { model, timeoutMs: embeddingTimeoutMs(), contentHashes });
+      await saveRecipeEmbeddings(steps.embeddings);
+      return json({ stepEmbeddings: { ...steps, embeddings: undefined }, ok: embedded.failures.length === 0 && steps.failures.length === 0, embeddings: { model, checkedCount: embedded.checkedCount, skippedCount: embedded.skippedCount, requestedCount: embedded.requestedCount, completedCount: embedded.completedCount, failures: embedded.failures }, catalog: await getCatalogStatus(model) });
     }
     const before = await getCatalogStatus(model);
     if (

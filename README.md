@@ -89,6 +89,15 @@ partial, missing, and review-needed requirements; unknown yields use recipe
 batches. **Cook for** changes deterministic planning quantities, while Chef's
 substitution advice remains separate and never rewrites a meal.
 
+For a saved dinner, quantity-only questions show **Your dinner amounts** using
+those same calculations. Serving changes scale original amounts; an explicit
+saved override remains final. Labels distinguish scaled amounts from overrides,
+while original ingredient evidence stays visible separately. These answers work
+with the AI provider offline and make no generation or verification call.
+Unclear measures or ingredient names ask for clarification. Questions about the
+original source, cooking technique or substitutions keep their source-grounded
+answering path. Factual answers do not add a recommendation shortlist.
+
 Cooking has **Ask about this step** inside its existing scrolling area. Questions
 use the pinned recipe and original step references, leaving timers and progress
 running. Older sessions are mapped back to source steps where unambiguous;
@@ -171,7 +180,8 @@ Multiple ingredients and measured entries open an editable confirmation preview
 whose actions remain visible while the ingredient rows scroll.
 Existing stock stays intact; confirmed entries create separate stock rows.
 Removing pantry rows or unlocked dinners (including **Clear unlocked**) offers
-**Undo** in a visible recovery bar until dismissed or the page is reloaded.
+**Undo** in a recovery bar above the page content until dismissed or the page is
+reloaded. New removals reveal the bar without placing it over page actions.
 Earlier removals remain available in the bar. Undo preserves later edits and
 never replaces a dinner subsequently added to the same date.
 
@@ -194,10 +204,14 @@ is inclusive. Unknown amounts remain uncertain and are never treated as enough.
 Past-dated stock stays excluded for unfinished historical dinners. Cooking
 deductions use the actual cooking date, including when a dinner is cooked early.
 Automatic planning reserves measured stock for saved dinners, then fills upcoming
-empty days in date order without spending the same stock twice. Stock due within
-three days leads, then meals using remaining measured stock. Each fill makes a
+empty days in date order without spending the same stock twice. **Prefer reviewed
+mains** is on by default: eligible reviewed mains lead, then unreviewed recipes
+if mains run out; known sides, components and desserts stay out. Turn it off to
+use the wider collection. Within that dinner group, stock due within three days
+leads, then meals using remaining measured stock. Each fill makes a
 fresh weighted random draw within the available group, favoring quantity
-coverage and ingredient reuse without always choosing the same dinners.
+coverage and ingredient reuse without always choosing the same dinners. Each
+suggestion explains its review status, pantry coverage and remaining shopping needs.
 Past days remain manually editable; locked, cooked and saved dinners stay intact.
 
 Use **Cook for** when the source provides an explicit serving count. Unknown
@@ -210,7 +224,12 @@ pantry amounts never count as sufficient stock. Missing measures, ranges, and
 conflicting units stay marked for review. Cups use 240 ml, tablespoons 15 ml,
 and teaspoons 5 ml; volume is never assumed to equal mass.
 
-Ingredient matching keeps cooked and uncooked stock separate. For example,
+Ingredient matching recognizes reviewed descriptions such as `any small pasta`,
+`medium zucchini, grated`, and `cheese, grated` as their plain pantry ingredients.
+Only specific produce sizes and cutting descriptions are normalized; alternatives,
+preservation, heat treatment and different food products keep separate identities.
+The attributed source text stays unchanged. Matching also keeps cooked and
+uncooked stock separate. For example,
 `cooked rice` matches `rice, cooked`, while `uncooked rice` and `dry rice` match
 ordinary `rice`. This uncooked default applies to an explicit set of grain,
 pasta and pulse staples; dried herbs, fruit, mushrooms and canned foods retain
@@ -245,10 +264,14 @@ opening control when it is still available. Exiting cooking preserves the timer.
 
 Chef searches the full approved database catalog, not the on-screen shortlist or
 recipe text submitted by a client. Ingredient-text allergy exclusions run before
-ranking and before recipes reach the model. Retrieval combines precomputed
-semantic embeddings, lexical relevance, and conservative pantry-name coverage.
+ranking and before recipes reach the model. Retrieval combines field-weighted BM25 keyword search and precomputed semantic
+embeddings through Reciprocal Rank Fusion. Exact recipe names and existing
+relevance gates take precedence; pantry stock cannot admit unrelated recipes.
+A partial index keeps meaning-based search for current vectors while missing
+recipes use keywords. Rice noodles remain a separate search phrase from rice;
+search aliases never change ingredient identity or stock amounts.
 
-The model receives each selected recipe's complete ingredients and directions
+For dinner discovery, the model receives each selected recipe's complete ingredients and directions
 once, in an ordered evidence list (`I1…` for ingredients with quantities, `S1…`
 for cooking steps), and returns a small, validated JSON response. Titles,
 servings, reviewed metadata, pantry information and user preferences remain in
@@ -271,6 +294,55 @@ Canceling or superseding a request prevents its late response from appearing;
 changing the pantry, profile or current date hides results from the old context
 and cancels any pending request. Returning to the app refreshes the current date
 so stock that has passed its entered use-by date is excluded from new requests.
+
+Pinned questions combine keyword and semantic step rankings. Up to six core
+steps are expanded to adjacent directions; the active cooking step and explicit
+step numbers take priority. Short recipes use their complete source without a
+query-embedding call. Missing or stale step vectors use wording and cooking cues.
+The supplied evidence has a 16,000-character budget shared across recipes. Whole
+source steps keep their original IDs and wording; omitted text remains explicitly
+partial, with the complete recipe still accessible.
+
+After generation, deterministic checks compare explicit time, temperature,
+gas-mark, and common nutrition measurements in the factual answer with cited
+excerpts and reviewed total-time metadata.
+Recommendation reasons are checked against the supplied evidence for their own
+recipe. A step duration cannot become total recipe time, and curator time
+estimates must stay labeled. An unverified answer is withheld while the original
+source remains available; `answerValidation.reason` records the failed check.
+Requested advisory changes remain separate from factual source claims. These
+numeric checks remain independent of the semantic verification pass.
+
+Free-form recipe answers and requested adaptations receive one additional local
+Ollama verification call for their displayed model answer and recommendation
+reasons. Recipe discovery uses model-selected recipe IDs and exact source
+excerpts, with app-owned introductions, match explanations and stock facts. Clarification and unsupported statuses use fixed
+messages and server-owned match explanations, so those labels cannot bypass
+checks and expose arbitrary model prose. Model-written discovery prose is discarded rather than presented as verified
+recipe or pantry facts.
+
+The verifier checks factual entailment against selected excerpts, original title
+and yield, reviewed metadata, server-calculated readiness, effective requirement
+checks, and resolved planning amounts. The selected recipe, cooking step and
+quantity basis provide authoritative scope. The user question stays in generation
+context; answer relevance is evaluated separately in journey checks. Every displayed model-generated
+claim receives a verdict, and factual references must belong to the supplied
+material and correct recipe. Generic nonfactual discovery prose may have no
+support refs; factual questions still require positive source support. The
+verifier cannot rewrite an answer or turn kitchen facts into original quotes.
+
+Verification uses the selected Ollama generation model, or `OLLAMA_CHAT_MODEL`
+when generation uses OpenAI. It always uses a loopback Ollama endpoint and never
+adds a paid verification call. The check has a 30-second timeout for multi-recipe
+answers and no automatic repair attempt. Rejected or unavailable checks withhold
+the answer, retain source access and offer **Retry answer** or **Retry step
+answer**. **Answer evidence checked** describes a model-assisted review, not a
+guarantee of correctness. Canonical messages, discovery explanations and calculated dinner amounts skip
+verification. Whole-recipe timing requires explicit recipe-level wording or a
+reviewed total; an ambiguous “it takes” or component being “ready in” establishes
+only a step duration. Missing totals receive a direct source-based refusal.
+Requests cancel provider work when superseded; source permissions, recipe hashes,
+reviewed details and kitchen revisions are rechecked before results return.
 
 Requests such as **no pasta**, **without tomatoes**, **avoid eggs**, and **don't
 use onions** filter ingredients before ranking or generation. Comma-separated
@@ -507,6 +579,104 @@ Chromium and its Linux dependencies using the
 [Playwright CI setup](https://playwright.dev/docs/ci-intro).
 The workflow needs no app secrets, Cloudflare account, downloaded AI models, or
 personal database. Local-Ollama evaluation commands below remain separate.
+
+To check five fixed source-answering cases against a real local model, without
+starting the app or loading personal recipes:
+
+```bash
+pnpm recipes:grounding-eval
+pnpm recipes:rag-eval
+# Optional installed local model:
+pnpm recipes:grounding-eval --model qwen3.5:9b
+```
+
+This builds a disposable app with nine synthetic recipes and uses only local
+Ollama. It checks step timing, a temperature paraphrase, doneness, missing
+nutrition, and the difference between step duration and total recipe time.
+Source facts must match the original supplied evidence. The report records the
+model digest, selected evidence IDs, timings, and unchanged kitchen/catalog
+snapshots in ignored `output/playwright/chef-*/grounding-results.json`. A withheld
+answer fails answer-quality scoring even though the unsupported prose was hidden.
+This small regression suite is separate from the provider-mocked CI checks.
+
+`recipes:rag-eval` adds 40 fixed synthetic source-question and claim cases,
+with disjoint development and held-out recipe splits. It compares evidence
+recall@6 with the retained lexical selector, and false-claim acceptance with the
+numeric-only guard. Reports include model digests, selected source IDs, labels
+and source hashes, context size, and median/p95 verification time. Its gates are
+90% evidence recall, 90% supported-answer acceptance, and at most 5% unsupported
+claim acceptance. This evaluates a small labeled set, not general culinary truth.
+It uses only local models and synthetic records, without accessing the app's
+personal database. Reports and vector caches are ignored local artifacts.
+
+
+### RAG user journeys
+
+Run **8 fixed journeys with 21 Chef turns** through a built disposable app:
+
+```bash
+# Repeatable original test recipes; local Ollama must be running.
+pnpm recipes:journey-eval
+# The same expectations against a read-only snapshot of the local catalog.
+pnpm recipes:journey-eval --catalog local
+# Investigate one journey; subset reports are labeled explicitly.
+pnpm recipes:journey-eval --catalog local --journey stock-reservations
+# Optional installed local model and generated-response p95 budget.
+pnpm recipes:journey-eval --model qwen3.5:9b --latency-budget-ms 60000
+```
+
+The journeys cover ordinary pantry names, cooked versus uncooked stock, unknown
+and partial quantities, saved allergies and diet changes, unavailable equipment,
+recipe follow-ups, an ambiguous choice, switching recipes, final portions and
+amount overrides, cooking-step help, missing nutrition and total time, mistaken
+temperatures, stale kitchen/dinner context, expiry dates and reserved stock.
+Each journey carries actual answers, selected recipe IDs and saved dinner hashes
+forward. Explicit setup actions write only the disposable kitchen. Every Chef
+turn is checked for unintended kitchen changes.
+
+The fixed expectations check recommendation identity and usefulness, source
+scope, exact quoted evidence and source links, expected answer details, unknown
+facts, stock coverage, final amounts and conflict responses. The pipeline's own
+model-assisted verifier is recorded as one signal; it is not an independent
+semantic judge. Saved dinner ingredient amounts use a separate calculated-answer
+contract (report version 2): exact final amounts, source ingredient IDs, servings
+and override labels must match, with zero generation or verification calls.
+Their latency is reported separately from model-assisted factual answers.
+Original source quantities remain separate from the saved dinner amounts.
+These checks do not measure every possible factual error.
+Failed, withheld, timed-out and blocked turns never count as passes. A failed
+multiple-choice precondition blocks its dependent ambiguous follow-up rather
+than manufacturing a conversation to make it pass.
+
+Reports appear in ignored `output/playwright/journeys-*/journey-report.md` and
+`journey-results.json`. They include prompts, answers, failed checks, latency by
+request group, model digests, catalog/code/evaluation/label fingerprints and the
+selected source evidence. The full canonical responses and catalog oracle are
+saved alongside the report for diagnosis. Setup and embedding refresh time are excluded from
+response latency; first-turn cold response time is included. Keep the host awake
+while comparing performance. Large event-loop gaps make timing unreliable and
+fail the latency gate instead of silently passing it. Timeout failures also
+fail the run even when other answers are fast.
+
+The local-catalog track requires Python 3 and the **Zucchini Pasta Bake** and
+**Red Lentil Soup** records with the fixed facts used by the journey labels.
+Drift in those required source facts stops evaluation for review; expected facts are never regenerated
+from model output. SQLite is backed up read-only, including committed WAL data.
+The copied kitchen is replaced with the fixed test scenarios before Chef is
+called, `.env` and provider keys are excluded, and only local Ollama is used.
+No new source is imported. `local-snapshot-check.json` compares the original
+local database before and after; a concurrent change marks the run for review.
+A nonzero exit can indicate an application quality finding, an execution
+failure, or a failed latency gate; inspect the per-turn report for the reason.
+
+
+Step embeddings use the existing database table with kind `recipe-step-v1`;
+no schema migration is needed. After upgrading an existing installation, run
+`pnpm recipes:embed` against the local app once. It refreshes missing or stale
+recipe and step vectors, preserves source records and kitchen data, and skips
+current vectors on subsequent runs. Catalog status reports current and pending
+step counts. Permission changes and recipe hashes are checked again when vectors
+are written and loaded. Until refresh completes, lexical retrieval stays usable.
 
 With the app running and the relevant recipes imported:
 
