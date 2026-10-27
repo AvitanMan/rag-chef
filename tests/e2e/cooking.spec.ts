@@ -127,6 +127,7 @@ test("custom timer completion survives reload and an old cooking session cannot 
   await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("spinbutton", { name: "Minutes", exact: true }).fill("0");
   await cooking.getByRole("spinbutton", { name: "Seconds", exact: true }).fill("2");
   await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();

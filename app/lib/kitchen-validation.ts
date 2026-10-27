@@ -277,7 +277,7 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
 
 export function validateKitchenState(value: unknown): asserts value is KitchenState {
   const state = record(value, "state");
-  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], [], "state");
+  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles"], "state");
   if (state.schemaVersion !== 2) invalid("state.schemaVersion", "must be 2");
   boolean(state.migratedLegacy, "state.migratedLegacy");
   const pantryIds = new Set<string>();
@@ -311,6 +311,48 @@ export function validateKitchenState(value: unknown): asserts value is KitchenSt
   for (const [key, value] of Object.entries(checked)) {
     string(key, "state.shoppingChecked key", 500);
     boolean(value, `state.shoppingChecked.${key}`);
+  }
+  if (Object.hasOwn(state, "shoppingCycles")) {
+    const cycles = record(state.shoppingCycles, "state.shoppingCycles");
+    if (Object.keys(cycles).length > 3_000) invalid("state.shoppingCycles", "has too many shopping cycles");
+    for (const [key, value] of Object.entries(cycles)) {
+      string(key, "state.shoppingCycles key", 500);
+      string(value, `state.shoppingCycles.${key}`, 200);
+    }
+  }
+  if (Object.hasOwn(state, "shoppingPurchases")) {
+    const purchaseIds = new Set<string>(), purchaseKeys = new Set<string>(), stockIds = new Set<string>();
+    let total = 0;
+    array(state.shoppingPurchases, "state.shoppingPurchases", 500).forEach((value, index) => {
+      const path = `state.shoppingPurchases[${index}]`, purchase = record(value, path);
+      fields(purchase, ["id", "week", "at", "items"], [], path);
+      string(purchase.id, `${path}.id`, 200);
+      if (purchaseIds.has(purchase.id)) invalid(path, "duplicates a purchase id");
+      purchaseIds.add(purchase.id);
+      date(purchase.week, `${path}.week`);
+      timestamp(purchase.at, `${path}.at`);
+      const items = array(purchase.items, `${path}.items`, MAX_PANTRY_ITEMS);
+      if (!items.length) invalid(path, "must contain purchased items");
+      total += items.length;
+      if (total > 3_000) invalid(path, "has too many purchased items");
+      items.forEach((value, i) => {
+        const entryPath = `${path}.items[${i}]`, entry = record(value, entryPath);
+        fields(entry, ["key", "pantry"], ["cycleId"], entryPath);
+        string(entry.key, `${entryPath}.key`, 500);
+        if (Object.hasOwn(entry, "cycleId")) string(entry.cycleId, `${entryPath}.cycleId`, 200);
+        const identity = JSON.stringify([entry.key, entry.cycleId ?? null]);
+        if (!entry.key.startsWith(`${purchase.week}:`) || purchaseKeys.has(identity)) invalid(entryPath, "has an invalid or duplicate purchase cycle");
+        purchaseKeys.add(identity);
+        const stock = record(entry.pantry, `${entryPath}.pantry`);
+        fields(stock, ["id", "name", "measure"], ["useBy"], entryPath);
+        string(stock.id, `${entryPath}.pantry.id`, 200);
+        string(stock.name, `${entryPath}.pantry.name`, 200);
+        measure(stock.measure, `${entryPath}.pantry.measure`);
+        if (Object.hasOwn(stock, "useBy")) date(stock.useBy, `${entryPath}.pantry.useBy`);
+        if (stockIds.has(stock.id)) invalid(entryPath, "duplicates a purchased pantry id");
+        stockIds.add(stock.id);
+      });
+    });
   }
 }
 

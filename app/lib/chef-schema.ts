@@ -4,6 +4,7 @@ export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
 export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
 export const DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text";
 export const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
+export const MAX_CHEF_REFINEMENT_LENGTH = 200;
 
 export type ChefProvider = "ollama" | "openai";
 
@@ -309,7 +310,7 @@ export function parseChefRequest(value: unknown): ChefRequest {
       return { role: item.role, content: requiredString(item.content, "discussion text", 1000) };
     });
   }
-  const refinements = value.refinements === undefined ? undefined : stringArray(value.refinements, "refinements", 6, 200);
+  const refinements = value.refinements === undefined ? undefined : stringArray(value.refinements, "refinements", 6, MAX_CHEF_REFINEMENT_LENGTH);
   return { query, pantry, profile, candidates, provider, model, ...(context ? { context } : {}), ...(history ? { history } : {}), ...(refinements ? { refinements } : {}) };
 }
 

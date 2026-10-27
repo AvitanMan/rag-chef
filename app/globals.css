@@ -2372,3 +2372,81 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
+
+/* Keep discovery focused on a question, its choices, and inspectable evidence. */
+.discovery-navigation, .chef-search, .chef-history, .grounding-help, .onboarding-next { max-width: 1240px; margin: 0 auto 16px; }
+.discovery-navigation { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.chef-search { padding: 20px; border: 1px solid var(--line); background: var(--paper); border-radius: 20px; }
+.chef-welcome h2 { font: 32px/1.15 var(--serif); margin: 0 0 8px; }
+.chef-welcome p { color: var(--ink-soft); font-size: 13px; line-height: 1.5; margin: 0 0 16px; }
+.chef-search .chef-composer { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; }
+.chef-topic { display: block; margin-bottom: 14px; }
+.chef-search .chef-refinements { padding: 12px 0 0; margin: 0; }
+.chef-history, .grounding-help { font-size: 13px; color: var(--ink-soft); line-height: 1.6; }
+.chef-history summary, .grounding-help summary, .fill-options > summary { cursor: pointer; min-height: 44px; align-content: center; }
+.dinner-context.panel { display: block; padding: 0 16px; margin-bottom: 14px; }
+.dinner-context > summary { cursor: pointer; min-height: 44px; align-content: center; font-size: 12px; font-weight: 650; }
+.dinner-context > summary span { margin-left: 12px; font-weight: 400; color: var(--ink-soft); }
+.dinner-context-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 0 0 14px; }
+.dinner-context-fields label { display: grid; gap: 6px; font-size: 12px; }
+.dinner-context-fields input { min-height: 44px; max-width: 200px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.chef-answer { scroll-margin-top: 16px; margin-bottom: 12px; }
+.chef-grounding { max-width: 1240px; margin: 0 auto 16px; padding: 0 16px; border-radius: 12px; }
+.grounding-disclosure > summary { cursor: pointer; min-height: 48px; align-content: center; font-size: 13px; font-weight: 650; }
+.grounding-disclosure > summary > span { margin-left: 10px; color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+.grounding-expanded { padding: 12px 0 20px; }
+.card-source-excerpt { border-left: 2px solid var(--paprika); margin: 14px 0; padding-left: 12px; font-size: 13px; line-height: 1.5; white-space: pre-line; }
+.card-source-excerpt small { display: block; color: var(--ink-soft); font-size: 10px; margin-bottom: 4px; }
+.drawer-source-link { font-size: 12px; color: var(--ink-soft); margin: 16px 0; }
+.onboarding-next { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.onboarding-next p { margin: 0 auto 0 0; }
+.today-summary { align-items: center; gap: 16px; }
+.today-summary > div:first-child { flex: 1; }
+.today-summary small { display: block; margin-top: 8px; color: var(--ink-soft); }
+.today-summary > .today-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fill-options { font-size: 12px; color: var(--ink-soft); }
+.fill-options .planner-preference { margin: 8px 0; }
+.dinner-amount-editor label { display: grid; gap: 6px; margin: 12px 0; font-size: 12px; }
+.dinner-amount-editor input { padding: 10px; min-height: 44px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 8px; width: 100%; }
+.dinner-amount-editor p { font-size: 12px; line-height: 1.6; }
+.purchase-action { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; }
+.purchase-action small, .purchase-history-row small, .purchase-preview-row small { font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+.purchase-history-row { border-bottom: 1px solid var(--line); padding: 12px 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.purchase-history-row small { width: 100%; }
+.purchase-preview-row { display: grid; gap: 10px; border-bottom: 1px solid var(--line); padding: 16px 0; }
+.purchase-preview-row label { display: grid; gap: 6px; }
+.purchase-preview-row input { min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.cooking-mode { grid-template-rows: auto 4px auto minmax(0, 1fr) auto; }
+.cook-timer-summary { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.cook-timer-summary > strong { font: 24px/1.2 var(--serif); font-variant-numeric: tabular-nums; }
+.cook-timer-summary p { margin: 0; font-size: 12px; line-height: 1.5; flex-basis: 100%; text-align: center; }
+.timer-setup { padding: 16px; margin-top: 16px; }
+.timer-setup h3 { font-size: 18px; margin: 0 0 12px; }
+.timer-replacement { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-top: 12px; }
+.cooking-mode .timer-replacement p { font: 14px/1.5 var(--sans); margin: 0; }
+@media (max-width: 600px) {
+  .chef-search { padding: 16px; }
+  .chef-search .composer-bottom { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .chef-search .composer-bottom > span { flex: 1 1 100%; }
+  .chef-search .composer-bottom .primary-button { width: auto; justify-content: center; }
+  .dinner-context > summary span { display: block; margin: 4px 0 0; }
+  .dinner-context > summary { padding: 10px 0; }
+  .grounding-disclosure > summary > span { display: block; margin: 5px 0 0; }
+  .grounding-disclosure > summary { padding: 10px 0; }
+  .week-grid.durable-week { gap: 10px; }
+  .durable-week .day-card { display: flex; flex-wrap: wrap; gap: 8px 12px; padding: 14px; min-height: 80px; }
+  .durable-week .day-heading { flex: 1 1 100%; margin: 0; }
+  .durable-week .day-image { display: none; }
+  .durable-week .day-recipe-title { flex: 1 1 60%; font-size: 19px; margin: 0; }
+  .durable-week .day-card > .primary-button { width: auto; margin: 0; }
+  .durable-week .meal-amounts { margin: 0; flex: 1 1 50%; }
+  .durable-week .meal-review, .durable-week .meal-more { flex: 1 1 100%; margin-top: 4px; padding-top: 4px; }
+  .durable-week .day-card > .quantity-note { margin: 0; }
+  .today-summary { padding: 16px; }
+  .today-actions { width: 100%; }
+  .cook-timer-summary { gap: 6px; padding: 6px 10px; }
+  .cook-timer-summary button { padding: 0 10px; font-size: 11px; }
+}
+.chef-answer .chef-request { margin: 0 0 8px; color: var(--ink-soft); font: 12px/1.5 var(--sans); }
+.purchase-history { font-size: 12px; padding: 8px 0; }
+.purchase-history > summary { min-height: 44px; align-content: center; cursor: pointer; }

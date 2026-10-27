@@ -6,7 +6,7 @@ async function navigate(page: Page, name: string) { await page.locator(".side-na
 async function submit(page: Page, text: string, followUp = false) {
   await page.getByRole("textbox", { name: followUp ? "Follow-up question" : "Ask your chef", exact: true }).fill(text);
   const response = page.waitForResponse((response) => response.url().endsWith("/api/chef") && response.request().method() === "POST");
-  await page.getByRole("button", { name: followUp ? "Ask follow-up" : "Find my dinner", exact: true }).click();
+  await page.getByRole("button", { name: followUp ? "Ask follow-up" : /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   const result = await response; expect(result.ok()).toBeTruthy(); return result.json();
 }
 test.beforeEach(async ({ page, request }) => {
@@ -18,7 +18,9 @@ test.beforeEach(async ({ page, request }) => {
 test("Chef home keeps date, source discussion and portions through planning and shopping", async ({ page, request }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
+  if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Chef portions", { exact: true }).fill("4");
   const result = await submit(page, "Tomato Rice");
   expect(result.readinessByRecipeId["fixture-tomato-rice"].coveredCount).toBe(2);
@@ -30,9 +32,10 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await navigate(page, "Recipes"); await navigate(page, "Chef");
   await expect(page.getByLabel("Dinner day", { exact: true })).toHaveValue("2026-10-23");
   await expect(page.getByText("Discussing Tomato Rice", { exact: true })).toBeVisible();
+  if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
   await page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Add to Friday", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Next steps for dinner", exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Dinner saved for" })).toBeVisible();
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals["2026-10-23"]?.servings).toBe(4);
   await page.getByRole("button", { name: "Review shopping", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeVisible();
@@ -46,6 +49,7 @@ test("cooking step help preserves timers, progress and saved kitchen", async ({ 
   const before = await (await request.get("/api/kitchen")).json();
   await page.getByRole("button", { name: "Cook this dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.getByRole("button", { name: /Next step/ }).click();
   await cooking.locator(".cook-help > summary").click();
@@ -75,6 +79,7 @@ test("unsupported recipe questions keep source access and do not invent nutritio
     expect(answer.recommendations).toEqual([]);
     await expect(page.getByRole("heading", { name: "Your chef’s shortlist", exact: true })).toHaveCount(0);
     await expect(page.locator(".chef-answer")).toContainText("Question not established by this source");
+    if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
     await expect(page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true })).toBeVisible();
     expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
   } finally {
@@ -97,7 +102,9 @@ async function savedRiceDinner(request: APIRequestContext, date = TODAY, exactSt
 
 test("Chef portions survive adding through Recipes and explicit copies keep their own portions", async ({ page, request }) => {
   await page.goto("/");
+  if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
+  if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Chef portions", { exact: true }).fill("4");
   await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
@@ -127,6 +134,7 @@ test("unplanned cooking help and later Chef questions do not inherit a previousl
   await page.getByRole("dialog", { name: "Cheese Pasta", exact: true }).getByRole("button", { name: "Start cooking", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Cheese Pasta", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.locator(".cook-help > summary").click();
   await cooking.getByLabel("Question about this step", { exact: true }).fill("Explain this source step.");
@@ -164,6 +172,7 @@ test("saved-dinner estimates use new portions and agree with the resulting shopp
   await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Open Tomato Rice on Thu, Oct 22", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+  if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Chef portions", { exact: true }).fill("4");
   const before = await (await request.get("/api/kitchen")).json();
   const answer = await submit(page, "How much rice does this dinner need?", true);
@@ -172,6 +181,7 @@ test("saved-dinner estimates use new portions and agree with the resulting shopp
   expect(readiness.coveredCount).toBe(0); expect(readiness.partialCount).toBe(2);
   expect(readiness.shopping.map((item: { measure: string }) => item.measure)).toEqual(["200 g", "2"]);
   expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
+  if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
   await page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Add to Thursday", exact: true }).click();
   await page.getByRole("dialog", { name: "Replace dinner", exact: true }).getByRole("button", { name: "Replace dinner", exact: true }).click();
@@ -226,6 +236,7 @@ test("unverified model details are withheld while original recipe evidence remai
     await expect(page.locator(".chef-answer")).not.toContainText("99 minutes");
     await expect(page.getByRole("region", { name: "How Chef found this", exact: true })).not.toContainText("Answer evidence checked");
     await expect(page.getByRole("region", { name: "How Chef found this", exact: true })).toContainText("AI answer withheld · Original source available");
+    if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
     await page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Tomato Rice", exact: true })).toContainText("Simmer the rice and tomatoes for 10 minutes.");
     expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
@@ -245,6 +256,7 @@ for (const mode of ["verification_reject", "verification_unavailable"]) {
       const result = await submit(page, "What does the original recipe say?", true);
       expect(result.verification.status).toBe(mode === "verification_reject" ? "rejected" : "unavailable");
       expect(result.answerStatus).toBe("unverified");
+      if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
       await expect(page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true })).toBeVisible();
       const calls = ((await (await fetch(`${modelURL}/__test/control`)).json()) as { calls: Array<{ path: string }> }).calls;
       expect(calls.filter((call: { path: string }) => call.path === "/api/chat")).toHaveLength(2);
@@ -267,6 +279,7 @@ test("retrying a rejected cooking answer preserves timer, meal scope, and progre
   await page.getByRole("button", { name: "Cook Tomato Rice Thu, Oct 22", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.locator(".cook-help > summary").click();
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
@@ -302,6 +315,7 @@ test("starting a new search cancels an in-flight evidence check and hides its la
     await page.getByRole("button", { name: "New dinner search", exact: true }).click();
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "valid", release: true }) });
     await submit(page, "Cheese Pasta");
+    if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
     await expect(page.getByRole("button", { name: "Open evidence for Cheese Pasta", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true })).toHaveCount(0);
     expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
@@ -356,6 +370,7 @@ test("saved amount help works offline in Chef and cooking with source quantities
     await navigate(page, "Plan");
     await page.locator(`#dinner-${TODAY}`).getByRole("button", { name: /Cook/ }).click();
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+    await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
     await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
     await cooking.locator(".cook-help > summary").click();
     await cooking.getByLabel("Question about this step", { exact: true }).fill("How much rice do I need?");
@@ -425,6 +440,7 @@ test("an unpinned factual answer is withheld when its evidence check rejects the
     expect(answer.answerStatus).toBe("unverified"); expect(answer.verification.status).toBe("rejected");
     await expect(page.locator(".chef-answer")).toContainText("AI answer withheld");
     await expect(page.locator(".chef-answer")).not.toContainText("chlorophyll");
+    if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
     await expect(page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true })).toBeVisible();
     expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
   } finally {
@@ -443,6 +459,7 @@ test("unsupported and clarification labels cannot expose unchecked model explana
       const answer = await submit(page, "Why rinse the rice?", true);
       expect(answer.answerStatus).toBe(status); expect(JSON.stringify([answer.answer, answer.warnings, answer.chefChanges, answer.recommendations])).not.toContain("chlorophyll");
       await expect(page.locator(".chef-answer")).not.toContainText("chlorophyll");
+      if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
       await expect(page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true })).toBeVisible();
     }
     expect(await (await request.get("/api/kitchen")).json()).toEqual(before);

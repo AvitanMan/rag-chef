@@ -16,20 +16,27 @@ import { IngredientChips } from "./IngredientChips";
 import { Modal } from "./Modal";
 import { parsePantryInput, pantryInputProblem, type PantryInputRow } from "../lib/pantry-input";
 import { CookingWorkspace } from "./CookingWorkspace";
+import { PurchasePreview } from "./PurchasePreview";
+import { applyBoughtItems, purchasePreviewProblem, purchaseUndoProblem, shoppingForWeek, unappliedBoughtItems, undoPurchase, type PurchaseDraft } from "../lib/shopping-purchases";
 import { PlanningFacts } from "./PlanningFacts";
-import { ChefGrounding } from "./ChefGrounding";
+import { ChefGrounding, recipeEvidenceExcerpt } from "./ChefGrounding";
 import { chefMealHash, chefMealPreview, chefRecipeHash, cookingSourceStep } from "../lib/chef-context";
 import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
+import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
 import { COOKING_SESSION_KEY, canCompleteCookingSession, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
 import { useKitchen } from "../lib/use-kitchen";
 import { mealScale, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, localDate, placePlannedDinner, weekStart } from "../lib/kitchen-state";
 import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
-import { buildShoppingList, canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal } from "../lib/quantities";
-import { dateLabel, DurablePlanView, DurableShoppingView, PlanPicker } from "./WeeklyKitchenViews";
+import { canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal } from "../lib/quantities";
+import { dateLabel, DinnerAmounts, DurablePlanView, DurableShoppingView, PlanPicker } from "./WeeklyKitchenViews";
 import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
 
 type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
+
+function isChefQuestion(text: string): boolean {
+  return /\?|^(?:how|why|what|when|where|which|can|could|should|would|does|do|is|are|explain|describe|tell)\b/i.test(text);
+}
 
 type Profile = {
   allergies: string[];
@@ -264,6 +271,9 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
 
 export default function RagChefApp() {
   const [view, setView] = useState<View>("chef");
+  const [chefOrigin, setChefOrigin] = useState<"plan" | "recipes" | null>(null);
+  const scrollPositions = useRef<Partial<Record<View, number>>>({});
+  const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [today, setToday] = useState(localDate);
   useEffect(() => {
     const refreshDate = () => setToday(localDate());
@@ -276,7 +286,12 @@ export default function RagChefApp() {
       document.removeEventListener("visibilitychange", refreshDate);
     };
   }, []);
-  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [view]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[view] ?? 0, left: 0, behavior: "instant" }));
+    const remember = () => { scrollPositions.current[view] = window.scrollY; };
+    window.addEventListener("scroll", remember, { passive: true });
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", remember); };
+  }, [view]);
   const kitchen = useKitchen(LOCAL_RECIPES);
   const kitchenRef = useRef(kitchen);
   useEffect(() => { kitchenRef.current = kitchen; }, [kitchen]);
@@ -298,7 +313,7 @@ export default function RagChefApp() {
     return () => cancelAnimationFrame(frame);
   }, [latestRemovalId]);
   const [undoNotice, setUndoNotice] = useState("");
-  const [preferencesReviewed, setPreferencesReviewed] = useState(false);
+
   const [query, setQuery] = useState("");
   const [recipeQuery, setRecipeQuery] = useState("");
   const [recipeLimit, setRecipeLimit] = useState(RECIPE_PAGE_SIZE);
@@ -320,6 +335,7 @@ export default function RagChefApp() {
   const chefError = storedChefError?.contextKey === chefContext ? storedChefError : null;
   const [storedChefResult, setChefResult] = useState<(ChefResponse & { contextKey: string }) | null>(null);
   const chefResult = storedChefResult?.contextKey === chefContext ? storedChefResult : null;
+  const lastChefPrompt = useRef("");
   const chefRequest = useRef<{ id: number; controller: AbortController | null }>({ id: 0, controller: null });
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [metric, setMetric] = useState(true);
@@ -329,6 +345,9 @@ export default function RagChefApp() {
   const [selectionNotice, setSelectionNotice] = useState("");
   const [pendingChoice, setPendingChoice] = useState<{ date: string; recipe: Recipe; expectedId: string } | null>(null);
   const [reviewDate, setReviewDate] = useState<string | null>(null);
+  const [shoppingReviewDate, setShoppingReviewDate] = useState<string | null>(null);
+  const [purchaseItems, setPurchaseItems] = useState<ReturnType<typeof shoppingForWeek> | null>(null);
+  const [purchaseNotice, setPurchaseNotice] = useState("");
   const [cookingMealDate, setCookingMealDate] = useState<string | null>(null);
   const [completionDate, setCompletionDate] = useState<string | null>(null);
   const [completionMealId, setCompletionMealId] = useState<string | null>(null);
@@ -420,7 +439,7 @@ export default function RagChefApp() {
 
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, index) => addDateDays(week, index)), [week]);
   const weekMeals = useMemo(() => weekDates.flatMap((date) => kitchen.state.meals[date] ? [kitchen.state.meals[date]] : []), [kitchen.state.meals, weekDates]);
-  const shoppingItems = useMemo(() => buildShoppingList(weekMeals, kitchen.state.pantry, today).map((item) => ({ ...item, key: `${week}:${item.key}` })), [weekMeals, kitchen.state.pantry, week, today]);
+  const shoppingItems = useMemo(() => shoppingForWeek(kitchen.state, week, today), [kitchen.state, week, today]);
   function recipeAllowed(recipe: Recipe) {
     return evaluateRecipeConstraints(recipe, metadataForRecipe(recipe), view === "chef" ? chefRefinements.reduce((current, refinement) => constraintsForRecipeQuery(refinement, current), constraints) : constraints).eligible;
   }
@@ -468,14 +487,14 @@ export default function RagChefApp() {
     setUndoNotice(blocked.length ? "A dinner now occupies a removed dinner’s date. It was kept; free that date to undo the remaining removal." : "Removal undone.");
   }
 
-  async function askChef(prompt = query, override?: ChefDinnerContext) {
+  async function askChef(prompt = query, override?: ChefDinnerContext, refinementValues = chefRefinements) {
     chefRequest.current.controller?.abort();
     const controller = new AbortController();
     const requestId = ++chefRequest.current.id;
     chefRequest.current.controller = controller;
     const contextKey = chefContext;
     const finalQuery = prompt.trim() || "What can I cook with what I have?";
-    setQuery(finalQuery);
+    lastChefPrompt.current = finalQuery;
     setChefBusyContext(contextKey);
     setChefError(null);
     try {
@@ -505,7 +524,7 @@ export default function RagChefApp() {
           query: finalQuery,
           pantry: kitchen.state.pantry.filter((item) => availablePantryNames([item], today).length > 0).map((item) => ({ name: item.name, quantity: item.measure || undefined })),
           profile,
-          context, history, refinements: chefRefinements,
+          context, history, refinements: refinementValues,
           provider: settings.provider,
           model:
             settings.provider === "ollama"
@@ -527,6 +546,29 @@ export default function RagChefApp() {
     } finally {
       if (requestId === chefRequest.current.id) setChefBusyContext(null);
     }
+  }
+
+  function submitChefQuestion(prompt: string) {
+    const text = prompt.trim() || (!pinnedRecipe && !chefResult && !chefRefinements.length ? discoveryQuery || "What can I cook with what I have?" : "");
+    if (!text) return;
+    const question = isChefQuestion(text);
+    const refining = !pinnedRecipe && discoveryQuery && (chefResult || chefRefinements.length) && !question;
+    if (refining && text.length > MAX_CHEF_REFINEMENT_LENGTH) return;
+    if (refining && chefRefinements.length >= 6 && !chefRefinements.includes(text)) return;
+    setQuery("");
+    if (refining) {
+      const values = [...new Set([...chefRefinements, text])];
+      setChefRefinements(values); setChefResult(null);
+      void askChef(discoveryQuery, undefined, values);
+    } else {
+      if (!pinnedRecipe) setDiscoveryQuery(text);
+      void askChef(text);
+    }
+  }
+
+  function changeChefRefinements(values: string[]) {
+    cancelChef(); setChefRefinements(values); setChefResult(null);
+    if (discoveryQuery) void askChef(discoveryQuery, undefined, values);
   }
 
   function cancelChef() {
@@ -553,6 +595,7 @@ export default function RagChefApp() {
   }
 
   function focusChefRecipe(recipe: Recipe, mealDate?: string) {
+    if (view === "plan" || view === "recipes") setChefOrigin(view);
     cancelChef(); setChefError(null);
     if (pinnedRecipe?.id !== recipe.id || chefMealDate !== (mealDate ?? null)) { setChefTurns([]); setChefResult(null); setQuery(""); }
     if (mealDate) {
@@ -564,7 +607,7 @@ export default function RagChefApp() {
   }
 
   function newDinnerSearch() {
-    cancelChef(); setPinnedRecipe(null); setChefMealDate(null); setChefTurns([]); setChefResult(null); setChefError(null); setQuery(""); setChefRefinements([]); setChefPortions(""); setSelectionDate(null);
+    cancelChef(); setDiscoveryQuery(""); setPinnedRecipe(null); setChefMealDate(null); setChefTurns([]); setChefResult(null); setChefError(null); setQuery(""); setChefRefinements([]); setChefPortions("");
   }
 
   function addRecipeToPlan(recipe: Recipe) {
@@ -598,15 +641,31 @@ export default function RagChefApp() {
 
   function chooseDay(date: string) {
     if (kitchen.state.meals[date]?.locked || kitchen.state.meals[date]?.status === "cooked") return;
+    cancelChef(); setChefOrigin("plan"); setDiscoveryQuery(""); setPinnedRecipe(null); setChefTurns([]); setChefRefinements([]); setQuery(""); setChefPortions("");
     setSelectionDate(date); setSelectionNotice(""); setReviewDate(null); setView("chef"); setChefMealDate(null); setChefResult(null);
   }
 
   function navigate(next: View) {
+    if (next === "chef" && (view === "plan" || view === "recipes")) setChefOrigin(view);
     setSelectionNotice(""); setPendingChoice(null); setReviewDate(null); setView(next);
   }
 
-  function reviewMeal(date: string) {
-    setWeek(weekStart(date)); setReviewDate(date); setView("plan");
+  function reviewMeal(date: string) { setShoppingReviewDate(date); }
+
+  function confirmPurchases(drafts: PurchaseDraft[]) {
+    const error = purchasePreviewProblem(kitchen.state, week, today, drafts);
+    if (error) { setPurchaseNotice(error); return; }
+    const id = crypto.randomUUID(), at = new Date().toISOString();
+    kitchen.update((state) => applyBoughtItems(state, week, today, drafts, id, at));
+    setPurchaseItems(null); setPurchaseNotice("Purchase preview applied. Review the added batches below.");
+  }
+
+  function backFromChef() {
+    if (chefOrigin === "plan") {
+      const date = selectionDate;
+      navigate("plan");
+      if (date) setFocusDate(date);
+    } else navigate("recipes");
   }
 
   function cookMeal(date: string) {
@@ -688,7 +747,10 @@ export default function RagChefApp() {
     : chefResult
     ? chefResult.recipes.filter((recipe) => recommendationIds.has(recipe.id) && recipeAllowed(recipe))
     : catalogState === "ready" ? rankedRecipes.filter((recipe) => evaluateRecipeConstraints(recipe, metadataForRecipe(recipe), failedRequestConstraints).eligible) : [];
+  const weekPurchases = (kitchen.state.shoppingPurchases ?? []).filter((purchase) => purchase.week === week);
   const addDinnerLabel = selectionDate ? `Add to ${dateLabel(selectionDate, { weekday: "long" })}` : "Add to plan";
+  const chefComposerError = !pinnedRecipe && discoveryQuery && (chefResult || chefRefinements.length) && !isChefQuestion(query.trim()) && query.trim().length > MAX_CHEF_REFINEMENT_LENGTH
+    ? `Keep dinner refinements to ${MAX_CHEF_REFINEMENT_LENGTH} characters. Shorten your draft and try again; your current choices are unchanged.` : "";
 
   return (
     <div className="app-shell">
@@ -749,30 +811,38 @@ export default function RagChefApp() {
         </>}
 
         {view === "chef" && (<>
-          <button className="secondary-button flow-back" onClick={() => setView("recipes")}>← Back to Recipes</button>
+          <div className="discovery-navigation">
+            <button className="text-button flow-back" onClick={backFromChef}>{chefOrigin === "plan" ? "← Back to plan" : chefOrigin === "recipes" ? "← Back to Recipes" : "Browse recipes"}</button>
+            {chefOrigin === "plan" && <button className="text-button" onClick={() => navigate("recipes")}>Browse recipes</button>}
+            {(pinnedRecipe || discoveryQuery) && <button className="text-button" onClick={newDinnerSearch}>New dinner search</button>}
+          </div>
           <ChefView key={pinnedRecipe?.id ?? "discovery"}
-            dinnerContext={<section className="dinner-context panel" aria-label="Dinner context">
+            dinnerContext={<details className="dinner-context panel" key={pinnedRecipe?.id ?? "search"} open={selectionDate ? true : undefined}>
+              <summary>Dinner day and portions <span>{hydrated ? dateLabel(selectionDate ?? today) : "Choose a dinner day"}{chefPortions ? ` · ${chefPortions} servings` : " · Source quantities"}</span></summary>
+              <section aria-label="Dinner context" className="dinner-context-fields">
               <label>Dinner day<input type="date" aria-label="Dinner day" value={selectionDate ?? today} onChange={(event) => { if (event.target.value) { cancelChef(); setSelectionDate(event.target.value); setChefMealDate(null); setChefResult(null); } }} /></label>
               <label>Cook for<input type="number" aria-label="Chef portions" min="1" max="100" step="1" placeholder="Source portions" value={chefPortions} onChange={(event) => { const value = event.target.value; if (!value || Number.isInteger(Number(value)) && Number(value) > 0 && Number(value) <= 100) { cancelChef(); setChefPortions(value); setChefResult(null); } }} /></label>
-              <div><strong>{pinnedRecipe ? `Discussing ${pinnedRecipe.title}` : "Find your next dinner"}</strong><small>{pinnedRecipe && !pinnedRecipe.servings ? "Yield unknown · one recipe batch until adjusted in Plan" : "Source quantities until you choose portions"}</small></div>
-              <button className="secondary-button" onClick={newDinnerSearch}>New dinner search</button>
-            </section>}
+              {pinnedRecipe && !pinnedRecipe.servings && <p className="quantity-note">Yield unknown · use recipe batches in Plan.</p>}
+              </section>
+            </details>}
             pinnedRecipe={pinnedRecipe}
             pinRecipe={focusChefRecipe}
             turns={chefTurns}
             refinements={chefRefinements}
-            changeRefinements={(values) => { cancelChef(); setChefRefinements(values); setChefResult(null); }}
+            changeRefinements={changeChefRefinements}
             pantry={pantry}
             pantryItems={kitchen.state.pantry.filter((item) => availablePantryNames([item], today).length > 0)}
             pantryDraft={pantryDraft}
             setPantryDraft={setPantryDraft}
             query={query}
+            composerError={chefComposerError}
             setQuery={setQuery}
             addPantryItem={addPantryItem}
             removePantryItem={removePantryItem}
-            askChef={askChef}
+            askChef={(prompt) => { submitChefQuestion(prompt ?? query); return Promise.resolve(); }}
             askingChef={askingChef}
-            cancelChef={cancelChef}
+            refining={Boolean(discoveryQuery && (chefResult || chefRefinements.length))}
+            cancelChef={() => { cancelChef(); setQuery(lastChefPrompt.current); }}
             chefResult={chefResult}
             chefError={chefError?.message ?? ""}
             retryChef={() => void askChef(chefError?.prompt ?? chefResult?.requestQuery ?? query)}
@@ -802,7 +872,7 @@ export default function RagChefApp() {
 
         {view === "recipes" && (
           <section className="recipe-section catalog-browser" aria-label="Recipe collection">
-            <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => setView("chef")}>Ask Chef</button></div>
+            <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => { setChefOrigin("recipes"); navigate("chef"); }}>Ask Chef</button></div>
             <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Core dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label></div>{maxMinutes && <p className="quantity-note">Time filtering includes source-backed total times only. Recipes with unknown times are hidden.</p>}</div>
             {catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
               : catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged. Retry to browse the approved catalog.</p><button className="primary-button" onClick={() => void loadPlanningCatalog()}>Retry recipes</button></div>
@@ -817,16 +887,7 @@ export default function RagChefApp() {
           </section>
         )}
 
-        {view === "plan" && hydrated && kitchen.ready && !weekMeals.length && <section className="panel onboarding" aria-label="Get started"><details>
-          <summary>Get started · 4 simple steps</summary>
-          <ol>
-            <li><button className="text-button" onClick={() => { setPreferencesReviewed(true); navigate("settings"); }}>{preferencesReviewed ? "✓ Preferences opened" : "1. Review preferences"}</button><span>Set allergies, diet, and equipment in Settings.</span></li>
-            <li><button className="text-button" onClick={() => navigate("pantry")}>{kitchen.state.pantry.length ? "✓ Pantry started" : "2. Add pantry ingredients"}</button><span>Type or paste ingredients. Amounts are optional.</span></li>
-            <li><button className="text-button" onClick={() => chooseDay(weekStart(today) === week ? today : week)}>3. Choose a dinner</button><span>Pick a recipe for this week, or choose any day below.</span></li>
-            <li><button className="text-button" onClick={() => navigate("shop")}>4. Review shopping</button><span>Your planned dinners build the list automatically.</span></li>
-          </ol>
-        </details></section>}
-        {view === "plan" && selectionDate && kitchen.state.meals[selectionDate] && <section className="dinner-next-actions panel" aria-label="Next steps for dinner"><strong>{kitchen.state.meals[selectionDate].title} · {dateLabel(selectionDate)}</strong><button className="secondary-button" onClick={() => navigate("shop")}>Review shopping</button><button className="primary-button" disabled={kitchen.state.meals[selectionDate].status === "cooked"} onClick={() => cookMeal(selectionDate)}>Cook this dinner</button></section>}
+        {view === "plan" && hydrated && kitchen.ready && !weekMeals.length && <section className="onboarding-next" aria-label="Get started"><p>Choose tonight’s dinner to get started. Your shopping list builds itself.</p><button className="text-button" onClick={() => navigate("settings")}>Review preferences</button><button className="text-button" onClick={() => navigate("pantry")}>Add pantry ingredients</button></section>}
         {view === "plan" && (
           <DurablePlanView
             focusDate={focusDate}
@@ -853,6 +914,7 @@ export default function RagChefApp() {
             markCooked={(date) => { setCompletionMealId(kitchen.state.meals[date]?.id ?? null); setCompletionFingerprint(plannedDinnerFingerprint(kitchen.state.meals[date])); setCompletionDate(date); setDeductStock(false); }}
             undoCooked={(date) => kitchen.update((state) => undoMeal(state, date))}
             goShopping={() => setView("shop")}
+            shoppingCount={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length}
           />
         )}
 
@@ -863,6 +925,13 @@ export default function RagChefApp() {
             update={kitchen.update}
             hasPlan={weekMeals.length > 0}
             week={week}
+            purchaseAction={unappliedBoughtItems(kitchen.state, shoppingItems).length ? <button className="primary-button" onClick={() => { setPurchaseNotice(""); setPurchaseItems(unappliedBoughtItems(kitchen.state, shoppingItems)); }}>Add bought items to pantry</button> : undefined}
+            purchaseHistory={weekPurchases.length || purchaseNotice ? <><p role="status">{purchaseNotice}</p><details className="purchase-history"><summary>Pantry additions ({weekPurchases.length})</summary>
+              {weekPurchases.slice().reverse().map((purchase) => {
+                const problem = purchaseUndoProblem(kitchen.state, purchase);
+                return <div className="purchase-history-row" key={purchase.id}><strong>Added to pantry: {purchase.items.map((item) => `${item.pantry.name} ${item.pantry.measure || "(amount unknown)"}`).join(", ")}</strong><button className="text-button" disabled={Boolean(problem)} onClick={() => kitchen.update((state) => undoPurchase(state, purchase.id))}>Undo pantry additions</button>{problem && <small>{problem}</small>}</div>;
+              })}
+            </details></> : undefined}
             goPlan={() => setView("plan")}
             reviewMeal={reviewMeal}
           />
@@ -903,6 +972,14 @@ export default function RagChefApp() {
         kitchen.update((state) => pantryInputProblem(additions, state.pantry) ? state : { ...state, pantry: [...state.pantry, ...additions] });
         setPantryPreview(null); setPantryDraft(""); setPantryError("");
       }} />}
+      {purchaseItems && <PurchasePreview items={purchaseItems} state={kitchen.state} week={week} today={today} close={() => setPurchaseItems(null)} confirm={confirmPurchases} />}
+      {shoppingReviewDate && <Modal className="kitchen-modal-backdrop" label="Review dinner amounts" close={() => setShoppingReviewDate(null)}><section className="panel kitchen-modal">
+        {kitchen.state.meals[shoppingReviewDate]?.recipe ? <><h2>{kitchen.state.meals[shoppingReviewDate].title}</h2><p>{dateLabel(shoppingReviewDate)} · Shopping updates as you edit.</p><DinnerAmounts meal={kitchen.state.meals[shoppingReviewDate]} patch={(patch) => {
+          const expected = kitchen.state.meals[shoppingReviewDate].id;
+          kitchen.update((state) => { const meal = state.meals[shoppingReviewDate]; return !meal || meal.id !== expected || meal.locked || meal.status === "cooked" ? state : { ...state, meals: { ...state.meals, [shoppingReviewDate]: { ...meal, ...patch } } }; });
+        }} /></> : <p>This dinner is no longer available. Review the current plan.</p>}
+        <button className="primary-button" onClick={() => setShoppingReviewDate(null)}>Back to shopping</button>
+      </section></Modal>}
       {pendingChoice && <Modal className="kitchen-modal-backdrop" label="Replace dinner" close={() => setPendingChoice(null)}><section className="panel kitchen-modal"><h2>Replace this dinner?</h2><p>Replace {kitchen.state.meals[pendingChoice.date]?.title} on {dateLabel(pendingChoice.date)} with {pendingChoice.recipe.title}?</p>{dinnerSelectionStatus(kitchen.state.meals, pendingChoice.date, pendingChoice.expectedId) !== "available" && <p>This dinner changed or became locked or cooked. Cancel and choose again.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setPendingChoice(null)}>Keep current dinner</button><button className="primary-button" disabled={dinnerSelectionStatus(kitchen.state.meals, pendingChoice.date, pendingChoice.expectedId) !== "available"} onClick={() => chooseMeal(pendingChoice.date, pendingChoice.recipe, undefined, pendingChoice.expectedId)}>Replace dinner</button></div></section></Modal>}
       {planPicker && <PlanPicker key={planPicker.id} today={today} recipe={planPicker} week={week} meals={kitchen.state.meals} close={() => setPlanPicker(null)} choose={(date, recipe, expectedId) => chooseMeal(date, recipe, undefined, expectedId)} />}
       {completionDate && kitchen.state.meals[completionDate] && (() => {
@@ -1008,11 +1085,12 @@ function ChefView({
   pantryDraft,
   setPantryDraft,
   query,
+  composerError,
   setQuery,
   addPantryItem,
   removePantryItem,
   askChef,
-  askingChef,
+  askingChef, refining,
   cancelChef,
   chefResult,
   chefError,
@@ -1039,11 +1117,13 @@ function ChefView({
   pantryDraft: string;
   setPantryDraft: (value: string) => void;
   query: string;
+  composerError: string;
   setQuery: (value: string) => void;
   addPantryItem: (value?: string) => void;
   removePantryItem: (value: string) => void;
   askChef: (prompt?: string) => Promise<void>;
   askingChef: boolean;
+  refining: boolean;
   cancelChef: () => void;
   chefResult: ChefResponse | null;
   chefError: string;
@@ -1060,46 +1140,93 @@ function ChefView({
   metadataForRecipe: (recipe: Recipe) => RecipeMetadata | undefined;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [followUp, setFollowUp] = useState("");
-  const [refinementDraft, setRefinementDraft] = useState("");
+  const answerRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!chefResult) return;
+    const frame = requestAnimationFrame(() => { answerRef.current?.focus({ preventScroll: true }); answerRef.current?.scrollIntoView({ block: "start", behavior: "instant" }); });
+    return () => cancelAnimationFrame(frame);
+  }, [chefResult]);
+  useEffect(() => { if (pinnedRecipe) inputRef.current?.focus(); }, [pinnedRecipe]);
 
   return (
     <>
       {dinnerContext}
-      {!pinnedRecipe && <section className="chef-hero">
-        <div className="hero-copy">
-          <span className="hero-kicker">Source-grounded cooking</span>
-          <h2>Real recipes.<br />A thoughtful chef.</h2>
-          <p>Chef finds recipes in your approved collection, then uses them to answer. Follow the sources, see why a recipe fits, and keep proposed changes separate.</p>
-        </div>
-
-        <div className="chef-composer">
-          <label htmlFor="chef-query">Ask your chef</label>
-          <textarea
-            id="chef-query"
-            value={query}
+      <section className={`chef-search ${chefResult || pinnedRecipe ? "has-results" : ""}`} aria-label="Ask Chef">
+        {!chefResult && !pinnedRecipe && !refining && <div className="chef-welcome"><h2>What’s for dinner?</h2><p>Find recipes for your kitchen, with sources you can follow.</p></div>}
+        {pinnedRecipe && <strong className="chef-topic">Discussing {pinnedRecipe.title}</strong>}
+        <form className="chef-composer" onSubmit={(event) => { event.preventDefault(); void askChef(query); }}>
+          <label htmlFor="chef-query">{pinnedRecipe ? "Follow-up question" : "Ask your chef"}</label>
+          <textarea ref={inputRef} id="chef-query" value={query} rows={2} maxLength={1000}
+            aria-invalid={Boolean(composerError)} aria-describedby={composerError ? "chef-composer-error" : undefined}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                void askChef();
-              }
-            }}
-            placeholder="I want something comforting, not too heavy…"
-          />
-          <div className="composer-bottom">
-            <span>{pantry.length ? `${pantry.length} pantry items ready` : "No pantry items yet — you can still choose dinner."}</span>
-            <button className="primary-button" onClick={() => void askChef()} disabled={askingChef}>
-              {askingChef ? "Finding recipes…" : "Find my dinner"}
-              <span aria-hidden="true">→</span>
-            </button>
-            {askingChef && <button className="secondary-button" onClick={cancelChef}>Cancel request</button>}
+            onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && query.trim()) { event.preventDefault(); void askChef(query); } }}
+            placeholder={pinnedRecipe ? "Ask about ingredients or this recipe’s directions…" : refining ? "e.g. without fish, or something quicker…" : "e.g. a comforting dinner with rice and tomatoes"} />
+          <div className="composer-bottom"><span>{pinnedRecipe ? "Answers stay with this recipe" : pantry.length ? `${pantry.length} pantry items · Sources included` : "No pantry items yet — you can still choose dinner."}</span>
+            <button className="primary-button" disabled={askingChef || Boolean(composerError) || Boolean((pinnedRecipe || refining) && !query.trim())}>{askingChef ? "Checking recipes…" : pinnedRecipe ? "Ask follow-up" : refining ? "Update dinner ideas" : "Find my dinner"}</button>
+            {askingChef && <button className="secondary-button" type="button" onClick={cancelChef}>Cancel request</button>}
+          </div>
+          {composerError && <p id="chef-composer-error" role="alert">{composerError}</p>}
+        </form>
+        {refinements.length > 0 && <div className="chip-row chef-refinements" aria-label="Dinner refinements">{refinements.map((filter) => <button className="ingredient-chip" key={filter} onClick={() => changeRefinements(refinements.filter((item) => item !== filter))} aria-label={`Remove refinement ${filter}`}>{filter} ×</button>)}</div>}
+        {!pinnedRecipe && refinements.length >= 6 && <p className="quantity-note">Six refinements are active. Remove one or start a new dinner search to change these choices. You can still ask a recipe question.</p>}
+      </section>
+      {askingChef && <p className="grounding-intro" role="status">Searching recipes and checking their sources…</p>}
+      {chefError && <section className="inline-confirm chef-error" role="alert"><div><strong>Chef is unavailable</strong><p>{chefError}</p><p>Your local pantry picks are still available below.</p></div><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry Chef</button></section>}
+      {chefResult && (
+        <section ref={answerRef} tabIndex={-1} className="chef-answer" aria-live="polite" aria-label="Chef answer">
+          <div className="chef-stamp">{chefResult.answerKind === "planning_quantities" ? "Dinner amounts" : chefResult.generation === "ai" ? "AI + sources" : "Catalog results"}</div>
+          <div>
+            <p className="chef-request">{chefResult.requestQuery}</p>
+            {chefResult.answerKind === "planning_quantities" && <PlanningFacts result={chefResult} />}
+            {(chefResult.answerKind !== "planning_quantities" || chefResult.answerStatus !== "answered") && <p>{chefResult.answer}</p>}
+            {chefResult.answerStatus === "unsupported" && <strong className="answer-status">Question not established by this source</strong>}
+            {chefResult.answerStatus === "unverified" && <><strong className="answer-status">AI answer withheld · Check original evidence</strong><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry answer</button></>}
+            {chefResult.answerStatus === "needs_clarification" && <strong className="answer-status">{chefResult.answerKind === "planning_quantities" ? "Clarify the ingredient or review its amount" : "Choose a recipe or clarify your question"}</strong>}
+            {chefResult.chefChanges.map((change, index) => <div className="advisory-change" key={index}><strong>Suggested change — original recipe unchanged</strong><p>{change.change}</p><small>{change.reason}</small></div>)}
+            {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
+          </div>
+        </section>
+      )}
+
+      {chefResult && <ChefGrounding result={chefResult} openRecipe={openRecipe} />}
+      {!askingChef && (!chefResult || chefResult.recommendations.length > 0 && recipes.length > 0) && <section className="recipe-section">
+        <div className="section-heading">
+          <div>
+            <h3>{chefResult ? "Your chef’s shortlist" : pantry.length ? "Pantry picks" : "Dinner ideas"}</h3>
+            {chefResult?.retrieval && <p>{chefResult.retrieval.catalogCount} approved recipes searched · {chefResult.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}</p>}
           </div>
         </div>
 
+        <div className="recipe-grid">
+          {recipes.slice(0, 3).map((recipe, index) => (
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              details={detailsFor(recipe)}
+              dietUnknowns={eligibilityFor(recipe).dietUnknowns}
+              recommendation={chefResult?.recommendations.find((item) => item.recipeId === recipe.id)}
+              readiness={chefResult?.readinessByRecipeId?.[recipe.id]}
+              evidence={chefResult ? recipeEvidenceExcerpt(chefResult, recipe) : undefined}
+              askAbout={() => pinRecipe(recipe)}
+              metadata={metadataForRecipe(recipe)}
+              featured={index === 0}
+              open={() => openRecipe(recipe)}
+              add={() => addRecipeToPlan(recipe)}
+              addLabel={addLabel}
+            />
+          ))}
+        </div>
+        {!chefResult && catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
+          : !chefResult && catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged.</p><button className="primary-button" onClick={retryCatalog}>Retry recipes</button></div>
+          : !chefResult && !recipes.length ? <div className="empty-state"><strong>{catalogEmpty ? "Your recipe collection is empty." : "Your saved exclusions hide the available recipes."}</strong><p>{catalogEmpty ? "Import approved recipes to see dinner ideas." : "Keep your exclusions and review the available recipe collection."}</p></div>
+          : !recipes.length && (
+          <div className="empty-state">
+            <strong>{chefResult?.outcome === "no_match" ? "No relevant recipe found." : "No recipes to show."}</strong>
+            <p>{chefResult?.outcome === "constraints_unsatisfied" ? "Keep your exclusions and review the available recipe collection." : "Try a different dish or a broader dinner request."}</p>
+          </div>
+        )}
       </section>}
-
-      {(askingChef || !chefResult) && <p className="grounding-intro" role={askingChef ? "status" : undefined}>{askingChef ? "Searching your recipe collection and preparing a source-grounded answer…" : "RAG means retrieval-augmented generation: find relevant recipes first, then answer using those records."}</p>}
-
       <section className="pantry-strip">
         <div className="section-heading compact">
           <div>
@@ -1150,76 +1277,14 @@ function ChefView({
         </div>
       </section>
 
-      {chefError && <section className="inline-confirm chef-error" role="alert"><div><strong>Chef is unavailable</strong><p>{chefError}</p><p>Your local pantry picks are still available below.</p></div><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry Chef</button></section>}
-      {chefResult && (
-        <section className="chef-answer" aria-live="polite">
-          <div className="chef-stamp">{chefResult.answerKind === "planning_quantities" ? "Dinner amounts" : chefResult.generation === "ai" ? "AI + sources" : "Catalog results"}</div>
-          <div>
-            {chefResult.answerKind === "planning_quantities" && <PlanningFacts result={chefResult} />}
-            {(chefResult.answerKind !== "planning_quantities" || chefResult.answerStatus !== "answered") && <p>{chefResult.answer}</p>}
-            {chefResult.answerStatus === "unsupported" && <strong className="answer-status">Question not established by this source</strong>}
-            {chefResult.answerStatus === "unverified" && <><strong className="answer-status">AI answer withheld · Check original evidence</strong><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry answer</button></>}
-            {chefResult.answerStatus === "needs_clarification" && <strong className="answer-status">{chefResult.answerKind === "planning_quantities" ? "Clarify the ingredient or review its amount" : "Choose a recipe or clarify your question"}</strong>}
-            {chefResult.chefChanges.map((change, index) => <div className="advisory-change" key={index}><strong>Suggested change — original recipe unchanged</strong><p>{change.change}</p><small>{change.reason}</small></div>)}
-            {chefResult.warnings.map((warning) => <small key={warning}>{warning}</small>)}
-          </div>
-        </section>
-      )}
-
-      <section className="chef-refinements" aria-label="Dinner refinements">
-        <div className="chip-row">{refinements.map((filter) => <button className="ingredient-chip" key={filter} onClick={() => changeRefinements(refinements.filter((item) => item !== filter))}>{filter} ×</button>)}</div>
-        <form onSubmit={(event) => { event.preventDefault(); if (refinementDraft.trim() && refinements.length < 6) { changeRefinements([...new Set([...refinements, refinementDraft.trim()])]); setRefinementDraft(""); } }}><label>Refine this dinner<input aria-label="Dinner refinement" value={refinementDraft} maxLength={200} onChange={(event) => setRefinementDraft(event.target.value)} placeholder="e.g. without pasta, under 30 minutes" /></label><button className="secondary-button" disabled={!refinementDraft.trim() || refinements.length >= 6}>Add refinement</button></form>
-      </section>
-      {(chefResult || pinnedRecipe) && <section className="chef-follow-up panel" aria-label="Recipe discussion">
-        <h3>{pinnedRecipe ? `Ask about ${pinnedRecipe.title}` : "Refine your choice"}</h3>
-        {!pinnedRecipe && <p className="quantity-note">Select “Ask about this recipe” on a choice to keep follow-ups focused.</p>}
-        <form onSubmit={(event) => { event.preventDefault(); if (followUp.trim()) { void askChef(followUp); setFollowUp(""); } }}><label>Follow-up question<textarea id="chef-follow-up-query" autoFocus={Boolean(pinnedRecipe)} aria-label="Follow-up question" value={followUp} maxLength={1000} onChange={(event) => setFollowUp(event.target.value)} placeholder="What does the recipe say about this?" rows={2} /></label><button className="primary-button" disabled={askingChef || !followUp.trim()}>Ask follow-up</button>{askingChef && <button className="secondary-button" type="button" onClick={cancelChef}>Cancel request</button>}</form>
-        {turns.length > 1 && <details><summary>Earlier questions ({turns.length - 1})</summary>{turns.slice(0, -1).map((turn, index) => <div key={index}><strong>{turn.query}</strong><p>{turn.answer}</p></div>)}</details>}
-      </section>}
-      {chefResult && <ChefGrounding result={chefResult} openRecipe={openRecipe} />}
-
-      {(!chefResult || chefResult.recommendations.length > 0 && recipes.length > 0) && <section className="recipe-section">
-        <div className="section-heading">
-          <div>
-            <h3>{chefResult ? "Your chef’s shortlist" : pantry.length ? "Pantry picks" : "Dinner ideas"}</h3>
-            {chefResult?.retrieval && <p>{chefResult.retrieval.catalogCount} approved recipes searched · {chefResult.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}</p>}
-          </div>
-        </div>
-
-        <div className="recipe-grid">
-          {recipes.slice(0, 3).map((recipe, index) => (
-            <RecipeCard
-              key={recipe.id}
-              recipe={recipe}
-              details={detailsFor(recipe)}
-              dietUnknowns={eligibilityFor(recipe).dietUnknowns}
-              recommendation={chefResult?.recommendations.find((item) => item.recipeId === recipe.id)}
-              readiness={chefResult?.readinessByRecipeId?.[recipe.id]}
-              askAbout={() => pinRecipe(recipe)}
-              metadata={metadataForRecipe(recipe)}
-              featured={index === 0}
-              open={() => openRecipe(recipe)}
-              add={() => addRecipeToPlan(recipe)}
-              addLabel={addLabel}
-            />
-          ))}
-        </div>
-        {!chefResult && catalogState === "loading" ? <div className="empty-state" role="status"><strong>Loading your recipe collection…</strong></div>
-          : !chefResult && catalogState === "error" ? <div className="empty-state" role="alert"><strong>The recipe collection could not load.</strong><p>Your saved dinners are unchanged.</p><button className="primary-button" onClick={retryCatalog}>Retry recipes</button></div>
-          : !chefResult && !recipes.length ? <div className="empty-state"><strong>{catalogEmpty ? "Your recipe collection is empty." : "Your saved exclusions hide the available recipes."}</strong><p>{catalogEmpty ? "Import approved recipes to see dinner ideas." : "Keep your exclusions and review the available recipe collection."}</p></div>
-          : !recipes.length && (
-          <div className="empty-state">
-            <strong>{chefResult?.outcome === "no_match" ? "No relevant recipe found." : "No recipes to show."}</strong>
-            <p>{chefResult?.outcome === "constraints_unsatisfied" ? "Keep your exclusions and review the available recipe collection." : "Try a different dish or a broader dinner request."}</p>
-          </div>
-        )}
-      </section>}
+      {turns.length > 1 && <details className="chef-history"><summary>Earlier questions ({turns.length - 1})</summary>{turns.slice(0, -1).map((turn, index) => <div key={index}><strong>{turn.query}</strong><p>{turn.answer}</p></div>)}</details>}
+      <details className="grounding-help"><summary>How source-grounded cooking works</summary><p>Chef retrieves recipes from your approved collection before answering. Open “How Chef found this” to see the search, original evidence, and whether an answer was checked. Proposed changes stay separate from source recipes.</p></details>
     </>
   );
 }
 
 export function RecipeCard({
-  readiness, askAbout,
+  readiness, askAbout, evidence,
   recipe,
   details,
   featured,
@@ -1230,6 +1295,7 @@ export function RecipeCard({
   recommendation,
   metadata,
 }: {
+  evidence?: string;
   readiness?: import("../lib/quantities").MealReadiness;
   askAbout?: () => void;
   recipe: Recipe;
@@ -1252,20 +1318,20 @@ export function RecipeCard({
         </div>
         <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
         {metadata?.coreDinner && <span className="core-badge">Core dinner</span>}
-        <p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p>
-        <small className="coverage-note">Names only · amounts not checked</small>
+        {!readiness && <><p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p><small className="coverage-note">Names only · amounts not checked</small></>}
         {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
-        <small className="recipe-quality">{recipe.servings ? `${recipe.servings} source servings` : "Yield unknown · recipe batches"}{completeness.amountReviewCount ? ` · ${completeness.amountReviewCount} amounts to review` : " · Amounts quantified"}{metadata?.totalMinutes !== null && metadata?.totalMinutes !== undefined ? ` · ${metadata.totalMinutes} min${metadata.provenance.totalMinutes?.basis === "source" ? " total" : " estimated"}` : " · Total time unknown"}</small>
+        <small className="recipe-quality">{recipe.servings ? `${recipe.servings} source servings` : "Yield unknown · recipe batches"}{completeness.amountReviewCount ? ` · ${completeness.amountReviewCount} amounts to review` : " · Amounts quantified"}{metadata?.totalMinutes !== null && metadata?.totalMinutes !== undefined ? ` · ${metadata.totalMinutes} min${metadata.provenance.totalMinutes?.basis === "source" ? " total" : " estimated"}` : ""}</small>
         {readiness && <div className="recipe-readiness"><strong>Pantry amounts for this dinner</strong><p>{readiness.coveredCount} covered · {readiness.partialCount} partial · {readiness.missingCount} missing · {readiness.reviewCount} need review</p><small>After stock reserved for saved dinners. Estimates use the selected day and portions.</small>{readiness.shopping.length > 0 && <details><summary>Shopping needs ({readiness.shopping.length})</summary><ul>{readiness.shopping.map((item, index) => <li key={index}>{item.name}: {item.measure}{item.needsReview ? " · review" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul></details>}</div>}
+        {evidence && <blockquote className="card-source-excerpt"><small>Recipe excerpt</small>{evidence}</blockquote>}
+        {add && <button className="primary-button recipe-add-action" onClick={add} aria-label={`${addLabel}: ${recipe.title}`}>{addLabel}</button>}
         {askAbout && <button className="secondary-button" onClick={askAbout}>Ask about this recipe</button>}
-        {recommendation && <div className="recommendation-details">{recommendation.matchReason && <p className="match-reason"><strong>Why this match:</strong> {recommendation.matchReason}</p>}{recommendation.reason !== recommendation.matchReason && <p>{recommendation.reason}</p>}<p className="quantity-note">{recommendation.missingIngredients.length ? `Missing ingredient names: ${recommendation.missingIngredients.join(", ")}` : "All ingredient names match your pantry; check quantities before cooking."}</p></div>}
+        {recommendation && <div className="recommendation-details">{recommendation.matchReason && <p className="match-reason"><strong>Why this match:</strong> {recommendation.matchReason}</p>}{recommendation.reason !== recommendation.matchReason && <p>{recommendation.reason}</p>}<p className="quantity-note" hidden={Boolean(readiness)}>{recommendation.missingIngredients.length ? `Missing ingredient names: ${recommendation.missingIngredients.join(", ")}` : "All ingredient names match your pantry; check quantities before cooking."}</p></div>}
         <div className="recipe-footer">
           <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer" onClick={(event) => event.stopPropagation()}>
             Source: {sourceLabel(recipe)}
           </a>
           <button className="text-button" onClick={open} aria-label={`View ${recipe.title}`}>View recipe</button>
         </div>
-        {add && <button className="primary-button recipe-add-action" onClick={add} aria-label={`${addLabel}: ${recipe.title}`}>{addLabel}</button>}
       </div>
     </article>
   );
@@ -1383,7 +1449,7 @@ function SettingsView({
       <section className="panel settings-panel wide-panel"><h2>Kitchen backup</h2><p>Plans and pantry amounts save automatically on this Mac.</p><button className="secondary-button" onClick={exportBackup}>Export backup</button>{backupExportError && <p role="alert">{backupExportError}</p>}<label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label><p className="quantity-note">Restore replaces this kitchen. A recovery copy is preserved first. Recipe catalog and model preferences are separate.</p>{restoreError && <p role="alert">{restoreError}</p>}{restorePreview && <section className="restore-preview" role="region" aria-label="Backup preview"><h3>Review this backup</h3><p>Exported {new Date(restorePreview.exportedAt).toLocaleString()}</p><p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners</p><p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners</p><p>Amounts, cooked records, and shopping checks will be replaced with the backup’s values.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button><button className="primary-button" disabled={!canRestore} onClick={() => { if (restoreBackup(restorePreview.state)) { setRestorePreview(null); setRestoreError(""); } else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying."); }}>Replace kitchen with backup</button></div></section>}</section>
 
       <section className="panel settings-panel">
-        <div className="section-heading"><div><span className="eyebrow">Switchable generation</span><h2>Choose your chef brain</h2><p>Retrieval stays local and provider-independent.</p></div></div>
+        <div className="section-heading"><div><span className="eyebrow">Cooking assistant</span><h2>AI settings</h2><p>Choose where Chef answers are generated. Recipe search stays local.</p></div></div>
         <div className="provider-grid">
           <button className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} onClick={() => setSettings({ ...settings, provider: "ollama" })}><span className="provider-symbol">OL</span><strong>Ollama</strong><small>Private · runs on this Mac</small></button>
           <button className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} onClick={() => setSettings({ ...settings, provider: "openai" })}><span className="provider-symbol cloud">OA</span><strong>OpenAI</strong><small>Cloud · API key required</small></button>
@@ -1471,17 +1537,7 @@ export function RecipeDrawer({
             </div>
           )}
           <div className="drawer-actions">{askAboutRecipe && <button className="secondary-button" onClick={askAboutRecipe}>Ask Chef about this recipe</button>}<button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
-          <div className="source-citation">
-            <span>Source citation</span>
-            <p>From <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a>.</p>
-            {recipe.source.licenseUrl && <p>License: <a href={recipe.source.licenseUrl} target="_blank" rel="noreferrer">{recipe.source.licenseId || "Source license"}</a>.</p>}
-            {recipe.source.attributionText && <p>{recipe.source.attributionText}</p>}
-            {facts.length > 0 && (
-              <ul className="source-facts">
-                {facts.map((fact, index) => <li key={`${fact.fact}-${index}`}>{fact.fact}</li>)}
-              </ul>
-            )}
-          </div>
+          <p className="drawer-source-link">Source: <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a></p>
           {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{resolvedMealIngredients(plannedMeal).map((ingredient, index) => {
             const amount = `${ingredient.measure || "Amount needs review"}${ingredient.needsReview && mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`;
             return <li key={index}><strong>{ingredient.name}</strong><small>{amount}</small></li>;
@@ -1495,6 +1551,17 @@ export function RecipeDrawer({
           ) : (
             <div className="empty-directions">No source directions are available for this recipe.</div>
           )}
+          <div className="source-citation">
+            <span>Source citation</span>
+            <p>From <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a>.</p>
+            {recipe.source.licenseUrl && <p>License: <a href={recipe.source.licenseUrl} target="_blank" rel="noreferrer">{recipe.source.licenseId || "Source license"}</a>.</p>}
+            {recipe.source.attributionText && <p>{recipe.source.attributionText}</p>}
+            {facts.length > 0 && (
+              <ul className="source-facts">
+                {facts.map((fact, index) => <li key={`${fact.fact}-${index}`}>{fact.fact}</li>)}
+              </ul>
+            )}
+          </div>
           {changes.length > 0 && <section className="changes-panel"><span className="eyebrow">Chef’s changes</span><h3>Adapted for your kitchen</h3>{changes.map((change, index) => <div key={`${change.change}-${index}`}><strong>{change.change}</strong><p>{change.reason}</p></div>)}</section>}
         </div>
       </article>

@@ -41,7 +41,18 @@ export interface KitchenState {
   pantry: PantryStock[];
   meals: Record<string, PlannedMeal>;
   shoppingChecked: Record<string, boolean>;
+  /** A new ID each time an unchecked item is marked bought again. */
+  shoppingCycles?: Record<string, string>;
+  /** Reviewed purchases, retained independently of changing shopping totals. */
+  shoppingPurchases?: ShoppingPurchase[];
   migratedLegacy: boolean;
+}
+
+export interface ShoppingPurchase {
+  id: string;
+  week: string;
+  at: string;
+  items: Array<{ key: string; cycleId?: string; pantry: PantryStock }>;
 }
 
 export interface KitchenDocument {

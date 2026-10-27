@@ -53,8 +53,9 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Chef**. Choose a dinner day (today by default), ask for ideas,
-then choose a dinner, review shopping, and cook. **Plan** remains directly accessible.
+The app opens on **Chef**. Ask for ideas, choose a dinner, review shopping, and
+cook. **Dinner day and portions** expands when you want to change the default
+date (today) or source quantities. **Plan** remains directly accessible.
 You can also choose **Add to plan** from Recipes. Open **Chef** directly from
 navigation, or **Ask Chef** from Recipes. Your recipe search stays intact during
 the current session.
@@ -62,7 +63,8 @@ Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pant
 is empty, using the loaded catalog without a model call. Saved exclusions and
 dislikes still apply. Use **Find my dinner** for a specific request, or leave it
 blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
-After a request, **How Chef found this** shows the actual retrieval method,
+After a request, the answer and recipe choices come first. Source links and a
+short original excerpt stay visible on cards. Expand **How Chef found this** for the actual retrieval method,
 catalog and shortlist counts, requirement exclusions, and whether an AI answer
 or a catalog fallback was used. **Recipe evidence** puts source excerpts and
 original links beside the answer. Cited excerpts are copied from the source;
@@ -78,8 +80,16 @@ still needs confirmation.
 Follow-up questions retain the latest three question/answer pairs while navigating
 between Chef, recipe details, and cooking. Earlier questions are collapsed;
 reloading starts a new discussion. **New dinner search** clears the recipe,
-selected day, portions, and refinements. Explicit refinements appear as removable
-filters and cannot relax saved exclusions.
+portions, and refinements; the selected dinner day stays selected, including
+after switching between Chef and Recipes. Use **Cancel selection** to clear it.
+Chef uses one question field: after discovery, **Update dinner ideas** applies a refinement
+and immediately searches again. New questions outside a pinned recipe become
+the current search for later refinements and chip removal. Refinements are limited
+to 200 characters; an oversized draft stays editable with an error, preserving
+the current choices until corrected. Removable refinement chips also refresh results
+when removed and cannot relax saved exclusions. A pinned recipe changes this
+same field into a follow-up question. Return links lead back to the originating
+plan day or recipe browser, keeping the current search and list position.
 
 Chef uses saved, measured pantry stock for its request estimates, after reserving
 stock for other saved dinners in the target week. A replacement preview releases
@@ -165,8 +175,10 @@ Use the **Dark mode** toggle in the top bar or cooking header to switch themes.
 The app follows your system preference until you choose a theme, then remembers
 that choice in this browser. Theme preferences are separate from kitchen backups.
 
-An empty week has a compact, expandable checklist for preferences, pantry,
-dinner, and shopping. **Today’s dinner** gives immediate access to tonight;
+An empty week offers optional preferences and pantry shortcuts beside a short
+next-step hint. One **Today’s dinner** card offers cooking, changing dinner, and
+shopping actions. Mobile week entries are compact; **Fill options** contains
+advanced filling preferences. **Today’s dinner** gives immediate access to tonight;
 saving a dinner reveals its card. The day picker defaults to an upcoming empty
 date. Historical or occupied dates require an explicit selection.
 
@@ -237,7 +249,19 @@ their own identities. No cooked-to-dry weight or volume ratio is assumed.
 Shopping flags a preparation mismatch for review instead of subtracting the
 wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
 
-Checked items move into **Bought** without changing pantry stock. Completing a
+Checked items move into **Bought** without changing pantry stock. Use **Add bought
+items to pantry** to review actual purchased amounts, then **Confirm pantry
+additions**. Each purchase adds separate batches, preserving existing quantities,
+use-by dates, and cooked/uncooked identities. Unknown and note-only amounts remain
+unquantified. Each bought check has a purchase-cycle ID saved with the kitchen
+and its backups, so retrying the same purchase cannot add it twice. To record another purchase of
+the same shortage, uncheck it in **Bought**, then check it again and review its
+new pantry addition. Earlier purchase records stay intact. **Pantry additions** shows
+purchase history and offers undo while its batches are unchanged; later edits,
+removal, and consumption block that undo to preserve newer work. Shopping review
+opens dinner amounts in a dialog and returns to the same list.
+
+Completing a
 dinner can deduct confirmed stock; **Undo cooked** restores that deduction.
 Saved meals retain independent recipe snapshots, so catalog updates do not
 silently rewrite existing dinners or historical quantities.
@@ -247,8 +271,11 @@ Ingredients start collapsed and expand into the main cooking panel. That panel
 is the single scrolling area; the header and step controls stay visible, and
 changing steps returns to the top. Background page scrolling is locked while
 a dialog is open.
-Custom timers have minutes and seconds controls, plus 1, 5, 10, and 15 minute
-presets. They accept 1 second to 24 hours and use a saved deadline, so time does
+The compact timer bar remains visible while the main cooking panel scrolls.
+**Set timer** opens minutes, seconds, presets (1, 5, 10, 15 minutes) and sound
+settings. Running timers show Pause; paused timers show Resume and Reset.
+**Change timer** opens setup, and choosing another duration requires confirming
+**Replace timer** before an active timer is replaced. Custom timers accept 1 second to 24 hours and use a saved deadline, so time does
 not depend on background interval ticks. Single explicit source-step durations
 offer shortcuts; ranges and ambiguous durations require a custom timer. Sound is
 optional and requires browser audio support. Timer completion never marks dinner

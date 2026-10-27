@@ -4,6 +4,19 @@ import type { Recipe } from "../lib/recipe-types";
 type GroundingResult = Pick<ChefApiResponse, "recipes" | "citations" | "sourceFacts" | "generation" | "chefChanges">
   & { answerKind?: ChefApiResponse["answerKind"]; verification?: ChefApiResponse["verification"]; evidenceRetrieval?: ChefApiResponse["evidenceRetrieval"]; retrieval?: Partial<ChefApiResponse["retrieval"]>; requestQuery?: string; selectedEvidenceByRecipeId?: ChefApiResponse["selectedEvidenceByRecipeId"]; resolvedContext?: ChefApiResponse["resolvedContext"]; answerStatus?: ChefApiResponse["answerStatus"] };
 
+/** Excerpts are copied only from the canonical source returned with this answer. */
+export function recipeEvidenceExcerpt(result: GroundingResult, recipe: Recipe): string {
+  const cited = result.sourceFacts.find((fact) => fact.recipeId === recipe.id)?.fact;
+  if (cited) return cited;
+  if (result.answerStatus === "unsupported") return "";
+  const selected = result.selectedEvidenceByRecipeId?.[recipe.id] ?? [];
+  const preferred = (result.resolvedContext?.recipeId === recipe.id ? result.resolvedContext.stepEvidenceId : undefined)
+    ?? selected.find((id) => id.startsWith("S")) ?? selected[0] ?? "I1";
+  const index = Number(preferred.slice(1)) - 1;
+  const ingredient = recipe.ingredients[index];
+  return preferred.startsWith("S") ? recipe.instructions[index] ?? "" : ingredient ? [ingredient.measure, ingredient.name].filter(Boolean).join(" ") : "";
+}
+
 /** Display completed retrieval and canonical source text, never simulated progress. */
 export function ChefGrounding({ result, openRecipe }: { result: GroundingResult; openRecipe: (recipe: Recipe) => void }) {
   const retrieval = result.retrieval;
@@ -19,7 +32,8 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
     return recipe ? [{ citation, recipe, facts: result.sourceFacts.filter((fact) => fact.recipeId === recipe.id) }] : [];
   });
   return <section className="chef-grounding" aria-label="How Chef found this">
-    <div className="section-heading compact"><h3>How Chef found this</h3><span className="grounding-label">RAG · Recipes first</span></div>
+    <details className="grounding-disclosure"><summary>How Chef found this <span>{sources.length} {sources.length === 1 ? "source" : "sources"} · {result.answerKind === "planning_quantities" ? "Dinner calculation" : result.answerStatus === "unverified" ? "Answer withheld" : result.verification?.status === "checked" ? "Evidence checked" : selectionOnly ? "Recipe selection" : result.generation === "catalog_fallback" ? "Catalog results" : "Source evidence"}</span></summary>
+    <div className="grounding-expanded"><div className="section-heading compact"><h3>Search and source evidence</h3><span className="grounding-label">RAG · Recipes first</span></div>
     {result.requestQuery && <p className="grounding-request" title={result.requestQuery}>For your request: {result.requestQuery.length > 160 ? `${result.requestQuery.slice(0, 160)}…` : result.requestQuery}</p>}
     <ol className="grounding-steps">
       <li><span aria-hidden="true">1</span><div><strong>{result.resolvedContext?.recipeId ? "Use the selected source" : "Search real recipes"}</strong><p>{result.resolvedContext?.recipeId ? "Pinned recipe verified in approved collection" : retrieval?.catalogCount !== undefined ? `${retrieval.catalogCount} approved recipes checked` : "Approved recipe collection"}</p><small>{method}</small></div></li>
@@ -34,12 +48,7 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
       <p className="quantity-note">{result.answerStatus === "unverified" ? "The AI answer could not be verified. Read the original recipe evidence below." : result.answerStatus === "unsupported" ? "The recipe record is available, but it does not establish the requested answer." : "Read the original recipe behind a suggestion. Proposed changes are separate from these excerpts."}</p>
       <div className="grounding-source-grid">{sources.map(({ citation, recipe, facts }) => {
         const evidenceSelection = result.evidenceRetrieval?.[recipe.id];
-        const selectedIds = result.selectedEvidenceByRecipeId?.[recipe.id] ?? [];
-        const preferred = result.resolvedContext?.stepEvidenceId ?? selectedIds.find((id) => id.startsWith("S")) ?? selectedIds[0] ?? "I1";
-        const sourceIndex = Number(preferred.slice(1)) - 1;
-        const ingredient = recipe.ingredients[sourceIndex];
-        const selectedText = preferred.startsWith("S") ? recipe.instructions[sourceIndex] : ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ");
-        const excerpt = facts[0]?.fact ?? (result.answerStatus === "unsupported" ? "" : selectedText ?? "");
+        const excerpt = recipeEvidenceExcerpt(result, recipe);
         return <article className="grounding-source" key={recipe.id}>
           <button className="text-button evidence-recipe" aria-label={`Open evidence for ${recipe.title}`} onClick={() => openRecipe(recipe)}>{recipe.title} <span aria-hidden="true">↗</span></button>
           {evidenceSelection && <small>{result.answerKind === "planning_quantities" ? "Original ingredient evidence" : evidenceSelection.method === "semantic_steps" ? "Steps matched by meaning and wording" : evidenceSelection.method === "lexical_steps" ? "Steps matched by wording" : "Complete recipe evidence"}{!evidenceSelection.complete ? " · Selected excerpts; open the full source for context" : ""}</small>}
@@ -49,5 +58,6 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
         </article>;
       })}</div>
     </div>}
+    </div></details>
   </section>;
 }
