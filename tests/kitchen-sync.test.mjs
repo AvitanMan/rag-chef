@@ -213,3 +213,72 @@ test("keeping a conflicted draft retries against the selected saved revision", a
   assert.equal(h.result.conflict, null);
   assert.equal(h.result.state.pantry.length, 0);
 });
+
+test("refreshing a clean tab adopts another tab's kitchen and revision without writing it back", async () => {
+  const h = await setup();
+  const next = document(2, { ...state(), pantry: [] });
+  h.respond(() => Response.json(next));
+  assert.deepEqual(await h.result.refreshSavedKitchen(), next);
+  await h.pump(); await h.tick();
+  assert.equal(h.result.getRevision(), 2);
+  assert.deepEqual(h.result.state.pantry, []);
+  assert.equal(h.result.saveState, "saved");
+  assert.equal(JSON.parse(h.local.getItem(KITCHEN_CACHE_KEY)).revision, 2);
+  assert.ok(h.calls.every(({ options }) => options.method !== "PUT"));
+});
+
+test("a refresh preserves edits made during its read and exposes a version conflict", async () => {
+  const h = await setup();
+  let finish;
+  h.respond(() => new Promise((resolve) => { finish = resolve; }));
+  const refreshing = h.result.refreshSavedKitchen();
+  h.result.update((current) => ({ ...current, pantry: [{ ...current.pantry[0], measure: "900 g" }] }));
+  await h.pump();
+  finish(Response.json(document(2, { ...state(), pantry: [] })));
+  assert.equal(await refreshing, null);
+  await h.pump(); await h.tick();
+  assert.equal(h.result.state.pantry[0].measure, "900 g");
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.conflict.revision, 2);
+  assert.ok([...h.local.values.values()].some((value) => {
+    const cached = JSON.parse(value);
+    return cached.dirty && cached.state.pantry[0]?.measure === "900 g";
+  }));
+  assert.ok(h.calls.every(({ options }) => options.method !== "PUT"));
+});
+
+test("an unavailable refresh keeps the current kitchen and revision intact", async () => {
+  const h = await setup();
+  h.respond(() => { throw new TypeError("Failed to fetch"); });
+  assert.equal(await h.result.refreshSavedKitchen(), null);
+  await h.pump();
+  assert.equal(h.result.getRevision(), 1);
+  assert.deepEqual(h.result.state, state());
+  assert.match(h.result.status, /could not be refreshed/);
+});
+
+test("cancelling a refresh cannot install a late kitchen snapshot", async () => {
+  const h = await setup();
+  let finish;
+  h.respond(() => new Promise((resolve) => { finish = resolve; }));
+  const controller = new AbortController();
+  const refreshing = h.result.refreshSavedKitchen(controller.signal);
+  controller.abort();
+  finish(Response.json(document(2, { ...state(), pantry: [] })));
+  assert.equal(await refreshing, null);
+  await h.pump();
+  assert.equal(h.result.getRevision(), 1);
+  assert.deepEqual(h.result.state, state());
+});
+
+test("recoverability follows the current snapshot when both storage destinations fail", async () => {
+  const h = await setup({ blocked: true });
+  assert.equal(h.result.recoverable, true, "the original server snapshot is recoverable");
+  h.respond(() => Response.json({ error: { message: "Unavailable" } }, { status: 503 }));
+  h.result.update(current => ({ ...current, pantry: [] }));
+  await h.pump(); await h.tick();
+  assert.equal(h.result.recoverable, false, "an edited snapshot has neither a browser nor a server copy");
+  h.respond((_url, options) => Response.json(document(2, JSON.parse(options.body).state)));
+  h.result.retrySave(); await h.pump(); await h.tick();
+  assert.equal(h.result.recoverable, true, "a successful server save makes the edited snapshot recoverable");
+});

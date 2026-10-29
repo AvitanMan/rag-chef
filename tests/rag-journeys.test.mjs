@@ -61,8 +61,8 @@ test("empty or blocked runs cannot pass and latency uses actual answer groups", 
 });
 
 test("journey manifests keep fixed unique labels, real follow-ups and isolated fixture opt-in", () => {
-  assert.equal(journeyCases.length, 8);
-  assert.equal(new Set(journeyCases.map(row => row.id)).size, 8);
+  assert.equal(journeyCases.length, 9);
+  assert.equal(new Set(journeyCases.map(row => row.id)).size, 9);
   let turns = 0;
   for (const journey of journeyCases) {
     assert.equal(new Set(journey.steps.map(row => row.id)).size, journey.steps.length);
@@ -72,7 +72,7 @@ test("journey manifests keep fixed unique labels, real follow-ups and isolated f
       for (const pattern of [...(step.expect.answerPatterns ?? []), ...(step.expect.forbiddenAnswerPatterns ?? [])]) assert.doesNotThrow(() => new RegExp(pattern));
     }
   }
-  assert.equal(turns, 21);
+  assert.equal(turns, 24);
   assert.ok(journeyCases.some(journey => journey.steps.some(step => step.requiresMultipleChoices)));
   assert.ok(journeyCases.some(journey => journey.steps.some(step => step.purpose === "cooking")));
   assert.equal(Object.keys(journeyTitles).length, 2);

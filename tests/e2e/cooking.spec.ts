@@ -66,11 +66,11 @@ for (const date of ["2026-10-21", "2026-10-23"]) {
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
     await cooking.getByRole("button", { name: /Next step/ }).click();
     await cooking.getByRole("button", { name: "Finish cooking", exact: true }).click();
-    const complete = page.getByRole("dialog", { name: "Complete dinner", exact: true });
+    const complete = page.getByRole("region", { name: "Complete dinner", exact: true });
     if (early) await expect(complete).toContainText("rice: 200 g → 0 g");
     else await expect(complete).toContainText("past its entered use-by date");
     await complete.getByRole("checkbox").check();
-    await complete.getByRole("button", { name: "Confirm cooked", exact: true }).click();
+    await complete.getByRole("button", { name: "Mark dinner cooked", exact: true }).click();
     await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").measure).toBe(early ? "0 g" : "200 g");
   });
 }
@@ -90,9 +90,9 @@ test("cooking shows final amounts once and cooked undo restores dated stock", as
   await cooking.getByRole("button", { name: /Next step/ }).click();
   await expect(cooking).toContainText("Simmer the rice and tomatoes for 10 minutes.");
   await cooking.getByRole("button", { name: "Finish cooking", exact: true }).click();
-  const complete = page.getByRole("dialog", { name: "Complete dinner", exact: true });
+  const complete = page.getByRole("region", { name: "Complete dinner", exact: true });
   await complete.getByRole("checkbox").check();
-  await complete.getByRole("button", { name: "Confirm cooked", exact: true }).click();
+  await complete.getByRole("button", { name: "Mark dinner cooked", exact: true }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").measure).toBe("150 g");
   await page.getByRole("button", { name: /Undo cooked/ }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice")).toMatchObject({ measure: "500 g", useBy: "2026-10-24" });
@@ -149,8 +149,8 @@ test("custom timer completion survives reload and an old cooking session cannot 
   await finish.scrollIntoViewIfNeeded();
   await expect(finish).toBeInViewport();
   await finish.click();
-  await expect(page.getByRole("dialog", { name: "Complete dinner", exact: true })).toHaveCount(0);
-  await expect(page.getByText("The saved dinner changed while cooking. Open the current dinner to complete it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Complete dinner", exact: true }).getByRole("button", { name: "Mark dinner cooked", exact: true })).toBeDisabled();
+  await expect(page.getByText("This dinner changed. Return to the current dinner before completing it.")).toBeVisible();
   expect((await readKitchen(request)).state.meals[TODAY]).toMatchObject({ id: replacement.id, status: "planned" });
 });
 
@@ -220,8 +220,8 @@ test("same-ID amount edits invalidate cooking completion without deducting stock
   await expect(cooking.getByRole("region", { name: "Ingredients for this dinner", exact: true })).toContainText("200 g");
   await cooking.getByRole("button", { name: /Next step/ }).click();
   await cooking.getByRole("button", { name: "Finish cooking", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Complete dinner", exact: true })).toHaveCount(0);
-  await expect(page.getByText("The saved dinner changed while cooking. Open the current dinner to complete it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Complete dinner", exact: true }).getByRole("button", { name: "Mark dinner cooked", exact: true })).toBeDisabled();
+  await expect(page.getByText("This dinner changed. Return to the current dinner before completing it.")).toBeVisible();
   const current = (await readKitchen(request)).state;
   expect(current.meals[TODAY]).toEqual(edited);
   expect(current.pantry).toEqual(pantry);

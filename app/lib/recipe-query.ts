@@ -2,8 +2,16 @@ import { normalizeRecipeSearch } from "./recipe-browser";
 import { normalizeConstraints, normalizeEquipmentName } from "./recipe-constraints";
 import type { RecipeConstraints } from "./recipe-types";
 
-export const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend some something suggest suggestions that the to tonight use want what when which with would dinner dinners idea ideas option options choice choices using".split(" "));
+export const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do eat find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend should some something suggest suggestions that the to today tomorrow tonight try use want we what when which with would dinner dinners idea ideas option options choice choices using".split(" "));
 const REQUEST_EQUIPMENT = new Set(["oven", "stovetop", "microwave", "blender", "slow cooker", "pressure cooker", "air fryer", "grill"]);
+
+/** Dinner discovery can be phrased as a question; punctuation alone is not intent. */
+export function queryRequestsRecipes(query: string): boolean {
+  return /\b(?:recommend\w*|suggest\w*|find|choose)\b/i.test(query)
+    || /\bwhat\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat)(?=\s*(?:[?!.]|$)|\s+(?:with|using|for|tonight|today|tomorrow)\b)/i.test(query)
+    || /\b(?:what|which)\s+(?:recipes?|dinners?|meals?|dishes?)\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat|try)\b/i.test(query)
+    || /\bwhat(?:'s| is)\s+for\s+dinner\b/i.test(query);
+}
 
 export interface RecipeQueryIntent {
   topic: string;
@@ -31,7 +39,7 @@ export function queryRequestsAdaptation(query: string, hasRecipeFocus = false): 
 
 /** Deterministic intent only: do not let generated text relax stored exclusions. */
 export function recipeQueryIntent(query: string, hasRecipeFocus = false): RecipeQueryIntent {
-  const text = query.normalize("NFKD").replace(/\p{M}/gu, "").replaceAll("’", "'").toLowerCase();
+  const text = query.normalize("NFKD").replace(/\p{M}/gu, "").replaceAll("’", "'").toLowerCase().replace(/\bwhat's\b/g, "what is");
   const excluded: string[] = [];
   const excludedEquipment: string[] = [];
   const equipmentAware = text.replace(/\b(?:do not have|don't have|no access to|without access to)\s+(?:(?:an?|the|my)\s+)?(oven|stove(?:top| top)?|hob|microwave|blender|slow cooker|pressure cooker|air fryer|grill)\b/g, (_clause, name: string) => {

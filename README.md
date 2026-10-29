@@ -17,7 +17,8 @@ service or an allergy-safety certification tool.
   original directions, and add a recipe to the plan.
 - **Shopping:** combine planned ingredients, subtract known pantry amounts,
   review unclear quantities, and check off purchases.
-- **Pantry:** track ingredients with known amounts or leave quantities unknown.
+- **Use soon:** pick pantry food dated today through three days ahead to find dinners, with measured use estimates and shopping needs. Works without AI.
+- **Pantry:** track ingredients with known amounts or leave quantities unknown; review Use soon, Past entered date, or All items.
 - **Ask Chef:** source-grounded recommendations and requested substitutions
   using local Ollama or the optional OpenAI provider.
 - **Cook:** step-by-step guidance, timers, optional wake lock, pantry deductions,
@@ -31,6 +32,9 @@ Chef and planning. Dislikes affect ranking rather than excluding meals.
 
 Recipes, pantry amounts, plans, and shopping checks persist locally. Browsing,
 planning, and shopping do not require an AI model.
+If another tab saves a newer kitchen, Chef refreshes this tab and offers **Retry
+Chef** with the latest saved amounts. Any unsaved edits stay available for conflict
+review instead of being replaced.
 
 ## Quick start
 
@@ -53,16 +57,38 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Chef**. Ask for ideas, choose a dinner, review shopping, and
-cook. **Dinner day and portions** expands when you want to change the default
-date (today) or source quantities. **Plan** remains directly accessible.
-You can also choose **Add to plan** from Recipes. Open **Chef** directly from
-navigation, or **Ask Chef** from Recipes. Your recipe search stays intact during
-the current session.
+The app opens on **Chef**. If tonight already has a saved dinner, its panel
+shows portions, measured pantry coverage, missing ingredients, and **Cook dinner**.
+Otherwise, choose an instant suggestion or ask Chef for ideas. **Choose for
+tonight** saves the dinner and shows that panel without visiting Plan or a date
+picker. Recipes uses the same selection action. **Dinner day and portions** is
+shared across Chef and Recipes; choose another day before selecting when needed.
+Source quantities are the default, and unknown yields use recipe batches.
+
+**Change dinner** searches for a replacement while keeping the saved meal.
+**Cancel change** returns to it; replacing an occupied day still needs confirmation.
+Locked and cooked dinners stay protected. **Adjust amounts** changes your saved
+dinner, while **Recipe details** provides original directions, sources, and
+**Ask Chef about this recipe**. Recipe cards keep one primary selection action.
+
+The dinner panel’s missing amounts reserve stock for other saved dinners in the
+same week. Unknown amounts remain marked for review; missing ingredients do not
+block cooking. **Weekly shopping** opens the existing shared weekly list, with
+**Back to dinner** returning to the selected meal. Purchase review still asks what
+you actually bought before adding pantry batches. Plan remains available for
+weekly filling, copying, locking, and manual completion.
+
+Recipe search, filters, and list position stay intact during the current session.
+Return links preserve the originating plan or recipe browser, and browser Back
+and Forward restore the section and dinner context. Reloading starts at today’s
+dinner. Browsing and choosing dinner do not require an AI model.
+
 Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pantry
 is empty, using the loaded catalog without a model call. Saved exclusions and
 dislikes still apply. Use **Find my dinner** for a specific request, or leave it
 blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
+Natural questions such as “What can I cook with eggplant?” request dinner
+choices; questions about a pinned recipe continue to use that source.
 After a request, the answer and recipe choices come first. Source links and a
 short original excerpt stay visible on cards. Expand **How Chef found this** for the actual retrieval method,
 catalog and shortlist counts, requirement exclusions, and whether an AI answer
@@ -70,16 +96,17 @@ or a catalog fallback was used. **Recipe evidence** puts source excerpts and
 original links beside the answer. Cited excerpts are copied from the source;
 fallback excerpts are explicitly labeled as retrieved recipe text. Open an
 evidence title to inspect the full recipe. No confidence percentage is implied.
-When choosing a day, Chef keeps that date visible and its recipe cards offer
-**Add to [day]** directly. Opening recipe details is optional. Without a selected
-day, Chef uses the visible date, defaulting to today. Adding from the Recipes
-browser without a selected day still opens the day picker. Replacing a dinner
-still needs confirmation.
+Choosing a day keeps that target visible in Chef and Recipes. Every selection
+uses **Choose for tonight** or **Choose for [day]**, then opens the saved dinner
+panel. Opening recipe details is optional. A single source method starts cooking
+directly; recipes with multiple methods show one inline choice first.
 
-**Ask about this recipe** pins a discussion to one approved source recipe.
+**Ask Chef about this recipe**, inside recipe details, pins a discussion to one approved source recipe.
+Selecting a recipe clears dinner-search refinements; saved profile exclusions
+still apply to the discussion.
 Follow-up questions retain the latest three question/answer pairs while navigating
 between Chef, recipe details, and cooking. Earlier questions are collapsed;
-reloading starts a new discussion. **New dinner search** clears the recipe,
+reloading starts a new discussion. **New dinner search** (or **Change dinner** from a saved dinner) clears the recipe,
 portions, and refinements; the selected dinner day stays selected, including
 after switching between Chef and Recipes. Use **Cancel selection** to clear it.
 Chef uses one question field: after discovery, **Update dinner ideas** applies a refinement
@@ -110,11 +137,23 @@ answering path. Factual answers do not add a recommendation shortlist.
 
 Cooking has **Ask about this step** inside its existing scrolling area. Questions
 use the pinned recipe and original step references, leaving timers and progress
-running. Older sessions are mapped back to source steps where unambiguous;
+running. Discovery refinement chips stay with their dinner search and are not
+applied to cooking help; saved profile exclusions still apply. Older sessions are mapped back to source steps where unambiguous;
 otherwise help uses the recipe context. Changed dinner portions, source versions,
 or source permissions are rechecked before an answer. Saved directions remain
 available when Chef cannot verify a version. Relevant source steps retain their
 original IDs, and an omitted step cannot be cited as supplied evidence.
+
+**Finish cooking** opens a final review inside the existing cooking workspace.
+Pantry deductions are optional and off by default. **Back to directions** preserves
+the step and timer; **Mark dinner cooked** removes the meal’s remaining shopping
+needs and returns to its dinner panel, where **Undo cooked** remains available.
+The session is retained until the completion is recoverable in browser storage
+or saved to this Mac. If both fail, keep the review open and use **Retry save**.
+Changed dinner snapshots cannot be completed from an old cooking session.
+Reloading during the review resumes the last source step. Unplanned cooking can
+finish without adding a meal or changing the pantry. Replacing another saved
+cooking session still requires confirmation.
 
 ### Populate a fresh installation
 
@@ -171,6 +210,31 @@ disposable copies and leave this preview and its database untouched.
 
 ## Planning and shopping rules
 
+### Use food that is due soon
+
+Chef’s **Use soon** section shows up to five nonzero pantry items with entered
+use-by dates from today through three days ahead; **Review pantry** opens the
+complete list. Select an ingredient to see three matching dinners, then use
+**Show more dinners** for further matches. Normal dinner selection, replacement
+confirmation, cooking, and optional pantry deductions still apply.
+
+Suggestions respect saved allergies, diet, and equipment requirements and match
+normalized ingredient identity; cooked and uncooked rice remain distinct.
+Estimates reserve quantities for other saved dinners in the selected week before
+calculating the new dinner. The dinner being replaced does not reserve stock.
+Confirmed use of the selected pantry batch ranks first, followed by reviewed
+mains, measured pantry coverage, and title. Unknown quantities or incompatible
+units show **Check amount**, and fully reserved items are explained rather than
+presented as available. Changing the dinner day or portions updates estimates.
+A date after the item’s entered use-by date produces no suggestions for that item.
+
+**Review this item** opens its pantry row for amount/date edits or reversible
+removal. **Past entered date** items are excluded from availability and require
+manual review; dates are never extended automatically. Date groups refresh when
+the local day changes. No ratings, shelf-life predictions, or model calls are
+needed for this flow. Cooking deductions remain optional and off by default.
+
+
 Use the **Dark mode** toggle in the top bar or cooking header to switch themes.
 The app follows your system preference until you choose a theme, then remembers
 that choice in this browser. Theme preferences are separate from kitchen backups.
@@ -179,8 +243,9 @@ An empty week offers optional preferences and pantry shortcuts beside a short
 next-step hint. One **Today’s dinner** card offers cooking, changing dinner, and
 shopping actions. Mobile week entries are compact; **Fill options** contains
 advanced filling preferences. **Today’s dinner** gives immediate access to tonight;
-saving a dinner reveals its card. The day picker defaults to an upcoming empty
-date. Historical or occupied dates require an explicit selection.
+saving a dinner opens its Chef panel. Recipe selection defaults to today;
+choose a historical or future date in the shared dinner context when needed.
+Occupied dates require replacement confirmation.
 
 In **Settings**, cooking preferences come first. Enter allergies and dislikes as editable chips: Enter,
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
@@ -341,8 +406,9 @@ Requested advisory changes remain separate from factual source claims. These
 numeric checks remain independent of the semantic verification pass.
 
 Free-form recipe answers and requested adaptations receive one additional local
-Ollama verification call for their displayed model answer and recommendation
-reasons. Recipe discovery uses model-selected recipe IDs and exact source
+Ollama verification call for their displayed model answer, recommendation
+reasons, and generated warnings. Generated warnings also receive the numeric
+source checks; server-owned notices remain separate. Recipe discovery uses model-selected recipe IDs and exact source
 excerpts, with app-owned introductions, match explanations and stock facts. Clarification and unsupported statuses use fixed
 messages and server-owned match explanations, so those labels cannot bypass
 checks and expose arbitrary model prose. Model-written discovery prose is discarded rather than presented as verified
@@ -639,7 +705,7 @@ personal database. Reports and vector caches are ignored local artifacts.
 
 ### RAG user journeys
 
-Run **8 fixed journeys with 21 Chef turns** through a built disposable app:
+Run **9 fixed journeys with 24 Chef turns** through a built disposable app:
 
 ```bash
 # Repeatable original test recipes; local Ollama must be running.

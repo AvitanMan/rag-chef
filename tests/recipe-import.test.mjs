@@ -519,10 +519,10 @@ test("unknown questions may return no recommendations without manufacturing a re
 });
 
 test("adaptation recognition includes scaling and explicit reductions without expanding source permissions", () => {
-  for (const query of ["Make Test rice vegan", "Scale Test rice for 8 people", "For Test rice, halve the salt", "Double Test rice"]) assert.equal(chefRoute.adaptationRequested(query, true), true, query);
-  assert.equal(chefRoute.adaptationRequested("Recommend rice"), false);
-  assert.equal(chefRoute.adaptationRequested("Dinner without tomatoes"), false);
-  assert.equal(chefRoute.adaptationRequested("Make a vegan dinner"), false);
+  for (const query of ["Make Test rice vegan", "Scale Test rice for 8 people", "For Test rice, halve the salt", "Double Test rice"]) assert.equal(search.recipeQueryIntent(query, true).mode, "adaptation", query);
+  assert.equal(search.recipeQueryIntent("Recommend rice").mode, "recommendation");
+  assert.equal(search.recipeQueryIntent("Dinner without tomatoes").mode, "recommendation");
+  assert.equal(search.recipeQueryIntent("Make a vegan dinner").mode, "recommendation");
 });
 
 test("natural-language ingredient exclusions apply to retrieval, provider context and fallback without changing saved preferences", async () => {
@@ -942,13 +942,18 @@ test("saved-dinner help rejects stale revisions and same-ID portion changes with
   assert.deepEqual(db.prepare("SELECT * FROM kitchen_state").get(), before);
 });
 
-test("explicit refinement exclusions remain mandatory for a pinned adaptation question", async () => {
+test("pinned adaptations ignore discovery refinements while saved allergies remain mandatory", async () => {
   const saved = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "200 g" }, { name: "cheese", measure: "50 g" }] }));
   const contexts = []; mockChef(contexts);
   const result = await (await chefRoute.POST(chefRequest({ query: "Could I swap the cheese?", context: { recipeId: saved.catalogId }, refinements: ["without cheese"] }))).json();
-  assert.equal(result.outcome, "constraints_unsatisfied");
-  assert.deepEqual(result.recommendations, []);
-  assert.equal(contexts.length, 0);
+  assert.equal(result.outcome, "matches");
+  assert.equal(result.recipes[0].id, saved.catalogId);
+  assert.ok(contexts.length > 0);
+  const count = contexts.length;
+  const excluded = await (await chefRoute.POST(chefRequest({ query: "Could I swap the cheese?", context: { recipeId: saved.catalogId }, refinements: ["without cheese"], profile: { allergies: ["cheese"] } }))).json();
+  assert.equal(excluded.outcome, "constraints_unsatisfied");
+  assert.deepEqual(excluded.recipes, []);
+  assert.equal(contexts.length, count);
 });
 
 async function previewStockFixture() {

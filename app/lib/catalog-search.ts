@@ -1,6 +1,6 @@
 import { bm25Scores, reciprocalRanks, retrievalTerms } from "./retrieval-ranking";
 import { STOP_WORDS, recipeQueryIntent, constraintsForRecipeQuery, recipeRetrievalQuery } from "./recipe-query";
-export { recipeQueryIntent, queryRequestsAdaptation, constraintsForRecipeQuery, recipeRetrievalQuery, type RecipeQueryIntent } from "./recipe-query";
+export { recipeQueryIntent, queryRequestsRecipes, queryRequestsAdaptation, constraintsForRecipeQuery, recipeRetrievalQuery, type RecipeQueryIntent } from "./recipe-query";
 import { buildRecipeEmbeddingText, buildRecipeQueryText, cosineSimilarity, embedTextsWithOllama, isValidEmbeddingVector } from "./recipe-embeddings";
 import { listCatalogRecipes, listStoredRecipeEmbeddings } from "./recipe-store";
 import { normalizeRecipeSearch, recipePantryDetails } from "./recipe-browser";

@@ -11,7 +11,8 @@ export function verificationClaims(answer: ChefStructuredAnswer): Claim[] {
   const segmenter = new Intl.Segmenter("en", { granularity: "sentence" });
   const sentences = (text: string) => [...segmenter.segment(text)].map((part) => part.segment.trim()).filter(Boolean);
   return [...sentences(answer.answer).map((text, index) => ({ id: `A${index + 1}`, text })),
-    ...answer.recommendations.flatMap((item, index) => sentences(item.reason).map((text, sentence) => ({ id: `R${index + 1}.${sentence + 1}`, text, recipeId: item.recipeId })))];
+    ...answer.recommendations.flatMap((item, index) => sentences(item.reason).map((text, sentence) => ({ id: `R${index + 1}.${sentence + 1}`, text, recipeId: item.recipeId }))),
+    ...answer.warnings.flatMap((warning, index) => sentences(warning).map((text, sentence) => ({ id: `W${index + 1}.${sentence + 1}`, text })))];
 }
 export function validateVerification(value: unknown, claims: Claim[], supports: Support[]): { status: AnswerVerification["status"]; usedRefs: string[] } {
   const invalid = () => { throw new Error("Invalid verification coverage or reference."); };
@@ -41,7 +42,6 @@ export async function verifyChefAnswer(answer: ChefStructuredAnswer, evidence: V
   baseUrl: string; model: string; metadata: RecipeMetadataMap;
   planningAmounts?: Array<{ name: string; measure: string; needsReview?: boolean }>; planningRecipeId?: string;
   completeByRecipe?: Record<string, boolean>;
-  question?: string;
   requireSupport?: boolean;
   recordsByRecipe?: Record<string, { title: string; servings: number | null }>;
   sourceFocus?: { recipeId: string; stepEvidenceId?: string; quantityBasis?: "final_dinner" | "original_recipe" };

@@ -9,6 +9,17 @@ const constraints = (value) => pure.constraints.normalizeConstraints(value);
 const recipe = (id, title, names) => ({ id, title, ingredients: names.map((name) => ({ name, measure: "1" })), instructions: ["Use the source directions."], tags: [], image: null, category: "Dinner", cuisine: "Test", source: { name: "Test", url: "https://example.com/" }, sourceUrl: "https://example.com/" });
 const recipes = [recipe("pasta", "Cheese Pasta", ["penne", "mozzarella"]), recipe("tomato", "Tomato Rice", ["rice", "chopped tomatoes"]), recipe("plain", "Garlic Rice", ["rice", "garlic"]), recipe("beans", "Bean Stew", ["beans", "onions"]), recipe("eggplant", "Eggplant Bowl", ["eggplant", "rice"]), recipe("egg", "Egg Rice", ["eggs", "rice"])];
 
+test("natural dinner questions request recipes without treating source questions as discovery", () => {
+  for (const query of ["What can I cook with what I have?", "What can I cook with eggplant?", "What should we make for dinner?", "Which recipes could I try with rice?", "What's for dinner?", "Can you find a dinner with rice?"]) {
+    assert.equal(pure.search.queryRequestsRecipes(query), true, query);
+  }
+  for (const query of ["Why rinse the rice?", "How long does this recipe take?", "What can I cook this in?", "What can I use instead of milk?", "What should the lentils feel like?", "What is the next source direction?"]) {
+    assert.equal(pure.search.queryRequestsRecipes(query), false, query);
+  }
+  assert.equal(recipeQueryIntent("What should we cook with eggplant?").topic, "eggplant");
+  for (const query of ["What should we make for dinner?", "What's for dinner?", "What should we eat tomorrow?"]) assert.equal(recipeQueryIntent(query).broad, true, query);
+});
+
 test("common dietary wording becomes constraints rather than positive search words", () => {
   for (const query of ["Meatless dinner", "MEAT-FREE dinner", "a meat free meal"]) {
     const intent = recipeQueryIntent(query);

@@ -82,6 +82,24 @@ test("local verifier returns canonical source facts and permits no rewritten fac
   } });
   assert.equal(result.verification.status, "checked"); assert.equal(result.sourceFacts[0].fact, evidence[0].text);
 });
+
+test("verification covers every generated warning sentence without treating advisory changes as source claims", () => {
+  const claims = verificationClaims({ ...answer, warnings: ["First warning. Second warning.", "Another warning."], chefChanges: [{ recipeId: recipe.id, change: "New advice.", reason: "Advisory only." }] });
+  assert.deepEqual(claims.map(claim => claim.id), ["A1", "W1.1", "W1.2", "W2.1"]);
+  assert.deepEqual(claims.slice(1).map(claim => claim.text), ["First warning.", "Second warning.", "Another warning."]);
+});
+
+test("an unsupported warning rejects an otherwise supported answer", async () => {
+  const result = await verifyChefAnswer({ ...answer, warnings: ["This makes dough manufacture chlorophyll."] }, evidence, {
+    baseUrl: "http://localhost:1234", model: "local", metadata: {}, fetchImpl: async (_url, request) => {
+      const data = JSON.parse(JSON.parse(request.body).messages[1].content);
+      assert.deepEqual(data.sentences.map(claim => claim.id), ["A1", "W1.1"]);
+      return Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map(claim => ({ id: claim.id, verdict: claim.id.startsWith("W") ? "unsupported" : "supported", supportRefs: [data.evidence[0].ref] })) }) } });
+    },
+  });
+  assert.equal(result.verification.status, "rejected");
+  assert.equal(result.verification.checkedSentenceCount, 2);
+});
 test("verifier refusal, timeout, malformed output, and cancellation fail closed without retry", async () => {
   for (const kind of ["unavailable", "malformed", "timeout", "cancelled"]) {
     let calls = 0; const controller = new AbortController(); if (kind === "cancelled") controller.abort();
@@ -133,7 +151,7 @@ test("generic recommendation prose may pass without source claims while factual 
 });
 
 test("verification receives only relevant server kitchen facts and keeps name matches distinct from quantities", async () => {
-  await verifyChefAnswer(answer, evidence, { baseUrl: "http://localhost:1234", model: "local", metadata: {}, recordsByRecipe: { [recipe.id]: { title: recipe.title, servings: 2 }, unrelated: { title: "private other record", servings: 9 } }, question: "An untrusted assumed method", sourceFocus: { recipeId: recipe.id, stepEvidenceId: "S1", quantityBasis: "final_dinner" }, kitchenByRecipe: { [recipe.id]: { pantryMatch: ["rice"], missingIngredients: ["milk"] }, unrelated: { pantryMatch: ["private other recipe"], missingIngredients: [] } },
+  await verifyChefAnswer(answer, evidence, { baseUrl: "http://localhost:1234", model: "local", metadata: {}, recordsByRecipe: { [recipe.id]: { title: recipe.title, servings: 2 }, unrelated: { title: "private other record", servings: 9 } }, sourceFocus: { recipeId: recipe.id, stepEvidenceId: "S1", quantityBasis: "final_dinner" }, kitchenByRecipe: { [recipe.id]: { pantryMatch: ["rice"], missingIngredients: ["milk"] }, unrelated: { pantryMatch: ["private other recipe"], missingIngredients: [] } },
     fetchImpl: async (_url, request) => {
       const data = JSON.parse(JSON.parse(request.body).messages[1].content);
       const records = data.evidence.filter(item => item.ref.startsWith("C"));

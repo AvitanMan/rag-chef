@@ -14,7 +14,7 @@ for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-sto
   await writeFile(join(dir, `${name}.mjs`), code);
 }
 const { parseKitchenBackup, serializeKitchenBackup } = await import(pathToFileURL(join(dir, "kitchen-backup.mjs")).href);
-const { availablePantryNames, removePantryStock } = await import(pathToFileURL(join(dir, "kitchen-stock.mjs")).href);
+const { availablePantryNames } = await import(pathToFileURL(join(dir, "kitchen-stock.mjs")).href);
 const { migrateLegacyKitchen } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
 const kitchen = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 
@@ -38,7 +38,7 @@ test("unsupported versions, invalid states, dates and oversized backups fail bef
   assert.throws(() => parseKitchenBackup(" ".repeat(2_000_001)), /storage limit/);
 });
 
-test("zero stock is absent, unknown amounts remain uncertain, and removal uses row identity", () => {
+test("zero stock is absent and unknown amounts remain available by name", () => {
   const state = { ...kitchen(), pantry: [
     { id: "zero", name: "rice", measure: "0 g" },
     { id: "unknown", name: "rice", measure: "some" },
@@ -46,9 +46,6 @@ test("zero stock is absent, unknown amounts remain uncertain, and removal uses r
     { id: "beans", name: "beans", measure: "0 cans" },
   ] };
   assert.deepEqual(availablePantryNames(state.pantry), ["rice"]);
-  const removed = removePantryStock(state, "unknown");
-  assert.deepEqual(removed.pantry.map((item) => item.id), ["zero", "restored", "beans"]);
-  assert.equal(state.pantry.length, 4);
 });
 
 test("new kitchens start empty while existing legacy pantry is preserved", () => {

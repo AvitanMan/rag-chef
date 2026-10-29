@@ -116,6 +116,10 @@ export function chefGroundingIssue(answer: ChefStructuredAnswer, sources: Source
   // factual answer itself must still be supported, including during adaptations.
   const answerIssue = check(answer.answer, cited, [...new Set(answer.sourceFacts.map((fact) => fact.recipeId))]);
   if (answerIssue) return answerIssue;
+  for (const warning of answer.warnings) {
+    const issue = check(warning, cited, [...new Set(answer.sourceFacts.map((fact) => fact.recipeId))]);
+    if (issue) return issue;
+  }
   for (const recommendation of answer.recommendations) {
     const evidence = contexts.get(recommendation.recipeId)?.evidence.map((item) => item.text) ?? [];
     const issue = check(recommendation.reason, evidence, [recommendation.recipeId]);

@@ -9,7 +9,7 @@ import { Modal } from "./Modal";
 import type { KitchenState, PlannedMeal } from "../lib/kitchen-types";
 import { mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
-import { addDateDays, defaultDinnerDate, localDate, weekStart } from "../lib/kitchen-state";
+import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
 import { setShoppingItemBought } from "../lib/shopping-purchases";
 
@@ -140,15 +140,6 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
       {pending && <Modal className="kitchen-modal-backdrop" label="Replace dinner" close={() => setPending(null)}><section className="panel kitchen-modal"><h2>Replace this dinner?</h2><p>{meals[pending.date]?.title} on {dateLabel(pending.date)} will be replaced with {pending.recipe.title}.</p>{(meals[pending.date]?.id !== pending.expectedId || meals[pending.date]?.locked || meals[pending.date]?.status === "cooked") && <p>This dinner changed or became protected. Cancel and choose again.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setPending(null)}>Keep current dinner</button><button className="primary-button" disabled={meals[pending.date]?.id !== pending.expectedId || meals[pending.date]?.locked || meals[pending.date]?.status === "cooked"} onClick={() => { if (chooseMeal(pending.date, pending.recipe, pending.template, pending.expectedId)) setPending(null); }}>Replace dinner</button></div></section></Modal>}
     </>
   );
-}
-
-export function PlanPicker({ recipe, week, meals, close, choose, today = localDate() }: { today?: string; recipe: Recipe; week: string; meals: Record<string, PlannedMeal>; close: () => void; choose: (date: string, recipe: Recipe, expectedId: string | null) => boolean }) {
-  const dates = Array.from({ length: 7 }, (_, index) => addDateDays(week, index));
-  const [date, setDate] = useState(() => defaultDinnerDate(week, today, meals));
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const confirming = Boolean(meals[date] && confirmingId === meals[date].id);
-  const unavailable = !date || meals[date]?.locked || meals[date]?.status === "cooked";
-  return <Modal className="kitchen-modal-backdrop" label="Choose dinner day" close={close}><section className="panel kitchen-modal"><span className="eyebrow">Add to this week</span><h2>{recipe.title}</h2><label>Dinner date<select value={date} onChange={(event) => { setDate(event.target.value); setConfirmingId(null); }}><option value="">Choose a date…</option>{dates.map((value) => <option key={value} value={value}>{dateLabel(value)}{meals[value] ? ` · ${meals[value].title}` : " · empty"}</option>)}</select></label>{!date ? <p>No upcoming empty dates in this week. Choose a date to add or replace dinner.</p> : unavailable ? <p>This dinner is locked or cooked. Choose an empty day or unlock it in the plan.</p> : meals[date] && <p>{confirming ? "Confirm replacing" : "This day already has"} {meals[date].title}.</p>}<div className="modal-actions"><button className="secondary-button" onClick={close}>Cancel</button><button className="primary-button" disabled={Boolean(unavailable)} onClick={() => { if (meals[date] && !confirming) { setConfirmingId(meals[date].id); return; } if (choose(date, recipe, meals[date]?.id ?? null)) close(); }}>{meals[date] ? confirming ? "Confirm replacement" : "Replace dinner…" : "Add dinner"}</button></div></section></Modal>;
 }
 
 export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: { items: ShoppingItem[]; checked: Record<string, boolean>; update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode }) {

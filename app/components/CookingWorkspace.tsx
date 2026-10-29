@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PlanningFacts } from "./PlanningFacts";
 import { Modal } from "./Modal";
 import { ThemeToggle } from "./ThemeToggle";
@@ -10,7 +10,7 @@ import type { ChefApiResponse } from "../lib/chef-schema";
 import { cookingSourceStep } from "../lib/chef-context";
 import { remainingTimerMs, stepTimerSeconds, timerAction, type CookingSession } from "../lib/cooking-session";
 
-export function CookingWorkspace({ session, visible, onChange, close, finish, chefBusy = false, chefError = "", chefReply = null, askChefStep }: {
+export function CookingWorkspace({ session, visible, onChange, close, finish, completionReview, chefBusy = false, chefError = "", chefReply = null, askChefStep }: {
   session: CookingSession;
   visible: boolean;
   chefBusy?: boolean;
@@ -20,6 +20,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
   onChange: (session: CookingSession) => void;
   close: () => void;
   finish: () => void;
+  completionReview?: ReactNode;
 }) {
   const [now, setNow] = useState(Date.now);
   const [helpQuestion, setHelpQuestion] = useState("");
@@ -35,6 +36,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
   const audio = useRef<AudioContext | null>(null);
   const notified = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
+  const reviewingCompletion = Boolean(completionReview);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => {
     if (session.timer.status !== "running") return;
@@ -86,7 +88,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
   useEffect(() => () => { void audio.current?.close(); }, []);
   useEffect(() => {
     if (visible) content.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [visible, session.id, session.step]);
+  }, [visible, session.id, session.step, reviewingCompletion]);
 
   useEffect(() => {
     if (!visible || !timerSetupOpen) return;
@@ -123,6 +125,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
       {session.timer.status === "finished" && <p role="status">Timer finished. Check your food; confirm dinner cooked when you finish.</p>}
     </section>
     <main ref={content}>
+      {completionReview ?? <>
       <div className="cook-step-number">Step {session.step + 1}</div><p>{session.instructions[session.step]}</p>
       <details className="cook-ingredients"><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
         <p className="quantity-note">{session.plannedMeal ? session.plannedMeal.servings ? `${session.plannedMeal.servings} servings` : `${mealScale(session.plannedMeal)} recipe batches` : "Original recipe quantities"}. Source directions retain their original wording.</p>
@@ -150,7 +153,8 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, ch
         }} />Sound when finished</label>
         {pendingTimerSeconds !== null && <div ref={timerDecision} className="timer-replacement" role="alert"><p>Replace your {session.timer.status === "paused" ? "paused" : "running"} timer with {Math.floor(pendingTimerSeconds / 60)} min {pendingTimerSeconds % 60} sec?</p><button onClick={() => setPendingTimerSeconds(null)}>Keep current timer</button><button onClick={() => start(pendingTimerSeconds, true)}>Replace timer</button></div>}
       </section>}
+      </>}
     </main>
-    <footer><button className="secondary-button" onClick={() => onChange({ ...session, step: Math.max(0, session.step - 1) })} disabled={session.step === 0}>Previous</button><span>Screen stays awake where supported</span><button className="primary-button" onClick={() => session.step === session.instructions.length - 1 ? finish() : onChange({ ...session, step: session.step + 1 })}>{session.step === session.instructions.length - 1 ? "Finish cooking" : "Next step →"}</button></footer>
+    {!completionReview && <footer><button className="secondary-button" onClick={() => onChange({ ...session, step: Math.max(0, session.step - 1) })} disabled={session.step === 0}>Previous</button><span>Screen stays awake where supported</span><button className="primary-button" onClick={() => session.step === session.instructions.length - 1 ? finish() : onChange({ ...session, step: session.step + 1 })}>{session.step === session.instructions.length - 1 ? "Finish cooking" : "Next step →"}</button></footer>}
   </Modal>;
 }

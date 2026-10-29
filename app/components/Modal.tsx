@@ -37,6 +37,10 @@ export function Modal({ children, close, className, label, labelledBy }: {
       unlock();
       queueMicrotask(() => {
         if (document.querySelector("dialog:modal")) return;
+        const active = document.activeElement;
+        // A newly opened screen may have already focused its heading or form.
+        // Do not pull focus back to the drawer's old trigger in that case.
+        if (active instanceof HTMLElement && active !== document.body && active !== trigger && active.isConnected && !dialog.contains(active)) return;
         const fallback = [...document.querySelectorAll<HTMLElement>(".nav-button.active")].find((element) => element.getClientRects().length > 0);
         const target = trigger?.isConnected && trigger.getClientRects().length > 0 ? trigger : fallback;
         target?.focus();

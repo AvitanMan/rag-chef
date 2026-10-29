@@ -2,6 +2,17 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
 
+async function discussFirstRecipe(page: Page) {
+  await page.locator(".recipe-card").first().getByRole("button", { name: /^View / }).click();
+  await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+}
+
+async function restartDiscovery(page: Page) {
+  const change = page.getByRole("region", { name: "Chosen dinner", exact: true }).getByRole("button", { name: "Change dinner", exact: true });
+  if (await change.isVisible()) await change.click();
+  else await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+}
+
 const TODAY = "2026-10-25";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 async function read(request: APIRequestContext) { return (await request.get("/api/kitchen")).json(); }
@@ -18,13 +29,6 @@ async function recipe(request: APIRequestContext): Promise<Recipe> {
 function meal(source: Recipe): PlannedMeal {
   return { id: "sunday-dinner", date: TODAY, recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 2, batches: 1, status: "planned", locked: false, ingredientOverrides: {} };
 }
-async function picker(page: Page) {
-  await navigate(page, "Recipes");
-  await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
-  await page.getByRole("button", { name: "Add to plan: Tomato Rice", exact: true }).click();
-  return page.getByRole("dialog", { name: "Choose dinner day", exact: true });
-}
-
 test.beforeEach(async ({ page, request }) => {
   await page.clock.install({ time: new Date("2026-10-25T12:00:00+03:00") });
   await save(request, empty());
@@ -87,31 +91,30 @@ test("chip editing and removal handle pointer, Escape and keyboard focus without
   await expect(page.getByRole("button", { name: "Edit allergies peanut", exact: true })).toHaveCount(0);
 });
 
-test("Sunday and future weeks default to upcoming empty dates", async ({ page }) => {
-  await page.goto("/");
-  let dialog = await picker(page);
-  await expect(dialog.getByRole("combobox", { name: "Dinner date", exact: true })).toHaveValue(TODAY);
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await navigate(page, "Plan"); await page.getByRole("button", { name: "Next week", exact: true }).click();
-  dialog = await picker(page);
-  await expect(dialog.getByRole("combobox", { name: "Dinner date", exact: true })).toHaveValue("2026-10-26");
+test("Recipes choose tonight directly and share an explicit future date with Chef", async ({ page, request }) => {
+  await page.goto("/"); await navigate(page, "Recipes");
+  await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
+  await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toContainText("Tomato Rice");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toBe("fixture-tomato-rice");
+  await navigate(page, "Recipes");
+  await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-30");
+  await page.getByRole("button", { name: "Choose for Friday: Tomato Rice", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toContainText("Fri, Oct 30");
+  await expect.poll(async () => Object.keys((await read(request)).state.meals)).toEqual([TODAY, "2026-10-30"]);
 });
 
-test("occupied Sunday and historical weeks require an explicit picker date", async ({ page, request }) => {
+test("choosing an occupied day requires confirmation and cancelling keeps its dinner", async ({ page, request }) => {
   const source = await recipe(request);
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/");
-  let dialog = await picker(page);
-  await expect(dialog.getByRole("combobox", { name: "Dinner date", exact: true })).toHaveValue("");
-  await expect(dialog.getByRole("button", { name: "Add dinner", exact: true })).toBeDisabled();
-  await dialog.getByRole("combobox", { name: "Dinner date", exact: true }).selectOption(TODAY);
-  await expect(dialog.getByRole("button", { name: "Replace dinner…", exact: true })).toBeEnabled();
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await navigate(page, "Plan"); await page.getByRole("button", { name: "Previous week", exact: true }).click();
-  dialog = await picker(page);
-  await expect(dialog.getByRole("combobox", { name: "Dinner date", exact: true })).toHaveValue("");
-  await dialog.getByRole("combobox", { name: "Dinner date", exact: true }).selectOption("2026-10-12");
-  await expect(dialog.getByRole("button", { name: "Add dinner", exact: true })).toBeEnabled();
+  await page.goto("/"); await navigate(page, "Recipes");
+  await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Cheese Pasta");
+  await page.getByRole("button", { name: "Choose for tonight: Cheese Pasta", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Replace dinner", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Keep current dinner", exact: true }).click();
+  expect((await read(request)).state.meals[TODAY]).toEqual(meal(source));
 });
 
 test("long pantry removal has visible Undo and preserves later edits", async ({ page, request }) => {
@@ -120,8 +123,11 @@ test("long pantry removal has visible Undo and preserves later edits", async ({ 
   await page.goto("/"); await navigate(page, "Pantry");
   await page.getByRole("button", { name: "Remove ingredient 0", exact: true }).click();
   const recovery = page.getByRole("region", { name: "Recently removed", exact: true });
-  const box = await recovery.boundingBox();
-  expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  // Removal reveals recovery on the next animation frame; wait for that layout.
+  await expect(async () => {
+    const box = await recovery.boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  }).toPass();
   await page.getByRole("textbox", { name: "Available ingredient 1", exact: true }).fill("200 g");
   await recovery.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Available ingredient 0", exact: true })).toHaveValue("100 g");
@@ -137,9 +143,9 @@ test("Today is immediately actionable and saving reveals and focuses the new din
   await today.getByRole("button", { name: "Choose tonight’s dinner", exact: true }).click();
   await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
-  await page.getByRole("button", { name: "Add to Sunday: Tomato Rice", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Sun, Oct 25", exact: true })).toBeFocused();
-  const saved = await page.locator("#dinner-2026-10-25").boundingBox();
+  await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true }).getByRole("heading", { name: "Tomato Rice", exact: true })).toBeFocused();
+  const saved = await page.locator(".chosen-dinner").boundingBox();
   expect(saved!.y).toBeGreaterThanOrEqual(0); expect(saved!.y).toBeLessThan(page.viewportSize()!.height);
 });
 
@@ -325,10 +331,10 @@ test("choosing from Plan has a correct return path and a single featured dinner"
   await page.getByRole("button", { name: "← Back to plan", exact: true }).click();
   await expect(page.getByRole("article", { name: "Sun, Oct 25", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Choose dinner Sun, Oct 25", exact: true }).click();
-  await page.getByRole("button", { name: "Add to Sunday: Beef Stew", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Today’s dinner", exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "Choose for tonight: Beef Stew", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toHaveCount(1);
   await expect(page.getByRole("region", { name: "Next steps for dinner", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Cook this dinner", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cook dinner", exact: true })).toBeVisible();
 });
 
 test("bought ingredients reach pantry once through a reviewed preview, with safe undo", async ({ page, request }) => {
@@ -479,7 +485,7 @@ test("oversized dinner refinements preserve the draft and choices until correcte
   await expect(page.locator(".chef-refinements button")).toHaveText([`${corrected} ×`]);
   await expect(page.locator(".recipe-card").filter({ hasText: "Tomato Rice" })).toHaveCount(0);
   expect(await read(request)).toEqual(before);
-  await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+  await restartDiscovery(page);
   const longQuestion = "What can I cook with eggplant? " + "Please use the approved recipe collection. ".repeat(5);
   await input.fill(longQuestion);
   await expect(input).toHaveAttribute("aria-invalid", "false");
@@ -500,9 +506,9 @@ test("a second bought batch of the same shortage can reach pantry after the firs
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: /Next step/ }).click();
   await cooking.getByRole("button", { name: "Finish cooking", exact: true }).click();
-  const finish = page.getByRole("dialog", { name: "Complete dinner", exact: true });
+  const finish = page.getByRole("region", { name: "Complete dinner", exact: true });
   await finish.getByRole("checkbox").check();
-  await finish.getByRole("button", { name: "Confirm cooked", exact: true }).click();
+  await finish.getByRole("button", { name: "Mark dinner cooked", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.pantry[0]?.measure).toBe("0 g");
   const used = (await read(request)).state as KitchenState;
   expect(used.meals[firstDate].status).toBe("cooked");
@@ -534,11 +540,11 @@ test("a day chosen in Plan survives browsing, recipe discussion and starting a n
   await page.getByRole("button", { name: "Choose dinner Fri, Oct 30", exact: true }).click();
   await page.getByRole("button", { name: "Browse recipes", exact: true }).click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
-  await page.getByRole("button", { name: "Ask about this recipe", exact: true }).first().click();
+  await discussFirstRecipe(page);
   await expect(page.getByRole("textbox", { name: "Dinner day", exact: true })).toHaveValue(friday);
-  await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+  await restartDiscovery(page);
   await expect(page.getByRole("textbox", { name: "Dinner day", exact: true })).toHaveValue(friday);
   await expect(page.getByRole("status").filter({ hasText: "Choosing dinner for Friday, October 30." })).toBeVisible();
-  await page.getByRole("button", { name: "Add to Friday: Beef Stew", exact: true }).click();
+  await page.getByRole("button", { name: "Choose for Friday: Beef Stew", exact: true }).click();
   await expect.poll(async () => Object.keys((await read(request)).state.meals)).toEqual([friday]);
 });

@@ -22,9 +22,8 @@ test("fresh kitchen browses synthetic recipes and persists a selected dinner", a
   const card = page.locator(".recipe-card").filter({ has: page.getByRole("heading", { name: "Tomato Rice", exact: true }) });
   await expect(card).toBeVisible();
   await expect(card).toContainText("0 of 2 ingredients in pantry");
-  await card.getByRole("button", { name: /^Add to plan:/ }).click();
-  await page.getByRole("dialog", { name: "Choose dinner day" }).getByRole("button", { name: "Add dinner", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+  await card.getByRole("button", { name: /^Choose for tonight:/ }).click();
+  await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
   await expect.poll(async () => Object.values((await (await request.get("/api/kitchen")).json()).state?.meals ?? {}).length).toBe(1);
   await page.reload(); await navigate(page, "Plan");
   await expect(page.locator(".day-card.filled")).toHaveCount(1);

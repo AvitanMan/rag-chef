@@ -12,11 +12,10 @@ import {
   type ChefProvider,
   type ChefRequest,
   type ChefStructuredAnswer,
-  type RecipeCandidate,
 } from "@/app/lib/chef-schema";
 import { catalogMatchReason, constraintsForRecipeQuery, focusedRecipeId, recipeQueryIntent, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
 import type { Recipe } from "@/app/lib/recipe-types";
-import { normalizeConstraints, type RecipeEligibility } from "@/app/lib/recipe-constraints";
+import { normalizeConstraints } from "@/app/lib/recipe-constraints";
 import { parseMeasure, mealReadiness, allocateStockForMeals, resolvedMealIngredients } from "@/app/lib/quantities";
 import { getKitchenDocument } from "@/app/lib/kitchen-store";
 import { chefMealHash, chefMealPreview, chefRecipeHash, recipeEvidence } from "@/app/lib/chef-context";
@@ -24,6 +23,7 @@ import { selectRecipeEvidence, type EvidenceSelection } from "@/app/lib/chef-evi
 import { listStoredRecipeEmbeddings, listCatalogRecipes } from "@/app/lib/recipe-store";
 import { RECIPE_STEP_EMBEDDING_KIND, embedTextsWithOllama, buildRecipeQueryText } from "@/app/lib/recipe-embeddings";
 import { chefGroundingIssue, lacksRequestedTotalTime } from "@/app/lib/chef-grounding";
+import { queryRequestsRecipes } from "@/app/lib/recipe-query";
 import { addDateDays, localDate, weekStart } from "@/app/lib/kitchen-state";
 import type { RecipeSearchOptions } from "@/app/lib/recipe-types";
 import type { RecipeMetadataMap } from "@/app/lib/recipe-types";
@@ -61,18 +61,7 @@ Safety and grounding rules:
 
 Answer in the required JSON schema. Keep the answer concise, useful, and friendly.`;
 
-type RankedCandidate = {
-  candidate: RecipeCandidate;
-  recipe: Recipe;
-  score: number;
-  pantryScore: number;
-  semanticScore: number | null;
-  pantryMatch: string[];
-  missingIngredients: string[];
-  eligibility: RecipeEligibility;
-  matchReason: string;
-  readiness?: import("@/app/lib/quantities").MealReadiness;
-};
+type RankedCandidate = CatalogRankedRecipe & { matchReason: string };
 type RetrievalResult = {
   method: CatalogRetrievalMethod;
   ranked: RankedCandidate[];
@@ -107,6 +96,8 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     return error instanceof ChefValidationError ? jsonError(400, "invalid_request", error.message) : jsonError(400, "invalid_json", "Request body must be valid JSON.");
   }
+  // Discovery chips belong to dinner search, not help for an already chosen meal.
+  if (input.context?.recipeId || input.context?.purpose === "cooking") input.refinements = [];
   const model = resolveChatModel(input.provider, input.model);
   const embedModel = env("OLLAMA_EMBED_MODEL", DEFAULT_OLLAMA_EMBED_MODEL);
   let retrieval: RetrievalResult;
@@ -118,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
   if (dinner?.kitchenRevision !== undefined || dinner?.mealDate) {
     try {
       const document = await getKitchenDocument();
-      if (dinner.kitchenRevision !== undefined && document.revision !== dinner.kitchenRevision) return jsonError(409, "context_changed", "Your kitchen changed. Wait for it to finish saving, then ask again.");
+      if (dinner.kitchenRevision !== undefined && document.revision !== dinner.kitchenRevision) return jsonError(409, "kitchen_changed", "Your kitchen changed in another tab. Refresh the saved kitchen and retry.");
       savedMeal = dinner.mealDate ? document.state?.meals[dinner.mealDate] : undefined;
       if (dinner.mealDate && (!savedMeal || savedMeal.id !== dinner.mealId || savedMeal.recipeId !== dinner.recipeId)) return jsonError(409, "context_changed", "This saved dinner changed. Open the current dinner and ask again.");
       if (savedMeal && dinner.mealHash && await chefMealHash(savedMeal) !== dinner.mealHash) return jsonError(409, "context_changed", "This dinner's portions or ingredients changed. Open the current dinner and ask again.");
@@ -145,7 +136,7 @@ export async function POST(request: Request): Promise<Response> {
       return amount === null || amount.quantity > 0;
     }).map((item) => item.name);
     const found = await searchRecipeCatalog({ query: effectiveQuery, pantry: pantryNames, constraints: (input.refinements ?? []).reduce((constraints, refinement) => constraintsForRecipeQuery(refinement, constraints), normalizeConstraints(input.profile)), limit: topK(), signal: request.signal, ...(dinner?.recipeId ? { recipeId: dinner.recipeId } : {}), ...(stockContext ? { stockContext } : {}) }, embedModel);
-    retrieval = { method: found.method, ranked: found.ranked.map((item) => asChefCandidate(item, catalogMatchReason(item, input.query, found.metadataByRecipeId[item.recipe.id]))), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount, outcome: found.outcome };
+    retrieval = { method: found.method, ranked: found.ranked.map((item) => ({ ...item, matchReason: catalogMatchReason(item, input.query, found.metadataByRecipeId[item.recipe.id]) })), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount, outcome: found.outcome };
     if (found.warning) preWarnings.push(found.warning);
   } catch {
     return jsonError(503, "catalog_unavailable", "The approved recipe catalog is unavailable. Retry when it is running; your kitchen is unchanged.");
@@ -170,7 +161,7 @@ export async function POST(request: Request): Promise<Response> {
     return json({ answer: "Which recipe do you mean? Select a recipe below so I can use its original ingredients and directions.", answerStatus: "needs_clarification", provider: input.provider, model, resolvedContext: dinner, recipes: ranked.map((item) => item.recipe), recommendations: ranked.slice(0, 3).map((item) => ({ recipeId: item.recipe.id, reason: item.matchReason, pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients })), sourceFacts: [], chefChanges: [], citations: ranked.slice(0, 3).map(item => ({ recipeId: item.recipe.id, title: item.recipe.title, sourceName: item.recipe.source.name, sourceUrl: item.recipe.sourceUrl })), warnings: preWarnings, generation: "catalog_fallback", outcome: retrieval.outcome, metadataByRecipeId: retrieval.metadataByRecipeId, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(performance.now() - started), generationMs: 0, totalMs: Math.round(performance.now() - started) } }, 200);
   }
   if (ranked.some((item) => item.eligibility.dietUnknowns.length)) preWarnings.push("Diet suitability is not verified for some suggestions. Known ingredient conflicts have been excluded.");
-  const requestingRecipes = /\b(?:recommend\w*|suggest\w*|find|choose)\b/i.test(input.query);
+  const requestingRecipes = !dinner?.recipeId && queryRequestsRecipes(input.query);
   const question = Boolean(dinner?.recipeId || !requestingRecipes && /[?]|\b(?:how|why|what|when|which|can|does|explain)\b/i.test(input.query));
   if (question && focus && !dinner?.recipeId) {
     dinner = { ...dinner, recipeId: focus };
@@ -275,7 +266,7 @@ export async function POST(request: Request): Promise<Response> {
         const checked = await verifyChefAnswer(generated, [...selectedEvidence].flatMap(([recipeId, evidence]) => evidence.map((item) => ({ ...item, recipeId }))), {
           baseUrl: ollamaBaseUrl(), model: input.provider === "ollama" ? model : env("OLLAMA_CHAT_MODEL", DEFAULT_OLLAMA_CHAT_MODEL),
           completeByRecipe: Object.fromEntries([...selections].map(([id, selection]) => [id, selection.complete])),
-          question: input.query, requireSupport: factualQuestion, metadata: retrieval.metadataByRecipeId, planningRecipeId: previewMeal?.recipeId,
+          requireSupport: factualQuestion, metadata: retrieval.metadataByRecipeId, planningRecipeId: previewMeal?.recipeId,
           recordsByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { title: item.recipe.title, servings: item.recipe.servings ?? null }])),
           sourceFocus: dinner?.recipeId ? { recipeId: dinner.recipeId, stepEvidenceId: dinner.stepEvidenceId, quantityBasis: previewMeal ? "final_dinner" : "original_recipe" } : undefined,
           kitchenByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients, requirements: { diet: input.profile.diet, equipment: input.profile.equipment }, eligibility: { eligible: item.eligibility.eligible, dietUnknowns: item.eligibility.dietUnknowns, dietConflicts: item.eligibility.dietConflicts, equipmentMissing: item.eligibility.equipmentMissing }, ...(item.readiness ? { readiness: item.readiness } : {}) }])),
@@ -342,14 +333,6 @@ export async function POST(request: Request): Promise<Response> {
     evidenceRetrieval: Object.fromEntries([...selections].map(([id, selection]) => [id, { method: selection.method, complete: selection.complete, coreStepIds: selection.coreStepIds, indexedSteps: selection.indexedSteps, totalSteps: selection.totalSteps }])),
     ...(answerValidation ? { answerValidation } : {}),
     recipes: ranked.map((item) => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId, outcome: retrieval.outcome, generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs, verificationMs, totalMs: Math.round(finished - started) } } satisfies ChefApiResponse, 200);
-}
-
-export function adaptationRequested(query: string, hasRecipeFocus = false): boolean {
-  return recipeQueryIntent(query, hasRecipeFocus).mode === "adaptation";
-}
-
-function asChefCandidate(item: CatalogRankedRecipe, matchReason: string): RankedCandidate {
-  return { ...item, matchReason, candidate: { ...item.recipe, allergens: [], communityTips: [] } };
 }
 
 async function generateWithOllama(
@@ -510,9 +493,9 @@ function buildUserPrompt(input: ChefRequest, ranked: RankedCandidate[], allowCha
     requestIntent: recipeQueryIntent(input.query, Boolean(input.context?.recipeId || focusedRecipeId(input.query, ranked.map((item) => item.recipe)))),
     retrievedRecipes: ranked.map((item, index) => ({
       recipeId: `R${index + 1}`,
-      title: item.candidate.title,
-      servings: item.candidate.servings ?? null,
-      sourceName: item.candidate.source.name,
+      title: item.recipe.title,
+      servings: item.recipe.servings ?? null,
+      sourceName: item.recipe.source.name,
       pantryMatch: item.pantryMatch,
       missingIngredients: item.missingIngredients,
       readiness: item.readiness,
@@ -530,7 +513,7 @@ function sanitizeGeneratedAnswer(
   ranked: RankedCandidate[],
   preWarnings: string[],
 ): ChefStructuredAnswer {
-  const allowed = new Map(ranked.map((item) => [item.candidate.id, item]));
+  const allowed = new Map(ranked.map((item) => [item.recipe.id, item]));
   let invalidRecipeReference = false;
   const seenRecommendationIds = new Set<string>();
 
@@ -584,11 +567,11 @@ function sanitizeGeneratedAnswer(
   const citations: ChefCitation[] = citedRecipeIds
     .map((recipeId) => allowed.get(recipeId))
     .filter((item): item is RankedCandidate => Boolean(item))
-    .map(({ candidate }) => ({
-      recipeId: candidate.id,
-      title: candidate.title,
-      sourceName: candidate.source.name || "Recipe source",
-      sourceUrl: candidate.sourceUrl || candidate.source.url,
+    .map(({ recipe }) => ({
+      recipeId: recipe.id,
+      title: recipe.title,
+      sourceName: recipe.source.name || "Recipe source",
+      sourceUrl: recipe.sourceUrl || recipe.source.url,
     }));
 
   const warnings = unique([

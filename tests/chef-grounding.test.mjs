@@ -71,6 +71,13 @@ test("provider status cannot exempt invented facts from checks", () => {
   assert.equal(check("There are 650 calories.", { answerStatus: "unsupported" }), "unsupported_detail");
   assert.equal(check("Nutrition is not provided by the supplied source.", { answerStatus: "unsupported", sourceFacts: [] }), null);
 });
+
+test("generated warnings receive the same numeric source checks as the answer", () => {
+  for (const warning of ["Bake for 99 minutes.", "Bake at 250°C.", "It provides 99 g protein per serving.", "Total time is 30 minutes."]) {
+    assert.ok(check("Read the original source.", { warnings: [warning] }), warning);
+  }
+  assert.equal(check("Read the original source.", { warnings: ["Bake at 180°C for 25–30 minutes."] }), null);
+});
 test("recommendation reasons are checked against their own supplied source", () => {
   assert.equal(check("Here is a recipe.", { recommendations: [{ recipeId: "bake", reason: "Bakes for 99 minutes." }] }), "unsupported_detail");
   assert.equal(check("Here is a recipe.", { recommendations: [{ recipeId: "other", reason: "Bake for 30 minutes." }] }), "unsupported_detail");

@@ -50,12 +50,6 @@ export interface CatalogRecipeUpsertResult {
   contentChanged: boolean;
 }
 
-export interface RecipeMetadataReview {
-  recipeId: string;
-  reviewed: true;
-  metadata: RecipeMetadata;
-}
-
 export interface CatalogSyncResult {
   recordsSeen: number;
   recordsUpserted: number;

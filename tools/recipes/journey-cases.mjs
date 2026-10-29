@@ -12,6 +12,11 @@ const bake = { first: "bake", only: "bake", minRecommendations: 1, readiness: { 
 const oven = { only: "bake", factual: true, evidence: ["S8"], answerPatterns: ["(?:200\\s*°?\\s*(?:c\\b|celsius)|400\\s*°?\\s*(?:f\\b|fahrenheit))", "(?:30|thirty)\\s*(?:minutes?|mins?)"] };
 const excluded = { outcome: "constraints_unsatisfied", status: "unsupported", emptyRecipes: true, generation: "catalog_fallback" };
 export const journeyCases = [
+  { id: "natural-discovery", title: "Ask ordinary dinner questions, choose an ingredient, then discuss the source", pantry, steps: [
+    { id: "default-dinner", query: "What can I cook with what I have?", expect: { minRecommendations: 1, maxRecommendations: 3 } },
+    { id: "ingredient-question", query: "What can I cook with lentils?", clearHistory: true, expect: { first: "soup", only: "soup", minRecommendations: 1, maxRecommendations: 1 } },
+    { id: "source-follow-up", query: "How long should I simmer it, and what should the lentils feel like?", previous: true, expect: { only: "soup", factual: true, evidence: ["S3"], answerPatterns: ["20\\s*(?:–|—|-|to)\\s*30\\s*(?:minutes?|mins?)", "soft|tender"] } },
+  ] },
   { id: "pantry-plan-cook", title: "Use ordinary pantry names, choose dinner, change portions, and ask during cooking", pantry, steps: [
     { id: "find-dinner", query: "Recommend Zucchini Pasta Bake for tonight.", expect: bake },
     { id: "follow-up", query: "How hot should the oven be, and how long do I bake it?", previous: true, expect: oven },
@@ -48,7 +53,7 @@ export const journeyCases = [
   { id: "stale-context", title: "Reject stale kitchen and dinner context, then recover with the current dinner", pantry, steps: [
     { id: "save-dinner", action: "plan", recipe: "bake", servings: 4, checkpoint: true },
     { id: "edit-portions", action: "meal", servings: 2 },
-    { id: "old-kitchen", query: "How hot should the oven be?", savedMeal: true, stale: "revision", expect: { httpStatus: 409, errorCode: "context_changed" } },
+    { id: "old-kitchen", query: "How hot should the oven be?", savedMeal: true, stale: "revision", expect: { httpStatus: 409, errorCode: "kitchen_changed" } },
     { id: "old-dinner", query: "How hot should the oven be?", savedMeal: true, stale: "meal", expect: { httpStatus: 409, errorCode: "context_changed" } },
     { id: "fresh-retry", query: "How hot should the oven be, and how long do I bake it?", savedMeal: true, expect: { ...oven, servings: 2 } },
   ] },
