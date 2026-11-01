@@ -13,6 +13,7 @@ for (const name of ["shopping-purchases", "quantities", "kitchen-types", "kitche
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 const { shoppingForWeek, unappliedBoughtItems, purchasePreviewProblem, applyBoughtItems, purchaseUndoProblem, undoPurchase, setShoppingItemBought } = await import(pathToFileURL(join(directory, "shopping-purchases.mjs")));
+const { DEFAULT_COOKING_PROFILE } = await import(pathToFileURL(join(directory, "kitchen-types.mjs")));
 const { completeMeal } = await import(pathToFileURL(join(directory, "quantities.mjs")));
 const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")));
 const { validateKitchenState } = await import(pathToFileURL(join(directory, "kitchen-validation.mjs")));
@@ -158,7 +159,7 @@ test("legacy receipts and cycle-aware receipts round-trip without weakening cycl
   const added = applyBoughtItems(rechecked, week, today, [{ ...drafts[0], cycleId: "new-cycle", pantryId: "new-batch" }], "new-receipt", at);
   assert.equal(added.shoppingPurchases.length, 2);
   validateKitchenState(added);
-  assert.deepEqual(parseKitchenBackup(serializeKitchenBackup(added, at)).state, added);
+  assert.deepEqual(parseKitchenBackup(serializeKitchenBackup(added, at)).state, { ...added, cookingProfile: DEFAULT_COOKING_PROFILE });
   assert.throws(() => validateKitchenState({ ...added, shoppingCycles: { key: "" } }));
   assert.throws(() => validateKitchenState({ ...added, shoppingCycles: { key: 12 } }));
   const duplicate = { ...added.shoppingPurchases[1], id: "duplicate", items: [{ ...added.shoppingPurchases[1].items[0], pantry: { id: "another-stock", name: "rice", measure: "100 g" } }] };

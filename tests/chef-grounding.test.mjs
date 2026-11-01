@@ -11,12 +11,21 @@ after(() => rm(directory, { recursive: true, force: true }));
 const source = await readFile(new URL("../app/lib/chef-grounding.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 await writeFile(join(directory, "chef-grounding.mjs"), compiled);
-const { chefGroundingIssue, lacksRequestedTotalTime } = await import(pathToFileURL(join(directory, "chef-grounding.mjs")).href);
+const { chefGroundingIssue, lacksRequestedTotalTime, lacksRequestedNutrition } = await import(pathToFileURL(join(directory, "chef-grounding.mjs")).href);
 const step = "Bake at 180°C for 25–30 minutes.";
 const facts = [{ recipeId: "bake", evidenceId: "S1", fact: step }];
 const sources = [{ recipeId: "bake", evidence: [{ evidenceId: "I1", text: "200 g rice" }, { evidenceId: "S1", text: step }] }];
 const answer = (text, extra = {}) => ({ answer: text, sourceFacts: facts, recommendations: [], chefChanges: [], warnings: [], ...extra });
 const check = (text, extra = {}, metadata = {}, options = {}) => chefGroundingIssue(answer(text, extra), sources, metadata, { cookingStep: false, ...options });
+
+test("missing nutrition is explicit while source-provided nutrition stays answerable", () => {
+  const recipe = { ingredients: [{ measure: "200 g", name: "rice" }], instructions: ["Boil for 10 minutes."], sourceNotes: [] };
+  assert.equal(lacksRequestedNutrition("How many calories per serving?", recipe), true);
+  assert.equal(lacksRequestedNutrition("How much protein per serving?", recipe), true);
+  assert.equal(lacksRequestedNutrition("How long do I boil it?", recipe), false);
+  assert.equal(lacksRequestedNutrition("How many calories?", { ...recipe, sourceNotes: ["Energy: 250 calories per serving."] }), false);
+  assert.equal(lacksRequestedNutrition("How much protein?", { ...recipe, sourceNotes: ["Protein: 12 g per serving."] }), false);
+});
 
 test("a real citation cannot support an invented cooking time or temperature", () => {
   for (const text of ["Bake for 99 minutes.", "A 99-minute bake.", "Bake at 250°C.", "Bake for two hours.", "Bake for one hundred twenty minutes."]) assert.equal(check(text), "unsupported_detail", text);

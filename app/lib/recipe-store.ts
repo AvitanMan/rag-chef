@@ -89,6 +89,7 @@ type RecipeRow = {
   cuisine: string;
   tags_json: string;
   search_text: string;
+  source_notes_json: string;
   normalized_content_sha256: string;
   version: number;
   source_name: string;
@@ -301,8 +302,8 @@ export async function upsertCatalogRecipe(input: {
           id, source_id, source_record_id, source_url, sync_run_id, title,
           image_url, category, cuisine, language, tags_json, search_text,
           normalized_content_sha256, version, status, created_at, updated_at,
-          last_seen_at, servings
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, 1, 'active', ?, ?, ?, ?)
+          last_seen_at, servings, source_notes_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'en', ?, ?, ?, 1, 'active', ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           source_url = excluded.source_url,
           sync_run_id = excluded.sync_run_id,
@@ -311,6 +312,7 @@ export async function upsertCatalogRecipe(input: {
           category = excluded.category,
           cuisine = excluded.cuisine,
           servings = excluded.servings,
+          source_notes_json = excluded.source_notes_json,
           tags_json = excluded.tags_json,
           search_text = excluded.search_text,
           version = CASE
@@ -340,6 +342,7 @@ export async function upsertCatalogRecipe(input: {
         now,
         now,
         recipe.servings ?? null,
+        JSON.stringify(recipe.sourceNotes ?? []),
       ),
     db.prepare("DELETE FROM recipe_ingredients WHERE recipe_id = ?").bind(catalogId),
     db.prepare("DELETE FROM recipe_instruction_sections WHERE recipe_id = ?").bind(catalogId),
@@ -415,7 +418,7 @@ export async function listCatalogRecipes(
     db
       .prepare(
         `SELECT r.id, r.source_id, r.source_record_id, r.source_url, r.title, r.servings,
-          r.image_url, r.category, r.cuisine, r.tags_json, r.search_text,
+          r.image_url, r.category, r.cuisine, r.tags_json, r.search_text, r.source_notes_json,
           r.normalized_content_sha256, r.version, s.name AS source_name,
           s.url AS source_homepage, s.license_id, s.license_url, s.attribution_text
          FROM recipes r
@@ -468,6 +471,7 @@ export async function listCatalogRecipes(
         ...(row.attribution_text ? { attributionText: row.attribution_text } : {}),
       },
       ...(row.servings !== null ? { servings: row.servings } : {}),
+      ...(parseStringArray(row.source_notes_json).length ? { sourceNotes: parseStringArray(row.source_notes_json) } : {}),
       sourceUrl: row.source_url,
       ingredients: ingredients
         .filter((item) => item.recipe_id === row.id)

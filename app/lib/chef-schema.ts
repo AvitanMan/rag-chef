@@ -135,7 +135,8 @@ export type ChefPlanningFact = {
 };
 
 export type ChefApiResponse = ChefStructuredAnswer & {
-  answerKind?: "planning_quantities";
+  cookingTechniques?: import("./chef-context").CookingTechniqueGuide[];
+  answerKind?: "planning_quantities" | "cooking_technique";
   planningFacts?: ChefPlanningFact[];
   verification?: import("./chef-verification").AnswerVerification;
   evidenceRetrieval?: Record<string, Omit<import("./chef-evidence").EvidenceSelection, "items">>;

@@ -16,7 +16,7 @@ async function ask(page: Page, query: string) {
   return submitChef(page, query);
 }
 async function submitChef(page: Page, query: string) {
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill(query);
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill(query);
   const result = page.waitForResponse((response) => response.url().endsWith("/api/chef") && response.request().method() === "POST");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   const response = await result;
@@ -116,7 +116,8 @@ test.describe("instant dinner picks", () => {
         await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
         await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
       }
-      await expect(page.locator(".empty-state")).toContainText(empty ? "Your recipe collection is empty." : "Your saved exclusions hide the available recipes.");
+      if (empty) await expect(page.getByRole("button", { name: "Load starter recipes", exact: true })).toBeVisible();
+      else await expect(page.locator(".empty-state")).toContainText("Your saved exclusions hide the available recipes.");
       await expect(page.locator(".recipe-card")).toHaveCount(0);
       await expectNoModelCalls();
     });
@@ -460,7 +461,7 @@ test.describe("planning directly from Chef", () => {
   test("canceling a day selection cancels its pending Chef request and clears the target day", async ({ page, request }) => {
     await control({ mode: "hold" });
     await openSelection(page);
-    await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+    await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
     await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
     await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
     const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));
@@ -504,7 +505,7 @@ test("a pending Chef request can be canceled without displaying its late answer"
   await page.goto("/");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
   const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));
@@ -520,7 +521,7 @@ test("a new pantry context and request replace an older pending Chef result", as
   await page.goto("/");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
   await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
@@ -528,7 +529,7 @@ test("a new pantry context and request replace an older pending Chef result", as
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Garlic Beans");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Garlic Beans");
   const response = page.waitForResponse((response) => response.url().endsWith("/api/chef") && response.request().postDataJSON()?.query === "Garlic Beans");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   await control({ release: true });
@@ -576,7 +577,7 @@ test("changing the pantry cancels a pending Chef request even without starting a
   await page.goto("/");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
   const failed = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));

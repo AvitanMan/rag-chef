@@ -1,5 +1,20 @@
 import type { Recipe, RecipeIngredient } from "./recipe-types";
 
+export interface CookingProfile {
+  version: 1;
+  allergies: string[];
+  diet: string;
+  dislikes: string[];
+  skillLevel: string;
+  budget: string;
+  equipment: string[];
+}
+
+export const DEFAULT_COOKING_PROFILE: CookingProfile = {
+  version: 1, allergies: [], diet: "No restriction", dislikes: [],
+  skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"],
+};
+
 export interface PantryStock {
   id: string;
   name: string;
@@ -45,6 +60,10 @@ export interface KitchenState {
   shoppingCycles?: Record<string, string>;
   /** Reviewed purchases, retained independently of changing shopping totals. */
   shoppingPurchases?: ShoppingPurchase[];
+  /** Recipe identities only; current catalog permissions and exclusions still apply. */
+  favoriteRecipeIds?: string[];
+  /** Optional for older kitchens; new edits and backups preserve the shared profile. */
+  cookingProfile?: CookingProfile;
   migratedLegacy: boolean;
 }
 

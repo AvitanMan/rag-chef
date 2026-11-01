@@ -96,11 +96,18 @@ def extract_recipe(body: str | bytes, source_url: str) -> dict:
         title = parse.unquote(parse.urlsplit(source_url).path.split("Cookbook:", 1)[1]).replace("_", " ")
     title = re.sub(r"^Cookbook:\s*", "", title)
     ingredients, instructions, warnings = [], [], []
+    source_notes = []
+    in_intro = True
     mode = None
     for node in content.iter():
         if node.tag == "h2":
+            in_intro = False
             heading = text(node).lower().rstrip(":")
             mode = "ingredients" if heading == "ingredients" else "directions" if heading in ("procedure", "procedures", "directions", "instructions", "method", "preparation") else None
+        if in_intro and node.tag == "p":
+            statement = text(node)
+            if len(statement) <= 2000 and re.search(r"\b(?:recipe|dish|dinner)\b", statement, re.I) and re.search(r"\b(?:within|takes?|ready in)\b.*\b(?:minutes?|hours?)\b", statement, re.I):
+                source_notes.append(statement)
         if node.tag in ("h3", "h4") and mode == "directions" and re.search(r"\b(?:method\s*\d|alternativ|variation)", text(node), re.I):
             raise ValueError("Alternative cooking methods need manual separation; approval is blocked for this version.")
         if node.tag != "li" or any(parent.tag == "li" for parent in node.iterancestors()):
@@ -124,6 +131,8 @@ def extract_recipe(body: str | bytes, source_url: str) -> dict:
         if len(cells) < 2:
             continue
         label, amount = text(cells[0]).lower().rstrip(":"), text(cells[1])
+        if label in ("time", "total time") and amount and len(amount) < 200:
+            source_notes.append(f"{text(cells[0]).rstrip(':')}: {amount}")
         if label in ("servings", "serves", "yield"):
             match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(?:servings?|people|persons?)?", amount, re.I)
             if match and (label != "yield" or re.search("servings?|people|persons?", amount, re.I)):
@@ -132,12 +141,13 @@ def extract_recipe(body: str | bytes, source_url: str) -> dict:
                     servings = int(number) if number.is_integer() else number
             if servings is None:
                 warnings.append(f"Unclear source yield, not assumed: {amount}")
-            break
     if servings is None:
         warnings.append("No explicit servings found; planning will use recipe batches.")
     draft = {"sourceUrl": source_url, "title": title, "ingredients": ingredients, "instructions": instructions}
     if servings is not None:
         draft["servings"] = servings
+    if source_notes:
+        draft["sourceNotes"] = list(dict.fromkeys(source_notes))[:20]
     # Keep drafts within the same bounds as persisted kitchen snapshots.
     if len(title) > 300 or len(ingredients) > 200 or len(instructions) > 300 or any(len(i["name"]) > 200 for i in ingredients) or any(len(s) > 4000 for s in instructions):
         raise ValueError("Recipe exceeds supported size; approval is blocked.")
@@ -150,6 +160,8 @@ def review_hash(draft: dict) -> str:
     representation["ingredients"] = [{"name": i["name"], "measure": i["measure"]} for i in draft["ingredients"]]
     servings = draft.get("servings")
     representation["servings"] = int(servings) if isinstance(servings, float) and servings.is_integer() else servings
+    if "sourceNotes" in draft:
+        representation["sourceNotes"] = draft["sourceNotes"]
     return hashlib.sha256(json.dumps(representation, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -290,6 +302,10 @@ def review_entries(report: dict, path: Path, app: str, embeddings_only=False, as
                 print("Ingredients:")
                 for item in draft["ingredients"]:
                     print("  -", clean(item["measure"] + " " + item["name"]))
+                if draft.get("sourceNotes"):
+                    print("Original source notes:")
+                    for note in draft["sourceNotes"]:
+                        print("  -", note)
                 print("Directions:")
                 for number, step in enumerate(draft["instructions"], 1):
                     print(f"  {number}. {step}")

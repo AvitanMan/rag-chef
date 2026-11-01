@@ -9,6 +9,9 @@ import { dateLabel } from "./WeeklyKitchenViews";
 export function UseSoonSummary({ items, pastCount, select, review }: {
   items: PantryStock[]; pastCount: number; select: (id: string) => void; review: (filter: PantryFilter, id?: string) => void;
 }) {
+  if (!items.length && !pastCount) return <section className="use-soon-empty" aria-label="Use soon">
+    <details><summary>Use soon · No dated food due soon</summary><p>No food with an entered date is due in the next three days.</p><button className="text-button" onClick={() => review("soon")}>Review pantry</button></details>
+  </section>;
   return <section className="panel use-soon-panel" aria-label="Use soon">
     <div className="section-heading"><h2>Use soon</h2><button className="text-button" onClick={() => review("soon")}>Review pantry</button></div>
     <p>Pick food dated within the next three days to find dinner ideas.</p>

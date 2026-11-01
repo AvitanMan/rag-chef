@@ -9,7 +9,7 @@ import { startModelStub } from "./model-stub.mjs";
 import { parseJourneyOptions } from "../recipes/journey-grading.mjs";
 
 const mode = process.argv[2];
-if (!["integration", "e2e", "chef", "journeys"].includes(mode)) throw new Error("Choose integration, e2e, chef, or journeys.");
+if (!["integration", "e2e", "setup", "smoke", "chef", "journeys"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, chef, or journeys.");
 const journeyOptions = mode === "journeys" ? parseJourneyOptions(process.argv.slice(3)) : undefined;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "rag-chef-test-"));
@@ -42,6 +42,7 @@ const env = {
   WRANGLER_LOG_PATH: join(directory, "wrangler.log"),
   MINIFLARE_REGISTRY_PATH: join(directory, "registry"),
   RAG_CHEF_TEST_ARTIFACTS: artifacts,
+  ...(mode === "setup" ? { RAG_CHEF_SETUP_TEST: "1" } : {}),
 };
 
 async function cleanup() {
@@ -98,7 +99,7 @@ try {
   const directories = ["app", "build", "db", "drizzle", "worker", "public", "tests", "tools", ".openai"];
   const names = new Set((await readdir(root)));
   for (const name of directories) if (names.has(name)) await cp(join(root, name), join(project, name), { recursive: true, filter: (source) => !source.includes("__pycache__") });
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts"]) {
+  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts", "playwright.smoke.config.ts"]) {
     if (names.has(name)) await cp(join(root, name), join(project, name));
   }
   await symlink(join(root, "node_modules"), join(project, "node_modules"), process.platform === "win32" ? "junction" : "dir");
@@ -118,7 +119,7 @@ try {
   } else {
     const wrangler = "node_modules/wrangler/bin/wrangler.js";
     await launch("migrations", [wrangler, "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state]);
-    if (journeyOptions?.catalog !== "local") {
+    if (mode !== "setup" && journeyOptions?.catalog !== "local") {
       const seedFile = join(directory, "fixtures.sql");
       await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: mode === "journeys" }));
       await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
@@ -141,7 +142,7 @@ try {
     } else {
       console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
       if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...process.argv.slice(3)]);
+      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(mode === "smoke" ? ["--config", "playwright.smoke.config.ts"] : []), ...process.argv.slice(3)]);
       console.log("Isolated browser checks passed.");
     }
   }

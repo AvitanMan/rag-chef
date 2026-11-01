@@ -12,6 +12,7 @@ import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
 import { setShoppingItemBought } from "../lib/shopping-purchases";
+import { ShoppingExport } from "./ShoppingExport";
 
 type UpdateKitchen = (change: (state: KitchenState) => KitchenState) => void;
 
@@ -157,6 +158,7 @@ export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, r
   return <div className="shopping-layout focused-shopping">
     <section className="panel shopping-panel">
       <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
+      <ShoppingExport items={toBuy} week={week} />
       {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review amounts before updating stock.</small></div>}
       {purchaseHistory}
       {reviewCount > 0 && <p className="quantity-note" role="status">{reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review. You can still use this list.</p>}

@@ -1,8 +1,16 @@
 /* The production app shell stays available when the local server is offline. */
-const CACHE = "rag-chef-shell-v2";
+const CACHE = "rag-chef-shell-v4";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.add("/")).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    const response = await fetch("/kitchen-shell.json", { cache: "no-store" });
+    if (!response.ok) throw new Error("Offline shell manifest is unavailable.");
+    const manifest = await response.json();
+    const urls = manifest.urls.filter(value => typeof value === "string" && value.startsWith("/assets/") && !value.startsWith("//"));
+    await cache.addAll(["/", ...urls]);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
@@ -33,7 +41,11 @@ self.addEventListener("fetch", (event) => {
       if (response.ok) await cache.put(request, response.clone());
       return response;
     } catch {
-      const cached = await cache.match(request) ?? (request.mode === "navigate" ? await cache.match("/") : undefined);
+      // Vite's same-origin bundles can carry Vary: Origin. WebKit includes an
+      // Origin header on module loads that cache.add() did not send. The bundle
+      // URL identifies the static bytes, so reuse it across that header change.
+      const staticBundle = url.pathname.startsWith("/assets/") && ["script", "style", "font"].includes(request.destination);
+      const cached = await cache.match(request, { ignoreVary: staticBundle }) ?? (request.mode === "navigate" ? await cache.match("/") : undefined);
       return cached ?? new Response("Open RAG Chef once while the local server is running to save its offline shell.", { status: 503 });
     }
   })());

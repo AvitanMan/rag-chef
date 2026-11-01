@@ -24,6 +24,13 @@ export function sites(): Plugin {
     configResolved(config) {
       root = config.root;
     },
+    generateBundle(_options, bundle) {
+      if (this.environment.name !== "client") return;
+      // Resource Timing is not consistently exposed by WebKit. Publish the
+      // complete built shell so offline startup does not depend on that API.
+      const urls = Object.keys(bundle).filter(name => /^assets\/.*\.(?:js|css|woff2?)$/.test(name)).sort().map(name => `/${name}`);
+      this.emitFile({ type: "asset", fileName: "kitchen-shell.json", source: JSON.stringify({ urls }) });
+    },
     async closeBundle() {
       const outputDirectory = resolve(root, "dist", ".openai");
       const hostingConfig = resolve(root, ".openai", "hosting.json");

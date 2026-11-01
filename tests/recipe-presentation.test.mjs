@@ -16,12 +16,12 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon"].map((name) => ["components", name, "tsx"]),
-  ...["retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
+  ...["CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
+  ...["retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
-    .replace(/"(react(?:\/jsx-runtime)?)"/g, (_, module) => JSON.stringify(pathToFileURL(require.resolve(module)).href))
+    .replace(/"(react(?:-dom|\/jsx-runtime)?)"/g, (_, module) => JSON.stringify(pathToFileURL(require.resolve(module)).href))
     .replace(/"\.{1,2}\/(?:lib\/)?([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(directory, `${name}.mjs`), compiled);
 }

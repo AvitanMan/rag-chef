@@ -83,6 +83,9 @@ test("backup restore previews changes and rejects invalid files without changing
   const preview = page.getByRole("region", { name: "Backup preview" });
   await expect(preview).toContainText("1 pantry rows");
   expect(await readKitchen(request)).toEqual(before);
+  await expect(preview).toContainText("This older backup has no cooking preferences");
+  await expect(preview.getByRole("button", { name: "Replace kitchen with backup" })).toBeDisabled();
+  await preview.getByRole("checkbox", { name: "I reviewed the cooking preferences, including allergies and equipment." }).check();
   await preview.getByRole("button", { name: "Replace kitchen with backup" }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry).toEqual(restored.pantry);
   const downloadPromise = page.waitForEvent("download");
@@ -141,20 +144,41 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
 });
 
 test("two tabs expose a revision conflict and keep server and browser versions until a choice", async ({ page, context, request }) => {
-  await page.goto("/"); await navigate(page, "Plan");
+  await page.goto("/"); await navigate(page, "Pantry");
   const other = await context.newPage();
-  await other.goto("/");
-  await navigate(page, "Pantry");
-  await navigate(other, "Pantry");
-  await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
-  await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
-  await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
-  await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
-  await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
-  await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();
-  expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
-  expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
-  await other.getByRole("button", { name: "Load saved version", exact: true }).click();
-  await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
-  await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
+  let releaseWrite = () => {};
+  const heldWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+  let writeStarted = () => {};
+  const writing = new Promise<void>(resolve => { writeStarted = resolve; });
+  let otherRevision: number | undefined;
+  try {
+    await other.goto("/"); await navigate(other, "Pantry");
+    await expect(other.locator(".save-indicator")).toHaveText("Saved");
+    // Hold a genuine unsaved edit while the first tab saves from the same revision.
+    // Clean tabs now refresh automatically, so sequential edits should not conflict.
+    await other.route("**/api/kitchen", async route => {
+      if (route.request().method() === "PUT") {
+        otherRevision = route.request().postDataJSON().revision;
+        writeStarted(); await heldWrite;
+      }
+      await route.continue();
+    });
+    await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
+    await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    await writing;
+    const pageWrite = page.waitForRequest(request => request.url().endsWith("/api/kitchen") && request.method() === "PUT");
+    await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
+    await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    expect((await pageWrite).postDataJSON().revision).toBe(otherRevision);
+    await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+    const conflictResponse = other.waitForResponse(response => response.url().endsWith("/api/kitchen") && response.request().method() === "PUT");
+    releaseWrite();
+    expect((await conflictResponse).status()).toBe(409);
+    await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();
+    expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+    expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
+    await other.getByRole("button", { name: "Load saved version", exact: true }).click();
+    await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
+    await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
+  } finally { releaseWrite(); await other.close(); }
 });

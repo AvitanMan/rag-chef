@@ -19,7 +19,9 @@ export function fixtureSql({ grounding = false, journeys = false } = {}) {
     `INSERT INTO recipe_sources (id,name,url,license_id,license_url,attribution_text,permission_basis,approval_status,approved_by,allow_display,allow_cache,allow_index_text,allow_embed,allow_derive,created_at,updated_at) VALUES ('test-fixtures','Original test fixtures','https://example.invalid/fixtures','CC0-1.0','https://creativecommons.org/publicdomain/zero/1.0/','Original synthetic recipes created for automated tests.','Original test content','approved','test-runner',1,1,1,1,1,1,1);`,
   ];
   const groundingRecipes = grounding ? [{ id: "fixture-oven-dinner", title: "Source Oven Dinner", ingredients: [{ name: "rice", measure: "200 g" }, { name: "vegetable stock", measure: "400 ml" }], tags: ["vegan"], servings: 2,
-    instructions: Array.from({ length: 30 }, (_, index) => index === 19 ? "Preheat the oven to 180°C. Bake for 25–30 minutes until golden." : `Source direction ${index + 1}: continue preparing the ingredients.`) }] : [];
+    instructions: Array.from({ length: 30 }, (_, index) => index === 19 ? "Preheat the oven to 180°C. Bake for 25–30 minutes until golden." : `Source direction ${index + 1}: continue preparing the ingredients.`) },
+    { id: "fixture-step-soup", title: "Step Help Soup", ingredients: [{ name: "carrot", measure: "1" }, { name: "onion", measure: "1" }, { name: "vegetable stock", measure: "400 ml" }, { name: "bread", measure: "1 slice" }], tags: ["vegan"], servings: 2,
+      instructions: ["Boil the carrot and onion in stock until cooked.", "Put the bread in a bowl, then pour the soup over it."] }] : [];
   for (const recipe of [...fixtureRecipes, ...groundingRecipes, ...(journeys ? journeyRecipes : [])]) {
     const contentHash = createHash("sha256").update(JSON.stringify(recipe)).digest("hex");
     const values = [recipe.id, "test-fixtures", recipe.id, `https://example.invalid/fixtures/${recipe.id}`, recipe.title, "Test", "Test", JSON.stringify(recipe.tags), `${recipe.title} ${recipe.ingredients.map((row) => row.name).join(" ")} ${recipe.instructions.join(" ")}`, contentHash, recipe.servings, 1, 1, 1];

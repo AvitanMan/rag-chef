@@ -1,4 +1,4 @@
-import type { KitchenState, PlannedMeal } from "./kitchen-types";
+import { DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 
 export const MAX_KITCHEN_BODY_BYTES = 2_000_000;
@@ -166,7 +166,7 @@ export function validateRecipeSnapshot(value: unknown, path = "recipe"): asserts
   fields(
     item,
     ["id", "title", "image", "category", "cuisine", "source", "sourceUrl", "ingredients", "instructions", "tags"],
-    ["servings"],
+    ["servings", "sourceNotes"],
     path,
   );
   string(item.id, `${path}.id`, 200);
@@ -201,6 +201,7 @@ export function validateRecipeSnapshot(value: unknown, path = "recipe"): asserts
   if (Object.hasOwn(item, "servings")) {
     positiveNumber(item.servings, `${path}.servings`, 10_000);
   }
+  if (Object.hasOwn(item, "sourceNotes")) array(item.sourceNotes, `${path}.sourceNotes`, 20).forEach((note, index) => string(note, `${path}.sourceNotes[${index}]`, 2000));
 }
 
 function meal(value: unknown, path: string, day: string): asserts value is PlannedMeal {
@@ -275,11 +276,39 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
   }
 }
 
+export function validateCookingProfile(value: unknown): asserts value is CookingProfile {
+  const profile = record(value, "cookingProfile");
+  fields(profile, ["version", "allergies", "diet", "dislikes", "skillLevel", "budget", "equipment"], [], "cookingProfile");
+  if (profile.version !== 1) invalid("cookingProfile.version", "must be 1");
+  for (const key of ["allergies", "dislikes", "equipment"] as const) {
+    const values = array(profile[key], `cookingProfile.${key}`, 100);
+    values.forEach(item => string(item, `cookingProfile.${key} item`, 120));
+    if (new Set(values).size !== values.length) invalid(`cookingProfile.${key}`, "contains duplicates");
+  }
+  for (const key of ["diet", "skillLevel", "budget"] as const) string(profile[key], `cookingProfile.${key}`, 120);
+}
+
+/** Only migrate recognizable browser preferences; stored kitchen profiles remain authoritative. */
+export function parseLegacyCookingProfile(value: unknown): CookingProfile | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const legacy = value as Record<string, unknown>;
+  const keys = ["allergies", "diet", "dislikes", "skillLevel", "budget", "equipment"] as const;
+  if (!keys.some(key => Object.hasOwn(legacy, key))) return null;
+  const candidate = { ...structuredClone(DEFAULT_COOKING_PROFILE), ...Object.fromEntries(keys.filter(key => Object.hasOwn(legacy, key)).map(key => [key, legacy[key]])) };
+  try { validateCookingProfile(candidate); return candidate; } catch { return null; }
+}
+
 export function validateKitchenState(value: unknown): asserts value is KitchenState {
   const state = record(value, "state");
-  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles"], "state");
+  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles", "favoriteRecipeIds", "cookingProfile"], "state");
   if (state.schemaVersion !== 2) invalid("state.schemaVersion", "must be 2");
   boolean(state.migratedLegacy, "state.migratedLegacy");
+  if (Object.hasOwn(state, "cookingProfile")) validateCookingProfile(state.cookingProfile);
+  if (Object.hasOwn(state, "favoriteRecipeIds")) {
+    const favorites = array(state.favoriteRecipeIds, "state.favoriteRecipeIds", 1000);
+    favorites.forEach(id => string(id, "state.favoriteRecipeIds item", 200));
+    if (new Set(favorites).size !== favorites.length) invalid("state.favoriteRecipeIds", "contains duplicate recipes");
+  }
   const pantryIds = new Set<string>();
   array(state.pantry, "state.pantry", MAX_PANTRY_ITEMS).forEach((stock, index) => {
     const path = `state.pantry[${index}]`;

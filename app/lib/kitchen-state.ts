@@ -3,6 +3,7 @@ import type { Recipe } from "./recipe-types";
 import { normalizePlanningIngredient } from "./quantities";
 
 export const LEGACY_STORAGE_KEY = "rag-chef-prototype-v1";
+export const PREFERENCES_STORAGE_KEY = "rag-chef-preferences-v2";
 export const KITCHEN_CACHE_KEY = "rag-chef-kitchen-v2";
 export const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 

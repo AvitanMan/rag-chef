@@ -14,11 +14,12 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
 files.push(["chef-route", "../app/api/chef/route.ts"]);
+files.push(["health-route", "../app/api/health/route.ts"]);
 files.push(["admin-route", "../app/api/admin/catalog/route.ts"]);
 files.push(["metadata-route", "../app/api/admin/recipes/metadata/route.ts"]);
 files.push(["search-route", "../app/api/recipes/route.ts"]);
@@ -59,6 +60,7 @@ const quantities = await load("quantities");
 const search = await load("catalog-search");
 const catalogRoute = await load("catalog-route");
 const chefRoute = await load("chef-route");
+const healthRoute = await load("health-route");
 const adminRoute = await load("admin-route");
 const chefSchema = await load("chef-schema");
 const constraintRules = await load("recipe-constraints");
@@ -90,6 +92,28 @@ async function importOne(value) {
   assert.equal(response.status, 200);
   return (await response.json()).results[0];
 }
+
+test("reviewed source notes round-trip separately from directions and ground timing metadata without weakening source checks", async () => {
+  const original = await draft(0, { sourceNotes: ["Total time: 25 minutes."] });
+  const result = await importOne(original);
+  assert.equal(result.status, "saved");
+  const saved = (await store.listCatalogRecipes())[0];
+  assert.deepEqual(saved.recipe.sourceNotes, original.sourceNotes);
+  assert.deepEqual(saved.recipe.instructions, original.instructions);
+  assert.ok(saved.searchText.includes(original.sourceNotes[0]));
+  const review = await metadataReview({ totalMinutes: 25 });
+  review.metadata.provenance.totalMinutes = { basis: "source", evidence: original.sourceNotes[0] };
+  assert.equal((await metadataRoute.POST(metadataRequest([review]))).status, 200);
+  assert.equal((await store.listCatalogRecipes())[0].metadata.totalMinutes, 25);
+  review.metadata.provenance.totalMinutes.evidence = "Total time: 2 minutes.";
+  assert.equal((await metadataRoute.POST(metadataRequest([review]))).status, 400);
+  const altered = { ...original, sourceNotes: ["Total time: 2 minutes."] };
+  assert.equal((await importOne(altered)).status, "failed", "Changed source notes require a new explicit review hash");
+  const oldHash = saved.contentHash;
+  await importOne(await draft(0, { sourceNotes: ["Total time: 30 minutes."] }));
+  const changed = (await store.listCatalogRecipes())[0];
+  assert.notEqual(changed.contentHash, oldHash); assert.equal(changed.metadata, undefined);
+});
 
 test("full catalog reports unavailable storage instead of a starter fallback", async () => {
   const binding = env.DB;
@@ -292,7 +316,7 @@ function mockChef(contexts, transform = (answer) => answer, prompts = []) {
     assert.equal(body.format.properties.citations, undefined);
     assert.deepEqual(body.format.properties.recommendations.items.required, ["recipeId", "reason"]);
     assert.match(body.messages[0].content, /Required JSON schema:/);
-    assert.match(prompt, /at most two short sentences/);
+    assert.match(prompt, /at most two short sentences|two to four short actions or sentences/);
     assert.match(prompt, /complete original ingredients.*complete original directions/);
     prompts.push(prompt);
     const context = JSON.parse(prompt.slice(prompt.indexOf("\n\n") + 2));
@@ -511,9 +535,9 @@ test("match explanations survive provider failure and invalid evidence while die
 
 test("unknown questions may return no recommendations without manufacturing a recipe card", async () => {
   await route.POST(req([await draft()]));
-  mockChef([], (answer) => ({ ...answer, answerStatus: "unsupported", answer: "Nutrition is not provided by the source.", recommendations: [] }));
+  const contexts = []; mockChef(contexts);
   const result = await (await chefRoute.POST(chefRequest({ query: "For Test rice 0, how much protein is there?" }))).json();
-  assert.equal(result.generation, "ai"); assert.deepEqual(result.recommendations, []);
+  assert.equal(result.generation, "catalog_fallback"); assert.deepEqual(result.recommendations, []); assert.equal(contexts.length, 0);
   assert.equal(result.answerStatus, "unsupported");
   assert.equal(result.citations.length, 1, "Keep the original source available without adding a recommendation");
 });
@@ -917,10 +941,10 @@ test("a pinned question unsupported by its source is distinct from a retrieval m
   const result = await (await chefRoute.POST(chefRequest({ query: "How much protein is in one serving?", context: { recipeId: saved.catalogId } }))).json();
   assert.equal(result.outcome, "matches");
   assert.equal(result.answerStatus, "unsupported");
-  assert.equal(result.generation, "ai");
+  assert.equal(result.generation, "catalog_fallback"); assert.equal(contexts.length, 0);
   assert.equal(result.recipes.length, 1);
   assert.deepEqual(result.sourceFacts, []);
-  assert.match(result.answer, /does not establish/);
+  assert.match(result.answer, /does not provide the requested nutrition/);
 });
 
 test("saved-dinner help rejects stale revisions and same-ID portion changes without writing kitchen data", async () => {
@@ -1121,6 +1145,82 @@ test("known missing total time is refused from the full source record before gen
   assert.match(result.answer, /does not establish a total recipe time/); assert.equal(result.recipes[0].id, saved.catalogId);
 });
 
+test("step explanations receive the canonical focused step and separately attributed technique guidance", async () => {
+  const instructions = ["Boil the onion in water until cooked.", "Put bread in a bowl and pour soup over it."];
+  const saved = await importOne(await draft(0, { instructions }));
+  const before = (await store.listCatalogRecipes())[0];
+  for (const [query, purpose, step, techniques] of [
+    ["What does this instruction mean?", "cooking", "S1", 1],
+    ["Explain step 2", "cooking", "S2", 0],
+    ["How long do I boil it?", "cooking", "S1", 0],
+    ["Explain boiling", undefined, undefined, 0],
+  ]) {
+    const contexts = [];
+    mockChef(contexts, answer => ({ ...answer, answer: "The source instruction is shown below.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: step ?? "S1" }] }));
+    const result = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: saved.catalogId, purpose, stepEvidenceId: "S1" } }))).json();
+    assert.equal(result.cookingTechniques?.length ?? 0, techniques);
+    if (techniques) {
+      assert.equal(result.answerKind, "cooking_technique");
+      assert.equal(result.verification.status, "not_required");
+      assert.equal(result.timings.generationMs, 0); assert.equal(contexts.length, 0);
+      assert.match(result.answer, /large bubbles/);
+    } else assert.equal(result.verification.status, "checked");
+    if (purpose && !techniques) {
+      assert.deepEqual(contexts[0].focusedCookingStep, { recipeId: "R1", evidenceId: step, number: Number(step.slice(1)), text: instructions[Number(step.slice(1)) - 1] });
+      assert.equal(contexts[0].techniqueGuidance.length, techniques);
+    } else if (!purpose) assert.equal(contexts[0].focusedCookingStep, undefined);
+    if (techniques) {
+      assert.equal(result.cookingTechniques[0].term, "Boiling");
+      assert.match(result.cookingTechniques[0].sourceUrl, /wiki\/Cookbook:Boiling$/);
+    }
+    assert.ok(result.sourceFacts.every(fact => fact.fact === instructions[Number(fact.evidenceId.slice(1)) - 1]));
+  }
+  assert.deepEqual((await store.listCatalogRecipes())[0], before);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM kitchen_state").get().n, 0);
+});
+
+test("a rejected local step answer gets one correction attempt and every replacement is verified", async () => {
+  const imported = await importOne(await draft(0, { instructions: ["Boil rice until cooked."] }));
+  for (const recover of [true, false]) {
+    const contexts = [];
+    mockChef(contexts, answer => ({ ...answer, answerStatus: "answered", answer: contexts.length === 1 ? "Simmer rice until soft." : "Boiling has large bubbles rising at the surface.", sourceFacts: [{ recipeId: "R1", evidenceId: "S1" }] }));
+    const provider = globalThis.fetch; let checks = 0;
+    globalThis.fetch = (url, options) => {
+      const content = JSON.parse(options.body).messages?.[1]?.content;
+      if (content?.startsWith('{"task":"verify_recipe_answer"')) {
+        checks++; const data = JSON.parse(content);
+        return Promise.resolve(Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map(claim => ({ id: claim.id, verdict: recover && checks === 2 ? "supported" : "unsupported", supportRefs: [data.evidence.find(item => item.evidenceId === "S1").ref] })) }) } }));
+      }
+      return provider(url, options);
+    };
+    const result = await (await chefRoute.POST(chefRequest({ query: "How do I recognize boiling in this instruction?", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: "S1" } }))).json();
+    assert.equal(checks, 2); assert.equal(contexts.length, 2);
+    assert.equal(contexts[0].rejectedAnswer, undefined);
+    assert.equal(contexts[1].rejectedAnswer, "Simmer rice until soft.");
+    assert.deepEqual(contexts[1].focusedCookingStep, contexts[0].focusedCookingStep);
+    assert.equal(result.answerStatus, recover ? "answered" : "unverified");
+    assert.equal(result.verification.status, recover ? "checked" : "rejected");
+    assert.doesNotMatch(result.answer, /simmer|soft/i);
+    assert.ok(result.sourceFacts.some(fact => fact.evidenceId === "S1" && fact.fact === "Boil rice until cooked."));
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM kitchen_state").get().n, 0);
+  }
+});
+
+test("reviewed meaning help works with the model offline and source revocation still blocks it", async () => {
+  const imported = await importOne(await draft(0, { instructions: ["Boil rice until cooked."] }));
+  let calls = 0; globalThis.fetch = async () => { calls++; throw new Error("Model offline"); };
+  const input = { query: "What does this instruction mean?", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: "S1" } };
+  const response = await chefRoute.POST(chefRequest(input));
+  const result = await response.json();
+  assert.equal(response.status, 200); assert.equal(result.answerKind, "cooking_technique");
+  assert.equal(result.answerStatus, "answered"); assert.match(result.answer, /large bubbles/);
+  assert.equal(calls, 0); assert.equal(result.timings.generationMs, 0);
+  db.exec("UPDATE recipe_sources SET approval_status='revoked'");
+  const blockedResponse = await chefRoute.POST(chefRequest(input));
+  const blocked = await blockedResponse.json();
+  assert.equal(blockedResponse.status, 409); assert.equal(blocked.cookingTechniques, undefined);
+});
+
 test("an explicitly named source question gets the same verified context as a pinned question", async () => {
   const saved = await importOne(await draft());
   const contexts = []; mockChef(contexts, (answer) => ({ ...answer, answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }] }));
@@ -1129,12 +1229,13 @@ test("an explicitly named source question gets the same verified context as a pi
   assert.equal(result.verification.status, "checked"); assert.equal(contexts[0].dinnerContext.recipeId, saved.catalogId);
 });
 
-test("OpenAI generation uses only one paid-provider request and fails closed when local verification is unavailable", async () => {
+test("OpenAI fails closed if its verifier becomes unavailable after a successful preflight", async () => {
   const saved = await importOne(await draft());
   const previousKey = process.env.OPENAI_API_KEY; process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
   let generationCalls = 0, verificationCalls = 0;
   try {
     globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith("/api/tags")) return Response.json({ models: [{ name: process.env.OLLAMA_CHAT_MODEL || chefSchema.DEFAULT_OLLAMA_CHAT_MODEL }] });
       if (String(url).endsWith("/responses")) {
         generationCalls++;
         return Response.json({ status: "completed", output_text: JSON.stringify({ answer: "Cook rice until tender.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }], recommendations: [], chefChanges: [], warnings: [] }) });
@@ -1253,4 +1354,69 @@ test("timing corrections quote the selected original step instead of repeating m
   assert.equal(result.answerStatus, "answered"); assert.equal(result.verification.status, "checked");
   assert.equal(result.answer, "The source says: Bake at 200°C for 30 minutes.");
   assert.doesNotMatch(result.answer, /250|5 minutes/);
+});
+
+
+test("cloud factual and adaptation requests skip generation when the local verifier cannot run", async () => {
+  const imported = await importOne(await draft());
+  const oldKey = process.env.OPENAI_API_KEY, oldBase = process.env.OLLAMA_BASE_URL;
+  process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
+  try {
+    for (const state of ["offline", "model_missing", "remote"]) {
+      process.env.OLLAMA_BASE_URL = state === "remote" ? "https://remote.invalid" : "http://127.0.0.1:11434";
+      for (const query of ["Explain this source step.", "Can I substitute the rice?"]) {
+        const calls = [];
+        globalThis.fetch = async (url, options) => {
+          calls.push(String(url));
+          assert.equal(options.headers.authorization, undefined, "Verifier probe must not forward the OpenAI key");
+          assert.ok(String(url).endsWith("/api/tags"), "Only a local capability probe may run");
+          return Response.json(state === "model_missing" ? { models: [{ name: "different-model:latest" }] } : {}, { status: state === "offline" ? 503 : 200 });
+        };
+        const response = await chefRoute.POST(chefRequest({ provider: "openai", query, context: { recipeId: imported.catalogId } }));
+        const result = await response.json();
+        assert.equal(response.status, 200);
+        assert.equal(result.generation, "catalog_fallback");
+        assert.equal(result.answerStatus, "unverified");
+        assert.equal(result.verification.reason, "preflight_unavailable");
+        assert.match(result.answer, /did not request an AI answer/);
+        assert.equal(result.timings.generationMs, 0);
+        assert.equal(calls.length, state === "remote" ? 0 : 1);
+      }
+    }
+  } finally {
+    if (oldKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = oldKey;
+    if (oldBase === undefined) delete process.env.OLLAMA_BASE_URL; else process.env.OLLAMA_BASE_URL = oldBase;
+  }
+});
+
+test("cloud generation readiness reports its verifier dependency while missing embeddings remain optional", async () => {
+  const old = Object.fromEntries(["OPENAI_API_KEY", "OLLAMA_CHAT_MODEL", "OLLAMA_EMBED_MODEL", "OLLAMA_BASE_URL"].map(key => [key, process.env[key]]));
+  Object.assign(process.env, { OPENAI_API_KEY: "test-only-not-a-real-key", OLLAMA_CHAT_MODEL: "verify-model", OLLAMA_EMBED_MODEL: "embed-model", OLLAMA_BASE_URL: "http://127.0.0.1:11434" });
+  try {
+    for (const installed of [null, [], ["verify-model:other"], ["verify-model:latest"], ["verify-model:latest", "embed-model:latest"]]) {
+      globalThis.fetch = async url => String(url).endsWith("/api/tags")
+        ? Response.json({ models: (installed ?? []).map(name => ({ name })) }, { status: installed === null ? 503 : 200 })
+        : Response.json({ id: "test-cloud-model" });
+      const response = await healthRoute.GET(new Request("http://localhost/api/health?provider=openai&model=test-cloud-model"));
+      const result = await response.json();
+      const verificationReady = Boolean(installed?.includes("verify-model:latest"));
+      assert.equal(response.status, verificationReady ? 200 : 503);
+      assert.equal(result.ok, verificationReady);
+      assert.equal(result.capabilities.generation.ready, true);
+      assert.equal(result.capabilities.verification.ready, verificationReady);
+      assert.equal(result.capabilities.verification.model, "verify-model");
+      assert.equal(result.capabilities.embeddings.ready, Boolean(installed?.includes("embed-model:latest")));
+      if (!verificationReady) assert.match(result.message, /verification is unavailable/);
+    }
+  } finally { for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+});
+
+test("known source gaps remain deterministic with a cloud provider and every model offline", async () => {
+  const imported = await importOne(await draft());
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("offline"); };
+  const result = await (await chefRoute.POST(chefRequest({ provider: "openai", query: "What is the total recipe time?", context: { recipeId: imported.catalogId } }))).json();
+  assert.equal(result.answerStatus, "unsupported");
+  assert.equal(result.verification.status, "not_required");
+  assert.equal(calls, 0);
 });

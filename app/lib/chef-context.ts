@@ -2,6 +2,34 @@ import type { Recipe } from "./recipe-types";
 import type { PlannedMeal } from "./kitchen-types";
 import type { ChefDinnerContext } from "./chef-schema";
 
+export type CookingTechniqueGuide = { term: string; explanation: string; sourceName: string; sourceUrl: string; licenseUrl: string };
+
+/** Reviewed technique definitions, separate from any recipe's facts or timings. */
+const COOKING_TECHNIQUES = [
+  { pattern: /\bboil(?:ing|ed)?\b/i, term: "Boiling", explanation: "Boiling means cooking food in boiling water. Look for large bubbles rising and breaking continuously at the surface.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Boiling" },
+  { pattern: /\bsimmer(?:ing|ed)?\b/i, term: "Simmering", explanation: "Simmering cooks food in liquid below a boil. The liquid moves gently rather than rapidly.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Simmering" },
+];
+
+export function focusedCookingStep(recipe: Recipe, query: string, currentStepId?: string) {
+  const requested = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
+  const evidenceId = requested ? `S${Number(requested[1])}` : currentStepId;
+  const index = evidenceId && /^S[1-9]\d{0,2}$/.test(evidenceId) ? Number(evidenceId.slice(1)) - 1 : -1;
+  const text = recipe.instructions[index];
+  return text ? { evidenceId: evidenceId!, number: index + 1, text } : null;
+}
+
+export function cookingTechniqueGuides(stepText: string, query: string): CookingTechniqueGuide[] {
+  if (!/\b(?:explain|mean|meaning|how do|how should|how to|what is|what does|what should|help)\b/i.test(query)) return [];
+  const namedTerm = query.match(/\b(?:what (?:does|is)|explain)\s+(boil(?:ing)?|simmer(?:ing)?)\b/i)?.[1];
+  return COOKING_TECHNIQUES.filter(guide => guide.pattern.test(stepText) && (!namedTerm || guide.pattern.test(namedTerm))).map(({ term, explanation, sourceUrl }) => ({ term, explanation, sourceUrl,
+    sourceName: "Wikibooks Cookbook", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" }));
+}
+
+/** Only standalone meaning requests; compound or recipe-specific questions still use Chef. */
+export function isCookingMeaningQuestion(query: string): boolean {
+  return /^(?:please\s+)?(?:what does (?:this|the|this source|the current) (?:step|instruction|direction) mean|what does (?:boil(?:ing)?|simmer(?:ing)?) mean|explain (?:this|the|the current) (?:source )?(?:step|instruction|direction)|what does this mean)[?.!\s]*$/i.test(query.trim());
+}
+
 /** Preview explicit planning changes without changing stored amounts or cooking. */
 export function chefMealPreview(meal: PlannedMeal, context: ChefDinnerContext): PlannedMeal {
   if (context.purpose === "cooking") return meal;
@@ -12,7 +40,7 @@ export function chefMealPreview(meal: PlannedMeal, context: ChefDinnerContext): 
 }
 
 export async function chefRecipeHash(recipe: Recipe): Promise<string> {
-  const text = JSON.stringify([recipe.id, recipe.title, recipe.ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl]);
+  const text = JSON.stringify([recipe.id, recipe.title, recipe.ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

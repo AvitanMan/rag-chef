@@ -238,7 +238,7 @@ test("a long cooking recipe uses one scrolling area and keeps step navigation vi
   await expect(cooking.locator(".cook-ingredients")).not.toHaveAttribute("open");
   await cooking.locator(".cook-ingredients > summary").click();
   const scrollers = await cooking.evaluate((dialog) => [dialog, ...dialog.querySelectorAll("*")].filter((element) =>
-    /^(auto|scroll)$/.test(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight + 1
+    element.checkVisibility() && /^(auto|scroll)$/.test(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight + 1
   ).map((element) => element.tagName));
   expect(scrollers).toEqual(["MAIN"]);
   await expect(page.locator("html")).toHaveCSS("overflow", "hidden");

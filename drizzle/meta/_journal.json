@@ -29,6 +29,13 @@
       "when": 1792667733691,
       "tag": "0003_reviewed_recipe_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793289193853,
+      "tag": "0004_recipe_source_notes",
+      "breakpoints": true
     }
   ]
 }

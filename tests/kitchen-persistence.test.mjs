@@ -21,6 +21,7 @@ after(async () => {
 
 await writeFile(join(directory, "test-cloudflare.mjs"), "export const env = { DB: undefined };\n");
 for (const [name, sourcePath] of [
+  ["kitchen-types", "../app/lib/kitchen-types.ts"],
   ["kitchen-store", "../app/lib/kitchen-store.ts"],
   ["kitchen-validation", "../app/lib/kitchen-validation.ts"],
   ["kitchen-route", "../app/api/kitchen/route.ts"],

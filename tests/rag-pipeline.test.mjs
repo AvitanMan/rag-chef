@@ -163,3 +163,22 @@ test("verification receives only relevant server kitchen facts and keeps name ma
       return Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map(claim => ({ id: claim.id, verdict: "supported", supportRefs: [data.evidence[0].ref] })) }) } });
     } });
 });
+
+test("technique definitions are scoped supporting references and never become recipe source quotes", async () => {
+  const sourceFocus = { recipeId: recipe.id, stepEvidenceId: "S12", stepText: recipe.instructions[11], question: "What does this mean?", quantityBasis: "original_recipe" };
+  const result = await verifyChefAnswer(answer, evidence, { baseUrl: "http://localhost:1234", model: "local", metadata: {}, sourceFocus,
+    techniqueGuidance: [{ recipeId: recipe.id, term: "Boiling", explanation: "Large bubbles break continuously at the surface." }, { recipeId: "other", term: "Private reference", explanation: "Unrelated guidance." }],
+    fetchImpl: async (_url, request) => {
+      const messages = JSON.parse(request.body).messages;
+      const data = JSON.parse(messages[1].content);
+      assert.deepEqual(data.sourceFocus, sourceFocus);
+      assert.match(messages[0].content, /another step cannot establish/);
+      const guides = data.evidence.filter(item => item.ref.startsWith("G"));
+      assert.equal(guides.length, 1); assert.equal(guides[0].recipeId, recipe.id);
+      assert.match(guides[0].text, /cannot establish this recipe's duration/);
+      assert.doesNotMatch(JSON.stringify(data), /Private reference|Unrelated guidance/);
+      return Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map(claim => ({ id: claim.id, verdict: "supported", supportRefs: [data.evidence[0].ref, guides[0].ref] })) }) } });
+    } });
+  assert.equal(result.verification.status, "checked");
+  assert.deepEqual(result.sourceFacts, [{ recipeId: recipe.id, evidenceId: "S12", fact: recipe.instructions[11] }]);
+});

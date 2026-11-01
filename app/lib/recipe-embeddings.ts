@@ -150,6 +150,7 @@ export function buildRecipeSearchText(recipe: Recipe): string {
     ...ingredients,
     "Instructions:",
     ...instructions,
+    ...(recipe.sourceNotes?.length ? ["Source notes:", ...recipe.sourceNotes.map(normalizeText)] : []),
   ].join("\n");
 }
 

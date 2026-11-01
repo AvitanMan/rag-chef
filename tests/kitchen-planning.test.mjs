@@ -16,6 +16,7 @@ for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-sto
 const load = (name) => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
 const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients, mealReadiness } = await load("quantities");
 const { recipePantryDetails } = await load("recipe-browser");
+const { DEFAULT_COOKING_PROFILE } = await load("kitchen-types");
 const { createPlannedMeal } = await load("kitchen-state");
 const { fillEmptyDays, planningRandom } = await load("kitchen-planning");
 const { availablePantryNames } = await load("kitchen-stock");
@@ -48,7 +49,7 @@ test("optional pantry and deduction dates round-trip while old kitchens remain u
   validateKitchenState(original);
   assert.deepEqual(original, before);
   const dated = kitchen([stock("dated", "rice", "1 kg", "2028-02-29")]);
-  assert.deepEqual(parseKitchenBackup(serializeKitchenBackup(dated)).state, dated);
+  assert.deepEqual(parseKitchenBackup(serializeKitchenBackup(dated)).state, { ...dated, cookingProfile: DEFAULT_COOKING_PROFILE });
   for (const useBy of ["2026-02-29", "2026-13-01", "", null, "tomorrow"]) {
     const invalid = kitchen([{ ...stock("invalid", "rice", "1 kg"), useBy }]);
     assert.throws(() => validateKitchenState(invalid), /useBy/);

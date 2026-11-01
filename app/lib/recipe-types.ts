@@ -23,6 +23,8 @@ export interface Recipe {
   instructions: string[];
   tags: string[];
   servings?: number;
+  /** Original source statements outside the cooking directions, such as recipe time. */
+  sourceNotes?: string[];
 }
 
 export type Diet = "vegan" | "vegetarian" | "gluten_free" | "low_carb";

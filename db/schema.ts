@@ -112,6 +112,7 @@ export const recipes = sqliteTable(
     }),
     title: text("title").notNull(),
     servings: real("servings"),
+    sourceNotesJson: text("source_notes_json", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     imageUrl: text("image_url"),
     category: text("category").notNull().default("Other"),
     cuisine: text("cuisine").notNull().default("International"),

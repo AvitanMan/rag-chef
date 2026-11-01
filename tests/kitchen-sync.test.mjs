@@ -44,6 +44,7 @@ after(async () => { runtime.reset(); Object.assign(globalThis, old); await rm(di
 
 const state = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 const document = (revision = 1, value = state()) => ({ revision, state: value, updatedAt: "2026-10-20T00:00:00.000Z" });
+const cookingProfile = (allergies = ["milk"]) => ({ version: 1, allergies, diet: "Vegan", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Stovetop"] });
 
 async function setup({ cached, blocked = false, fetch, existingLocal, existingSession } = {}) {
   runtime.reset();
@@ -68,8 +69,51 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   }
   const tick = async () => { const jobs = [...timers.values()]; timers.clear(); jobs.forEach((fn) => fn()); await pump(); };
   await pump();
-  return { get result() { return runtime.result; }, pump, tick, calls, local, session, respond: (fn) => { handler = fn; } };
+  return { get result() { return runtime.result; }, pump, tick, calls, local, session, dispatch: event => events.dispatchEvent(event), respond: (fn) => { handler = fn; } };
 }
+
+test("legacy browser preferences migrate once without overriding the authoritative kitchen profile", async () => {
+  const seed = await setup();
+  seed.local.setItem("rag-chef-preferences-v2", JSON.stringify({ profile: cookingProfile(), settings: { provider: "openai" } }));
+  const h = await setup({ existingLocal: seed.local });
+  assert.deepEqual(h.result.state.cookingProfile, cookingProfile());
+  assert.equal(h.result.saveState, "pending");
+  h.respond((_url, options) => Response.json(document(2, JSON.parse(options.body).state)));
+  await h.tick();
+  assert.equal(h.result.saveState, "saved");
+  const authoritative = { ...state(), cookingProfile: cookingProfile(["rice"]) };
+  const reopened = await setup({ existingLocal: h.local, fetch: () => Response.json(document(3, authoritative)) });
+  assert.deepEqual(reopened.result.state.cookingProfile, authoritative.cookingProfile);
+  await reopened.tick();
+  assert.ok(reopened.calls.every(({ options }) => options.method !== "PUT"));
+});
+
+test("a saved-profile storage event refreshes clean tabs and preserves dirty tab conflicts", async () => {
+  const original = { ...state(), cookingProfile: cookingProfile() };
+  const next = document(2, { ...original, cookingProfile: cookingProfile(["rice"]) });
+  const notify = h => h.dispatch(Object.assign(new Event("storage"), { key: KITCHEN_CACHE_KEY, newValue: JSON.stringify({ revision: 2, state: next.state, dirty: false }) }));
+  const clean = await setup({ fetch: () => Response.json(document(1, original)) });
+  clean.respond(() => Response.json(next)); notify(clean); await clean.pump();
+  assert.deepEqual(clean.result.state.cookingProfile.allergies, ["rice"]);
+  assert.equal(clean.result.saveState, "saved");
+  assert.ok(clean.calls.every(({ options }) => options.method !== "PUT"));
+  const dirty = await setup({ fetch: () => Response.json(document(1, original)) });
+  dirty.result.update(current => ({ ...current, pantry: [] })); await dirty.pump();
+  dirty.respond(() => Response.json(next)); notify(dirty); await dirty.pump();
+  assert.equal(dirty.result.saveState, "conflict");
+  assert.deepEqual(dirty.result.state.pantry, []);
+  assert.deepEqual(dirty.result.state.cookingProfile.allergies, ["milk"]);
+  assert.deepEqual(dirty.result.conflict.state.cookingProfile.allergies, ["rice"]);
+});
+
+test("old backup restore preserves current cooking exclusions and records a recoverable profile", async () => {
+  const original = { ...state(), cookingProfile: cookingProfile() };
+  const h = await setup({ fetch: () => Response.json(document(1, original)) });
+  assert.equal(h.result.restoreBackup({ ...state(), pantry: [] }), true);
+  await h.pump();
+  assert.deepEqual(h.result.state.cookingProfile, original.cookingProfile);
+  assert.ok(h.result.recoveryCandidates.some(candidate => candidate.reason === "before-restore"));
+});
 
 test("offline edits remain recoverable after the original tab closes", async () => {
   const first = await setup();

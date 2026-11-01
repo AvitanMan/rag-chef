@@ -15,9 +15,9 @@ async function restartDiscovery(page: Page) {
 const TODAY = "2026-10-22";
 async function navigate(page: Page, name: string) { await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
 async function submit(page: Page, text: string, followUp = false) {
-  await page.getByRole("textbox", { name: followUp ? "Follow-up question" : "Ask your chef", exact: true }).fill(text);
+  await page.getByRole("textbox", { name: followUp ? "Follow-up question" : "Dinner request", exact: true }).fill(text);
   const response = page.waitForResponse((response) => response.url().endsWith("/api/chef") && response.request().method() === "POST");
-  await page.getByRole("button", { name: followUp ? "Ask follow-up" : /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
+  await page.getByRole("button", { name: followUp ? "Ask recipe question" : /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   const result = await response; expect(result.ok()).toBeTruthy(); return result.json();
 }
 test.beforeEach(async ({ page, request }) => {
@@ -25,6 +25,38 @@ test.beforeEach(async ({ page, request }) => {
   const current = await (await request.get("/api/kitchen")).json();
   const state: KitchenState = { schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "500 g" }, { id: "tomato", name: "tomatoes", measure: "4" }], meals: {}, shoppingChecked: {}, migratedLegacy: true };
   expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+});
+
+test("Chef question guidance follows dinner search, refinement and direct recipe discussion", async ({ page }) => {
+  if (test.info().project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto("/");
+  const dinner = page.getByRole("textbox", { name: "Dinner request", exact: true });
+  await expect(dinner).toHaveAttribute("placeholder", "e.g. What can I cook with rice and tomatoes?");
+  await expect(dinner).toHaveAccessibleDescription(/Include what you want to use/);
+  await submit(page, "Tomato Rice");
+  await expect(page.getByText("Refine your dinner ideas", { exact: true })).toBeVisible();
+  await expect(dinner).toHaveAttribute("placeholder", /Within 30 minutes/i);
+  await submit(page, "without fish");
+  await expect(page.getByRole("button", { name: "Remove refinement without fish", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ask about Tomato Rice", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/chef-recipe-question-action-${test.info().project.name}.png`, scale: "css" });
+  await page.getByRole("button", { name: "Ask about Tomato Rice", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".chef-topic")).toHaveText("Questions about Tomato Rice");
+  const question = page.getByRole("textbox", { name: "Follow-up question", exact: true });
+  await expect(question).toBeFocused();
+  await expect(question).toHaveAttribute("placeholder", "e.g. What does step 1 mean?");
+  await expect(question).toHaveAccessibleDescription(/ingredients, a numbered step, or a substitution/);
+  await page.locator(".chef-search").screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/chef-recipe-question-field-${test.info().project.name}.png`, scale: "css" });
+  await expect(page.locator(".chef-refinements button")).toHaveCount(0);
+  const outgoing = page.waitForRequest(request => request.url().endsWith("/api/chef") && request.method() === "POST");
+  await submit(page, "Why rinse the rice?", true);
+  expect((await outgoing).postDataJSON()).toMatchObject({ context: { recipeId: "fixture-tomato-rice" }, refinements: [] });
+  await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+  await expect(dinner).toHaveValue("");
+  await expect(page.locator(".chef-topic, .chef-refinement-title")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/chef-question-guidance-${test.info().project.name}.png`, scale: "css" });
 });
 
 test("Back and Forward clear answers and conversation from a different recipe discussion", async ({ page }) => {
@@ -44,7 +76,7 @@ test("Back and Forward clear answers and conversation from a different recipe di
   await page.goBack();
   await expect(page.getByRole("searchbox", { name: "Search recipes", exact: true })).toBeVisible();
   await page.goBack();
-  await expect(page.locator(".chef-topic")).toHaveText("Discussing Cheese Pasta");
+  await expect(page.locator(".chef-topic")).toHaveText("Questions about Cheese Pasta");
   await expect(page.locator(".chef-answer, .chef-grounding")).toHaveCount(0);
   const pastaRequest = page.waitForRequest(r => r.url().endsWith("/api/chef") && r.method() === "POST");
   await submit(page, "How long do I boil the pasta?", true);
@@ -54,7 +86,7 @@ test("Back and Forward clear answers and conversation from a different recipe di
   await page.goForward();
   await expect(page.getByRole("searchbox", { name: "Search recipes", exact: true })).toBeVisible();
   await page.goForward();
-  await expect(page.locator(".chef-topic")).toHaveText("Discussing Tomato Rice");
+  await expect(page.locator(".chef-topic")).toHaveText("Questions about Tomato Rice");
   await expect(page.locator(".chef-answer, .chef-grounding")).toHaveCount(0);
   const riceRequest = page.waitForRequest(r => r.url().endsWith("/api/chef") && r.method() === "POST");
   await submit(page, "What is the first source direction?", true);
@@ -122,21 +154,23 @@ test("Chef refreshes a stale kitchen and Retry uses another tab's saved amounts 
   await page.goto("/");
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   const before = await (await request.get("/api/kitchen")).json();
-  const changed = { ...before.state, pantry: [{ id: "other-tab-rice", name: "rice", measure: "50 g" }] };
+  const changed = { ...before.state, pantry: [{ id: "other-tab-rice", name: "rice", measure: "50 g" }],
+    cookingProfile: { version: 1, allergies: ["peanut"], diet: "No restriction", dislikes: [], equipment: ["Stovetop"], skillLevel: "Confident beginner", budget: "Medium" } };
   const saved = await request.put("/api/kitchen", { data: { revision: before.revision, state: changed } });
   expect(saved.ok()).toBeTruthy();
   const current = await saved.json();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Find dinner with rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Find dinner with rice");
   const staleResponse = page.waitForResponse(r => r.url().endsWith("/api/chef") && r.request().method() === "POST");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
   expect((await staleResponse).status()).toBe(409);
-  await expect(page.getByText("Your kitchen was refreshed from another tab. Retry Chef to use the latest saved amounts.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Your kitchen was refreshed from another tab. Retry Chef to use the latest saved amounts and cooking preferences.", { exact: true })).toBeVisible();
   const retryResponse = page.waitForResponse(r => r.url().endsWith("/api/chef") && r.request().method() === "POST");
   await page.getByRole("button", { name: "Retry Chef", exact: true }).click();
   const retried = await retryResponse;
   expect(retried.ok()).toBeTruthy();
   expect(retried.request().postDataJSON().context.kitchenRevision).toBe(current.revision);
   expect(retried.request().postDataJSON().pantry).toEqual([{ name: "rice", quantity: "50 g" }]);
+  expect(retried.request().postDataJSON().profile).toEqual(changed.cookingProfile);
   await expect(page.locator(".chef-answer")).toBeVisible();
   expect(await (await request.get("/api/kitchen")).json()).toEqual(current);
 });
@@ -249,7 +283,7 @@ test("Chef home keeps date, source discussion and portions through planning and 
   expect(follow.recipes.map((recipe: { id: string }) => recipe.id)).toEqual(["fixture-tomato-rice"]);
   await navigate(page, "Recipes"); await navigate(page, "Chef");
   await expect(page.getByLabel("Dinner day", { exact: true })).toHaveValue("2026-10-23");
-  await expect(page.getByText("Discussing Tomato Rice", { exact: true })).toBeVisible();
+  await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toBeVisible();
   if (await page.locator(".grounding-disclosure").getAttribute("open") === null) await page.locator(".grounding-disclosure > summary").click();
   await page.getByRole("button", { name: "Open evidence for Tomato Rice", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Choose for Friday", exact: true }).click();
@@ -258,7 +292,7 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeVisible();
   await page.reload(); await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
-  await expect(page.getByText("Discussing Tomato Rice", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toHaveCount(0);
 });
 test("cooking step help preserves timers, progress and saved kitchen", async ({ page, request }) => {
   await page.goto("/"); await submit(page, "Tomato Rice");
@@ -345,6 +379,7 @@ test("Chef portions survive adding through Recipes and explicit copies keep thei
 });
 
 test("unplanned cooking help and later Chef questions do not inherit a previously saved dinner", async ({ page, request }) => {
+  if (test.info().project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
   await submit(page, "Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
@@ -367,14 +402,49 @@ test("unplanned cooking help and later Chef questions do not inherit a previousl
   expect(context.mealDate).toBeUndefined(); expect(context.mealId).toBeUndefined(); expect(context.servings).toBeUndefined();
   expect((await response).ok()).toBeTruthy();
   await expect(cooking.locator(".step-chef-reply")).toBeVisible();
+  const technique = cooking.getByRole("region", { name: "Boiling explained", exact: true });
+  await expect(technique).toContainText("large bubbles rising and breaking continuously");
+  await expect(technique.getByRole("link", { name: "Wikibooks Cookbook · Boiling", exact: true })).toHaveAttribute("href", "https://en.wikibooks.org/wiki/Cookbook:Boiling");
+  const source = cooking.locator(".step-source-evidence");
+  await expect(source).not.toHaveAttribute("open");
+  await source.locator("summary").focus(); await page.keyboard.press("Enter");
+  await expect(source.locator("blockquote")).toBeVisible();
+  await cooking.locator(".step-chef-reply").screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/cooking-step-explanation-${test.info().project.name}.png`, scale: "css" });
   await page.clock.fastForward("00:00:30");
   await expect(cooking.getByRole("timer")).toHaveText("04:30");
+  await cooking.getByRole("button", { name: /Next step/ }).click();
+  await expect(cooking.locator(".step-chef-reply")).toHaveCount(0);
+  expect(await cooking.evaluate(element => element.scrollWidth <= element.clientWidth)).toBeTruthy();
   expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
   await cooking.getByRole("button", { name: "← Exit cooking", exact: true }).click();
   await navigate(page, "Chef");
   const follow = await submit(page, "What does the next direction say?", true);
   expect(follow.resolvedContext.recipeId).toBe("fixture-cheese-pasta");
   expect(follow.resolvedContext.mealId).toBeUndefined();
+});
+
+test("legacy unmatched cooking steps do not display another step's answer", async ({ page }) => {
+  await page.goto("/"); await navigate(page, "Recipes");
+  await page.getByRole("button", { name: "View Cheese Pasta", exact: true }).click();
+  await page.getByRole("dialog", { name: "Cheese Pasta", exact: true }).getByRole("button", { name: "Start cooking", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("rag-chef-cooking-v1")))).toBe(true);
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("rag-chef-cooking-v1")!);
+    saved.instructions = ["Legacy preparation direction.", "Legacy finishing direction."];
+    localStorage.setItem("rag-chef-cooking-v1", JSON.stringify(saved));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Cheese Pasta", exact: true });
+  await cooking.locator(".cook-help > summary").click();
+  await expect(cooking).toContainText("cannot be matched to one source direction");
+  await cooking.getByLabel("Question about this step", { exact: true }).fill("What does the original recipe say about pasta?");
+  const response = page.waitForResponse(r => r.url().endsWith("/api/chef"));
+  await cooking.getByRole("button", { name: "Ask Chef about step", exact: true }).click();
+  expect((await (await response).json()).resolvedContext.stepEvidenceId).toBeUndefined();
+  await expect(cooking.locator(".step-chef-reply")).toBeVisible();
+  await cooking.getByRole("button", { name: /Next step/ }).click();
+  await expect(cooking.locator(".step-chef-reply")).toHaveCount(0);
 });
 
 test("replacing a dinner does not reserve the old dinner's ingredients", async ({ page, request }) => {
@@ -531,7 +601,7 @@ test("starting a new search cancels an in-flight evidence check and hides its la
   try {
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "verification_hold" }) });
     await page.getByRole("textbox", { name: "Follow-up question", exact: true }).fill("Explain this source recipe.");
-    await page.getByRole("button", { name: "Ask follow-up", exact: true }).click();
+    await page.getByRole("button", { name: "Ask recipe question", exact: true }).click();
     await expect.poll(async () => ((await (await fetch(`${modelURL}/__test/control`)).json()) as { pending: number }).pending).toBe(1);
     await restartDiscovery(page);
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "valid", release: true }) });

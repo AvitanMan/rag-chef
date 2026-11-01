@@ -90,6 +90,18 @@ export function lacksRequestedTotalTime(query: string, recipe: Recipe, metadata?
   return asksTotal && metadata?.totalMinutes == null && !recipe.instructions.some((text) => totalTimeDetails(text, false, true).length > 0);
 }
 
+/** Ingredient weights cannot establish an unstated calorie or nutrient value. */
+export function lacksRequestedNutrition(query: string, recipe: Recipe): boolean {
+  const requested: string[] = [];
+  if (/\b(?:calories?|kcal)\b/i.test(query)) requested.push("nutrition:energy");
+  if (/\b(?:how (?:many|much)|what (?:is|are))\b/i.test(query)) {
+    for (const match of query.toLowerCase().matchAll(new RegExp(`\\b(${NUTRIENT})\\b`, "g"))) requested.push(`nutrition:${nutrientName(match[1])}`);
+  }
+  if (!requested.length) return false;
+  const established = [...(recipe.sourceNotes ?? []), ...recipe.instructions, ...recipe.ingredients.map(item => `${item.measure} ${item.name}`)].flatMap(details);
+  return requested.some(kind => !established.some(detail => detail.kind === kind));
+}
+
 /** Validate only source claims. Explicit advisory changes stay separate. */
 export function chefGroundingIssue(answer: ChefStructuredAnswer, sources: SourceContext[], metadata: RecipeMetadataMap, options: { cookingStep: boolean }): ChefGroundingIssue | null {
   const contexts = new Map(sources.map((source) => [source.recipeId, source]));

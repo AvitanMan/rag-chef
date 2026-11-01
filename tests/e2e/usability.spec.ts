@@ -141,12 +141,13 @@ test("Today is immediately actionable and saving reveals and focuses the new din
   const box = await today.boundingBox();
   expect(box!.y + box!.height).toBeLessThan(page.viewportSize()!.height);
   await today.getByRole("button", { name: "Choose tonight’s dinner", exact: true }).click();
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true }).getByRole("heading", { name: "Tomato Rice", exact: true })).toBeFocused();
   const saved = await page.locator(".chosen-dinner").boundingBox();
-  expect(saved!.y).toBeGreaterThanOrEqual(0); expect(saved!.y).toBeLessThan(page.viewportSize()!.height);
+  // scrollIntoView can round a fractional layout position to a device pixel.
+  expect(saved!.y).toBeGreaterThanOrEqual(-1); expect(saved!.y).toBeLessThan(page.viewportSize()!.height);
 });
 
 for (const count of [1, 18, 50]) {
@@ -180,7 +181,7 @@ test("reviewed mains lead instant picks and API failure keeps safe picks with re
   await expect(page.locator(".recipe-card").first()).toContainText("Garlic Beans");
   let reads = 0;
   await page.route("**/api/chef", route => ++reads === 1 ? route.fulfill({ status: 503, json: { error: { message: "Temporary test outage" } } }) : route.continue());
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("Tomato Rice");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Temporary test outage");
   await expect(page.locator(".recipe-card")).toHaveCount(3);
@@ -189,7 +190,7 @@ test("reviewed mains lead instant picks and API failure keeps safe picks with re
   await expect(page.locator(".recipe-card")).toHaveCount(1);
   await expect(page.locator(".recipe-card")).toContainText("Tomato Rice");
   reads = 0;
-  await page.getByRole("textbox", { name: "Ask your chef", exact: true }).fill("dairy-free dinner without peanut");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("dairy-free dinner without peanut");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Temporary test outage");
   await expect(page.locator(".recipe-card")).not.toHaveCount(0);
@@ -234,7 +235,7 @@ test("removal recovery stays available across navigation without covering the Ch
   await page.goto("/"); await navigate(page, "Pantry");
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await navigate(page, "Chef");
-  const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+  const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Tomato Rice");
   const submit = page.getByRole("button", { name: "Find my dinner", exact: true });
   await submit.scrollIntoViewIfNeeded();
@@ -286,7 +287,7 @@ test("automatic filling prefers reviewed mains and the wider collection is an ex
 
 test("Chef puts choices in view with one composer and applies refinements in one submission", async ({ page, request }) => {
   await page.goto("/");
-  const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+  const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Find a dinner with rice and tomato");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
   const first = page.locator(".recipe-card").first();
@@ -408,7 +409,7 @@ test("timer setup is optional and replacing an active timer requires an explicit
 
 test("a seventh refinement keeps all six existing exclusions and retains its draft", async ({ page }) => {
   await page.goto("/");
-  const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+  const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Tomato Rice");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
   await expect(page.locator(".chef-answer")).toBeVisible();
@@ -430,7 +431,7 @@ test("a seventh refinement keeps all six existing exclusions and retains its dra
 for (const question of ["What can I cook with eggplant?", "Can you find a dinner with eggplant?"]) {
   test(`Chef refinements and chip removal keep the latest dinner question: ${question}`, async ({ page }) => {
     await page.goto("/");
-    const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+    const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
     async function submit(text: string, button: string) {
       await input.fill(text);
       const response = page.waitForResponse(r => r.url().endsWith("/api/chef") && r.request().method() === "POST");
@@ -457,7 +458,7 @@ for (const question of ["What can I cook with eggplant?", "Can you find a dinner
 
 test("oversized dinner refinements preserve the draft and choices until corrected without truncating exclusions", async ({ page, request }) => {
   await page.goto("/");
-  const input = page.getByRole("textbox", { name: "Ask your chef", exact: true });
+  const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Find a dinner with rice and tomato");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
   await expect(page.locator(".recipe-card").first()).toContainText("Tomato Rice");

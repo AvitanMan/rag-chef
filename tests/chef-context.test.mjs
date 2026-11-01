@@ -12,7 +12,7 @@ for (const name of ["chef-planning-answer", "chef-context", "chef-schema", "quan
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)));
-const { chefMealPreview, chefRecipeHash, selectQuestionEvidence, cookingSourceStep } = await load("chef-context");
+const { chefMealPreview, chefRecipeHash, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion } = await load("chef-context");
 const { parseChefRequest } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
@@ -33,6 +33,30 @@ test("legacy cooking methods map source steps only when unambiguous", () => {
   assert.equal(cookingSourceStep(repeated, ["Mix"], 0), undefined);
   assert.equal(cookingSourceStep(repeated, ["Mix", "Mix", "Finish"], 1), "S2");
   assert.equal(cookingSourceStep(recipe, ["Edited local step"], 0), undefined);
+});
+test("cooking focus uses the current canonical step unless a valid numbered step is requested", () => {
+  assert.deepEqual(focusedCookingStep(recipe, "What does this mean?", "S20"), { evidenceId: "S20", number: 20, text: recipe.instructions[19] });
+  for (const noun of ["step", "direction", "instruction"]) {
+    assert.equal(focusedCookingStep(recipe, `Explain ${noun} #17`, "S20").evidenceId, "S17");
+  }
+  for (const [query, step] of [["Explain this", undefined], ["Explain this", "S0"], ["Explain step 99", "S20"], ["Explain step 0", "S20"]]) {
+    assert.equal(focusedCookingStep(recipe, query, step), null);
+  }
+});
+test("reviewed technique definitions explain only verbs present in the focused source step", () => {
+  const [boiling] = cookingTechniqueGuides("Boil the vegetables in water until cooked.", "What does this instruction mean?");
+  assert.equal(boiling.term, "Boiling"); assert.match(boiling.explanation, /large bubbles/);
+  assert.equal(boiling.sourceUrl, "https://en.wikibooks.org/wiki/Cookbook:Boiling");
+  assert.equal(boiling.licenseUrl, "https://creativecommons.org/licenses/by-sa/4.0/");
+  assert.doesNotMatch(boiling.explanation, /\d|minutes?|degrees?|tender|fork/);
+  assert.equal(cookingTechniqueGuides("Simmer the stock.", "How do I do this?")[0].term, "Simmering");
+  assert.deepEqual(cookingTechniqueGuides("Put bread in a bowl.", "Explain boiling"), []);
+  assert.deepEqual(cookingTechniqueGuides("Simmer the stock.", "What does boiling mean?"), []);
+  assert.deepEqual(cookingTechniqueGuides("Boil the vegetables.", "How long do I boil them?"), []);
+});
+test("only standalone meaning requests use reviewed definitions without generation", () => {
+  for (const question of ["What does this instruction mean?", "Explain this source step.", "Please explain this step", "What does boiling mean?"]) assert.equal(isCookingMeaningQuestion(question), true, question);
+  for (const question of ["What does this instruction mean, and how long does it take?", "Explain step 2", "How do I tell when it is cooked?", "Why boil instead of simmer?", "What does this instruction mean? Can I substitute rice?"]) assert.equal(isCookingMeaningQuestion(question), false, question);
 });
 test("discussion and dinner context are bounded, typed and backward compatible", () => {
   assert.equal(parseChefRequest({ query: "Dinner" }).context, undefined);

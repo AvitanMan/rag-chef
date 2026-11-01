@@ -24,6 +24,18 @@ HTML = '''<html><head><link rel="canonical" href="https://en.wikibooks.org/wiki/
 
 
 class CollectorTests(unittest.TestCase):
+    def test_recipe_time_is_retained_as_reviewed_source_text_not_a_step_or_an_estimate(self):
+        body = HTML.replace('</table>', '<tr><th>Time</th><td>20–25 minutes</td></tr></table>')
+        draft = c.extract_recipe(body, URL)["draft"]
+        self.assertEqual(draft["sourceNotes"], ["Time: 20–25 minutes"])
+        self.assertEqual(draft["instructions"], c.extract_recipe(HTML, URL)["draft"]["instructions"])
+        before = c.review_hash(draft)
+        draft["sourceNotes"][0] = "Time: 5 minutes"
+        self.assertNotEqual(c.review_hash(draft), before)
+        statement = "This recipe is ready in ten minutes."
+        intro = HTML.replace('<nav>Ignore navigation</nav>', f'<p>{statement}</p>')
+        self.assertEqual(c.extract_recipe(intro, URL)["draft"]["sourceNotes"], [statement])
+
     def test_extract_preserves_order_and_explicit_servings(self):
         result = c.extract_recipe(HTML, URL)
         draft = result["draft"]

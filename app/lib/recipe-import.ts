@@ -19,6 +19,7 @@ export interface ImportDraft {
   ingredients: { name: string; measure: string }[];
   instructions: string[];
   servings?: number;
+  sourceNotes?: string[];
   reviewed: true;
   reviewHash: string;
 }
@@ -44,7 +45,7 @@ function text(value: unknown, max: number, empty = false): string {
 
 export async function validateImportDraft(value: unknown): Promise<ImportDraft> {
   const row = object(value);
-  const allowed = new Set(["sourceUrl", "title", "ingredients", "instructions", "servings", "reviewed", "reviewHash"]);
+  const allowed = new Set(["sourceUrl", "title", "ingredients", "instructions", "servings", "sourceNotes", "reviewed", "reviewHash"]);
   if (Object.keys(row).some((key) => !allowed.has(key)) || row.reviewed !== true) throw new Error("Each recipe must have explicit review approval and no unsupported fields.");
   const sourceUrl = canonicalRecipeUrl(text(row.sourceUrl, 1500));
   const title = text(row.title, 300);
@@ -56,11 +57,16 @@ export async function validateImportDraft(value: unknown): Promise<ImportDraft> 
   });
   const instructions = row.instructions.map((step) => text(step, 4000));
   const servings = row.servings;
+  let sourceNotes: string[] | undefined;
+  if (row.sourceNotes !== undefined) {
+    if (!Array.isArray(row.sourceNotes) || row.sourceNotes.length > 20) throw new Error("Source notes must be a list of up to 20 original source statements.");
+    sourceNotes = row.sourceNotes.map(note => text(note, 2000));
+  }
   if (servings !== undefined && (typeof servings !== "number" || !Number.isFinite(servings) || servings <= 0 || servings > 10_000)) throw new Error("Servings must be an explicit positive number.");
   // This exact representation is shared with the Python review prompt.
-  const reviewHash = await sha256Hex(JSON.stringify({ sourceUrl, title, ingredients, instructions, servings: servings ?? null }));
+  const reviewHash = await sha256Hex(JSON.stringify({ sourceUrl, title, ingredients, instructions, servings: servings ?? null, ...(sourceNotes === undefined ? {} : { sourceNotes }) }));
   if (row.reviewHash !== reviewHash) throw new Error("Recipe changed since review. Review and approve it again.");
-  return { sourceUrl, title, ingredients, instructions, ...(servings === undefined ? {} : { servings: servings as number }), reviewed: true, reviewHash };
+  return { sourceUrl, title, ingredients, instructions, ...(servings === undefined ? {} : { servings: servings as number }), ...(sourceNotes === undefined ? {} : { sourceNotes }), reviewed: true, reviewHash };
 }
 
 export async function draftRecipe(draft: ImportDraft): Promise<Recipe> {
@@ -69,6 +75,7 @@ export async function draftRecipe(draft: ImportDraft): Promise<Recipe> {
     image: null, category: "Cookbook", cuisine: "International", tags: [],
     ingredients: draft.ingredients, instructions: draft.instructions,
     ...(draft.servings === undefined ? {} : { servings: draft.servings }),
+    ...(draft.sourceNotes?.length ? { sourceNotes: draft.sourceNotes } : {}),
     source: { name: WIKIBOOKS_SOURCE.name, url: WIKIBOOKS_SOURCE.url, licenseId: WIKIBOOKS_SOURCE.licenseId, licenseUrl: WIKIBOOKS_SOURCE.licenseUrl!, attributionText: WIKIBOOKS_SOURCE.attributionText! },
   };
 }
