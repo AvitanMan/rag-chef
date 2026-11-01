@@ -36,9 +36,13 @@ jobs:
       - name: Source and isolated build checks
         run: pnpm test
       - name: Install browser
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: Desktop and mobile browser checks
         run: pnpm test:e2e
+      - name: Fresh installation without AI
+        run: pnpm test:setup
+      - name: WebKit and offline app shell
+        run: pnpm test:smoke
       - name: Save isolated test diagnostics
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

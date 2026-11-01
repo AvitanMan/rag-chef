@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible application problem
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include expected behavior and the steps to reproduce. Use example data, not a personal backup.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      description: Commit or release, operating system, browser, and model if relevant. Never include keys.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Useful evidence
+      description: Sanitized errors or screenshots. State whether it also happens without AI.

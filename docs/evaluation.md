@@ -14,6 +14,8 @@ them. The default chat model is `qwen3.5:9b`; reports record its installed diges
 | --- | --- | --- |
 | `pnpm test` | Source, SQL, hooks, and a disposable built app | Deterministic contracts and rendering pass |
 | `pnpm test:e2e` | Desktop/mobile Chromium with synthetic recipes and a model stub | Browser journeys and failure/recovery behavior pass |
+| `pnpm test:setup` | Empty disposable databases on desktop/mobile | Starter setup, retry, and dinner selection need no AI |
+| `pnpm test:smoke` | Chromium and WebKit with actual service workers | Offline reload/timer recovery and shopping copy/print behavior |
 | `pnpm recipes:test` | Python recipe collector | Parsing and import contracts pass |
 | `pnpm recipes:grounding-eval` | Eight fixed real-model/source checks | All expected answer, uncertainty, and guard contracts pass; useful answers and withholding are reported separately |
 | `pnpm recipes:rag-eval` | Forty synthetic retrieval/claim cases | Complete development and held-out splits independently meet retrieval and verification thresholds |

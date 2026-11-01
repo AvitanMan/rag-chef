@@ -1,0 +1,16 @@
+name: Improvement
+description: Propose a concrete improvement to a cooking workflow
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Which task is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would a successful outcome look like?
+      description: Include a concrete example and any source or local-data constraints.
+    validations:
+      required: true
