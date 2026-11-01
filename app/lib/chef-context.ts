@@ -1,6 +1,7 @@
 import type { Recipe } from "./recipe-types";
 import type { PlannedMeal } from "./kitchen-types";
 import type { ChefDinnerContext } from "./chef-schema";
+import { cookingStepText } from "./recipe-instructions";
 
 export type CookingTechniqueGuide = { term: string; explanation: string; sourceName: string; sourceUrl: string; licenseUrl: string };
 
@@ -102,16 +103,21 @@ export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: s
   return all.filter((item) => selected.has(item.evidenceId) || item.evidenceId.startsWith("N"));
 }
 
-/** Ordered matching works for old sessions and multiple source methods. */
-export function cookingSourceStep(recipe: Recipe, instructions: string[], step: number): string | undefined {
-  const n = instructions.length, m = recipe.instructions.length;
-  if (step < 0 || step >= n) return undefined;
+function matchingCookingSteps(source: string[], instructions: string[], step: number): number[] {
+  const n = instructions.length, m = source.length;
   const prefix = Array.from({ length: n + 1 }, () => Array<boolean>(m + 1).fill(false));
   const suffix = Array.from({ length: n + 1 }, () => Array<boolean>(m + 1).fill(false));
   prefix[0].fill(true); suffix[n].fill(true);
-  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) prefix[i][j] = prefix[i][j - 1] || instructions[i - 1] === recipe.instructions[j - 1] && prefix[i - 1][j - 1];
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) suffix[i][j] = suffix[i][j + 1] || instructions[i] === recipe.instructions[j] && suffix[i + 1][j + 1];
-  const matches = recipe.instructions.flatMap((text, index) => text === instructions[step] && prefix[step][index] && suffix[step + 1][index + 1] ? [index] : []);
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) prefix[i][j] = prefix[i][j - 1] || instructions[i - 1] === source[j - 1] && prefix[i - 1][j - 1];
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) suffix[i][j] = suffix[i][j + 1] || instructions[i] === source[j] && suffix[i + 1][j + 1];
+  return source.flatMap((text, index) => text === instructions[step] && prefix[step][index] && suffix[step + 1][index + 1] ? [index] : []);
+}
+
+/** Prefer exact evidence; older/display-only numbering may match only uniquely. */
+export function cookingSourceStep(recipe: Recipe, instructions: string[], step: number): string | undefined {
+  if (step < 0 || step >= instructions.length) return undefined;
+  const exact = matchingCookingSteps(recipe.instructions, instructions, step);
+  const matches = exact.length ? exact : matchingCookingSteps(recipe.instructions.map(cookingStepText), instructions.map(cookingStepText), step);
   return matches.length === 1 ? `S${matches[0] + 1}` : undefined;
 }
 

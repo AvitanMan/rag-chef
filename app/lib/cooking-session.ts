@@ -101,7 +101,7 @@ export function timerAction(timer: CookingTimer, action: "start" | "pause" | "re
 
 export function createCookingSession(recipe: Recipe, instructions: string[], method: string, plannedMeal?: PlannedMeal): CookingSession {
   return { version: 1, id: crypto.randomUUID(), recipe: structuredClone(recipe),
-    ...(plannedMeal ? { plannedMeal: structuredClone(plannedMeal) } : {}),
+    ...(plannedMeal?.status === "planned" ? { plannedMeal: structuredClone(plannedMeal) } : {}),
     instructions: [...instructions], method, step: 0, soundEnabled: false,
     timer: { durationMs: 300_000, remainingMs: 300_000, endAt: null, status: "idle" } };
 }

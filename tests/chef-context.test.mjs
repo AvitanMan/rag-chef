@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 const directory = await mkdtemp(join(tmpdir(), "jff-chef-context-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types"]) {
+for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
@@ -43,6 +43,24 @@ test("legacy cooking methods map source steps only when unambiguous", () => {
   assert.equal(cookingSourceStep(repeated, ["Mix"], 0), undefined);
   assert.equal(cookingSourceStep(repeated, ["Mix", "Mix", "Finish"], 1), "S2");
   assert.equal(cookingSourceStep(recipe, ["Edited local step"], 0), undefined);
+});
+test("numbered source directions retain canonical evidence IDs after display normalization", () => {
+  const source = { ...recipe, instructions: ["Stovetop instructions", "1. Rinse rice.", "Step 2) Simmer for 10 minutes.", "Oven", "1. Rinse rice.", "2. Bake for 20 minutes."] };
+  const before = structuredClone(source);
+  assert.equal(cookingSourceStep(source, ["Rinse rice.", "Simmer for 10 minutes."], 0), "S2");
+  assert.equal(cookingSourceStep(source, ["Rinse rice.", "Simmer for 10 minutes."], 1), "S3");
+  assert.equal(cookingSourceStep(source, ["Rinse rice.", "Bake for 20 minutes."], 0), undefined, "repeated source actions still need an unambiguous match");
+  assert.equal(cookingSourceStep(source, ["Rinse rice.", "Bake for 20 minutes."], 1), "S6");
+  assert.equal(cookingSourceStep(source, ["Edited rice instruction."], 0), undefined);
+  assert.equal(recipeEvidence(source).find(row => row.evidenceId === "S3").text, "Step 2) Simmer for 10 minutes.");
+  assert.deepEqual(source, before);
+});
+test("cosmetic numbering never resolves an ambiguous step, and exact matches keep priority", () => {
+  const source = { ...recipe, instructions: ["1. Mix.", "2. Mix.", "3. Finish."] };
+  assert.equal(cookingSourceStep(source, ["Mix."], 0), undefined);
+  assert.equal(cookingSourceStep(source, ["2. Mix."], 0), "S2");
+  assert.equal(cookingSourceStep(source, ["Mix.", "Mix.", "Finish."], 1), "S2");
+  assert.equal(cookingSourceStep(source, ["Mix gently."], 0), undefined);
 });
 test("cooking focus uses the current canonical step unless a valid numbered step is requested", () => {
   assert.deepEqual(focusedCookingStep(recipe, "What does this mean?", "S20"), { evidenceId: "S20", number: 20, text: recipe.instructions[19] });

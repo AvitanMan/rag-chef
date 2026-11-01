@@ -13,7 +13,7 @@ const hash = (text) => createHash("sha256").update(text).digest("hex");
 export async function evaluateRag({ reportPath = join(ROOT, "output/playwright/rag-quality.json"), model = "qwen3.5:9b" } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "rag-quality-"));
   try {
-    const names = ["chef-context", "chef-evidence", "chef-verification", "chef-grounding", "retrieval-ranking", "recipe-embeddings", "quantities", "kitchen-types"];
+    const names = ["recipe-instructions", "chef-context", "chef-evidence", "chef-verification", "chef-grounding", "retrieval-ranking", "recipe-embeddings", "quantities", "kitchen-types"];
     for (const name of names) {
       const source = await readFile(join(ROOT, "app/lib", `${name}.ts`), "utf8");
       await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));

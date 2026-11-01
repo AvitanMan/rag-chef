@@ -35,7 +35,7 @@ const persist = async () => {
   await writeFile(join(artifacts, "journey-report.md"), lines.join("\n") + "\n");
 };
 try {
-  for (const name of ["chef-context", "kitchen-types", "kitchen-state", "quantities"]) {
+  for (const name of ["recipe-instructions", "chef-context", "kitchen-types", "kitchen-state", "quantities"]) {
     const source = await readFile(join(ROOT, "app/lib", name + ".ts"), "utf8");
     await writeFile(join(directory, name + ".mjs"), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
   }

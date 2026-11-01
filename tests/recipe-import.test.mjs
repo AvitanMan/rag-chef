@@ -14,7 +14,7 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
@@ -92,6 +92,19 @@ async function importOne(value) {
   assert.equal(response.status, 200);
   return (await response.json()).results[0];
 }
+
+test("catalog normalization preserves procedural instructions and recognises only explicit method labels", async () => {
+  await importOne(await draft(0));
+  const original = (await store.listCatalogRecipes())[0].recipe;
+  await store.upsertApprovedRecipeSource({ id: "method-fixture", name: "Synthetic methods", url: "https://example.invalid", licenseId: "CC0-1.0", permissionBasis: "Original synthetic test data", approvalStatus: "approved", approvedBy: "Test", allowDisplay: true, allowCache: true, allowIndexText: true, allowEmbed: true });
+  const instructions = ["Boil water.", "Cook rice according to package instructions", "Drain and serve."];
+  const procedure = { ...original, id: "procedure", title: "Procedure", instructions };
+  await store.upsertCatalogRecipe({ sourceId: "method-fixture", recipe: procedure, contentHash: await embeddings.recipeEmbeddingContentHash(procedure), searchText: "Procedure" });
+  assert.deepEqual((await store.listCatalogRecipes()).find(row => row.recipe.title === "Procedure").recipe.instructions, instructions);
+  const methods = { ...original, id: "methods", title: "Methods", instructions: ["Stovetop instructions:", "Simmer for 10 minutes.", "Oven directions:", "Bake for 20 minutes."] };
+  await store.upsertCatalogRecipe({ sourceId: "method-fixture", recipe: methods, contentHash: await embeddings.recipeEmbeddingContentHash(methods), searchText: "Methods" });
+  assert.deepEqual((await store.listCatalogRecipes()).find(row => row.recipe.title === "Methods").recipe.instructions, ["Stovetop", "Simmer for 10 minutes.", "Oven", "Bake for 20 minutes."]);
+});
 
 test("reviewed source notes round-trip separately from directions and ground timing metadata without weakening source checks", async () => {
   const original = await draft(0, { sourceNotes: ["Total time: 25 minutes."] });

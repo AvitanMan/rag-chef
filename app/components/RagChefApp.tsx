@@ -41,6 +41,7 @@ import { mealAmountLabel, canonicalIngredient, completeMeal, consumptionPreview,
 import { dateLabel, DinnerAmounts, DurablePlanView, DurableShoppingView } from "./WeeklyKitchenViews";
 import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
 import { metricMeasure } from "../lib/recipe-presentation";
+import { cookingStepText, isCookingMethodHeading } from "../lib/recipe-instructions";
 import { browsePantry, type PantrySort } from "../lib/pantry-browser";
 
 type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
@@ -202,17 +203,6 @@ function defaultInstructionTitle(recipe: Recipe) {
   return "Main method";
 }
 
-function isInstructionHeading(value: string) {
-  const heading = value.trim().replace(/:$/, "");
-  return (
-    heading.length <= 80 &&
-    (/(?:instructions?|directions?|method)$/i.test(heading) ||
-      /^(?:instant pot|pressure cooker|stove ?top|oven|slow cooker|air fryer|grill|hob)$/i.test(
-        heading,
-      ))
-  );
-}
-
 function instructionHeading(value: string) {
   const cleaned = value
     .trim()
@@ -230,7 +220,7 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
   };
 
   for (const rawStep of recipe.instructions) {
-    const step = rawStep.trim();
+    const step = cookingStepText(rawStep);
     if (
       !step ||
       /^(?:step\s*#?\s*\d+|instructions?|directions?)\s*[:.)-]?$/i.test(
@@ -239,12 +229,12 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
     ) {
       continue;
     }
-    if (isInstructionHeading(step)) {
+    if (isCookingMethodHeading(step)) {
       if (current.steps.length) sections.push(current);
       current = { title: instructionHeading(step), steps: [] };
       continue;
     }
-    current.steps.push(step.replace(/^(?:step\s+)?\d+[.)]\s+/i, "").trim());
+    current.steps.push(step);
   }
 
   if (current.steps.length) sections.push(current);
@@ -994,7 +984,7 @@ export default function RagChefApp() {
   const completionValid = Boolean(completionMeal && completionMeal.id === completionMealId && completionMeal.status === "planned"
     && plannedDinnerFingerprint(completionMeal) === completionFingerprint
     && (!cooking || cookingSession && canCompleteCookingSession(cookingSession, completionMeal)));
-  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>This recipe was not attached to a saved dinner. Your plan and pantry stay as entered.</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(null)) { setCompletionDate(null); setCooking(false); } }}>Finish session</button></section>
+  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>{cookingSession?.plannedMeal?.status === "cooked" ? "This dinner is already marked cooked. Your saved dinner and pantry stay unchanged." : "This recipe was not attached to a saved dinner. Your plan and pantry stay as entered."}</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(null)) { setCompletionDate(null); setCooking(false); } }}>Finish session</button></section>
     : completionDate && (completionMeal || cookingSession?.plannedMeal) ? <DinnerCompletionReview
       meal={completionMeal ?? cookingSession!.plannedMeal!} preview={pendingCompletion?.preview ?? consumptionPreview(completionMeal ?? cookingSession!.plannedMeal!, kitchen.state.pantry, today)} valid={completionValid}
       deduct={deductStock} setDeduct={setDeductStock} confirm={confirmCompletion} cancel={() => setCompletionDate(null)} pending={Boolean(pendingCompletion)} retry={kitchen.retrySave} /> : null;
@@ -1316,7 +1306,7 @@ export default function RagChefApp() {
           onChange={persistCookingSession}
           completionReview={completionReview ?? undefined}
           finish={() => {
-            if (cookingSession.plannedMeal) beginCompletion(cookingSession.plannedMeal);
+            if (cookingSession.plannedMeal?.status === "planned") beginCompletion(cookingSession.plannedMeal);
             else setCompletionDate("unplanned");
           }}
           close={() => {
@@ -1904,7 +1894,8 @@ export function RecipeDrawer({
               </div>
             </div>
           )}
-          <div className="drawer-actions">{askAboutRecipe && <button className="secondary-button" onClick={askAboutRecipe}>Ask Chef about this recipe</button>}<button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
+          {plannedMeal?.status === "cooked" && <p className="quantity-note">This dinner is already cooked. Starting again uses original recipe quantities; your saved dinner and pantry stay unchanged.</p>}
+          <div className="drawer-actions">{askAboutRecipe && <button className="secondary-button" onClick={askAboutRecipe}>Ask Chef about this recipe</button>}<button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>{plannedMeal?.status === "cooked" ? "Start cooking again" : "Start cooking"}{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
           <p className="drawer-source-link">Source: <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a></p>
           {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{resolvedMealIngredients(plannedMeal).map((ingredient, index) => {
             const amount = `${ingredient.measure || "Amount needs review"}${ingredient.needsReview && mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`;

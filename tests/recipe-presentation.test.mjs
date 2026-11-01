@@ -17,7 +17,7 @@ for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
   ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
-  ...["retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
+  ...["recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -162,6 +162,35 @@ test("real photos remain optional and coverage uses the same counts in cards and
   const details = drawer();
   assert.match(details, /1 of 2 ingredients in pantry/);
   assert.doesNotMatch(details, /drawer-hero|No changes suggested yet|changes-panel/);
+});
+
+test("procedural sentences ending in instructions, directions or method stay in one complete cooking method", () => {
+  for (const instruction of ["Cook rice according to package instructions", "Prepare rice according to the directions", "Mix using the folding method"]) {
+    const source = { ...recipe, instructions: ["Boil water.", instruction, "Drain and serve."] };
+    const before = structuredClone(source);
+    const html = drawer({ recipe: source });
+    assert.doesNotMatch(html, /Choose cooking method/);
+    assert.match(html, /3 steps/);
+    for (const step of source.instructions) assert.ok(html.includes(`<p>${step}</p>`), step);
+    assert.deepEqual(source, before);
+  }
+});
+
+test("recognised numbered appliance headings still offer separate cooking methods", () => {
+  const source = { ...recipe, instructions: ["1. Stovetop instructions:", "1. Simmer for 10 minutes.", "2. Oven directions:", "1. Bake for 20 minutes."] };
+  const html = drawer({ recipe: source });
+  assert.match(html, /Choose cooking method/);
+  assert.match(html, />Stovetop<\/button>/);
+  assert.match(html, />Oven<\/button>/);
+  assert.match(html, /<p>Simmer for 10 minutes\.<\/p>/);
+});
+
+test("a standalone Method heading stays separate from its cooking actions", () => {
+  const source = { ...recipe, instructions: ["Method:", "Rinse the rice.", "Simmer for 10 minutes."] };
+  const html = drawer({ recipe: source });
+  assert.match(html, /2 steps/);
+  assert.doesNotMatch(html, /<p>Method:?<\/p>/);
+  assert.match(html, /<p>Rinse the rice\.<\/p>/);
 });
 
 test("planned dinner amounts are primary, overrides are final, and originals start collapsed", () => {

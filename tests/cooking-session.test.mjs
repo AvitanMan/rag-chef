@@ -18,6 +18,19 @@ const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: sourc
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
 const parse = (value) => parseCookingSession(JSON.stringify(value));
 
+test("starting an already-cooked dinner creates an unattached session without changing its captured amounts", () => {
+  const source = recipe();
+  const cooked = { ...planned(source), status: "cooked", ingredientOverrides: { "0": "350 g" }, completion: { id: "done", at: "2026-10-22T10:00:00.000Z", deductions: [] } };
+  const before = structuredClone(cooked);
+  const session = createCookingSession(source, source.instructions, "Main method", cooked);
+  assert.equal(session.plannedMeal, undefined);
+  assert.deepEqual(session.recipe, source);
+  assert.deepEqual(parse(session), session);
+  assert.deepEqual(cooked, before);
+  const next = createCookingSession(source, source.instructions, "Main method", planned(source));
+  assert.deepEqual(next.plannedMeal, planned(source), "planned dinners still capture portions and overrides");
+});
+
 test("custom timer fields distinguish minute and second limits and accept up to 24 hours", () => {
   for (const [minutes, seconds, duration] of [["0", "1", 1], ["90", "15", 5415], ["1440", "0", 86400], [" 60 ", " 0 ", 3600]]) {
     assert.equal(parseTimerDuration(minutes, seconds), duration);

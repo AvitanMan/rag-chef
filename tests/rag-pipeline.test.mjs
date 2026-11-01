@@ -8,7 +8,7 @@ import ts from "typescript";
 import { ragCases, ragRecipes } from "../tools/recipes/rag-cases.mjs";
 const directory = await mkdtemp(join(tmpdir(), "rag-pipeline-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["retrieval-ranking", "chef-evidence", "chef-context", "chef-verification", "recipe-embeddings", "quantities", "kitchen-types"]) {
+for (const name of ["recipe-instructions", "retrieval-ranking", "chef-evidence", "chef-context", "chef-verification", "recipe-embeddings", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }

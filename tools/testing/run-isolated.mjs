@@ -44,6 +44,7 @@ const env = {
   WRANGLER_LOG_PATH: join(directory, "wrangler.log"),
   MINIFLARE_REGISTRY_PATH: join(directory, "registry"),
   RAG_CHEF_TEST_ARTIFACTS: artifacts,
+  RAG_CHEF_TEST_STATE_DIR: state,
   ...(mode === "setup" ? { RAG_CHEF_SETUP_TEST: "1" } : {}),
 };
 

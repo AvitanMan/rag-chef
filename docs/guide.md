@@ -336,6 +336,11 @@ Saved meals retain independent recipe snapshots, so catalog updates do not
 silently rewrite existing dinners or historical quantities.
 
 Cooking mode shows the same final amounts and overrides as the dinner details.
+For an already-cooked dinner, **Start cooking again** opens an independent session
+using original recipe quantities. **Finish session** leaves the saved dinner,
+shopping, and pantry unchanged. Choose **Cook again** from Recipes to plan a new
+dinner with current personal amounts instead.
+
 Ingredients start collapsed and expand into the main cooking panel. That panel
 is the single scrolling area; the header and step controls stay visible, and
 changing steps returns to the top. Background page scrolling is locked while
