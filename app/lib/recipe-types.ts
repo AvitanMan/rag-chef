@@ -23,6 +23,8 @@ export interface Recipe {
   instructions: string[];
   tags: string[];
   servings?: number;
+  /** Original source statements outside the cooking directions, such as recipe time. */
+  sourceNotes?: string[];
 }
 
 export type Diet = "vegan" | "vegetarian" | "gluten_free" | "low_carb";
@@ -56,6 +58,9 @@ export interface RecipeConstraints {
 }
 
 export interface RecipeSearchOptions {
+  signal?: AbortSignal;
+  recipeId?: string;
+  stockContext?: { pantry: import("./kitchen-types").PantryStock[]; meals: import("./kitchen-types").PlannedMeal[]; targetDate: string; today: string; servings?: number; batches?: number };
   allergies?: string[];
   pantry?: string[];
   query?: string;

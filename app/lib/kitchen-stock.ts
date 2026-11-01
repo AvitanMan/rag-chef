@@ -1,4 +1,4 @@
-import type { KitchenState, PantryStock } from "./kitchen-types";
+import type { PantryStock } from "./kitchen-types";
 import { canonicalIngredient, parseMeasure } from "./quantities";
 import { localDate } from "./kitchen-state";
 
@@ -6,8 +6,4 @@ import { localDate } from "./kitchen-state";
 export function availablePantryNames(pantry: PantryStock[], date = localDate()): string[] {
   return [...new Map(pantry.filter((stock) => parseMeasure(stock.measure)?.quantity !== 0 && (!stock.useBy || stock.useBy >= date))
     .map((stock) => [canonicalIngredient(stock.name), stock.name])).values()];
-}
-
-export function removePantryStock(state: KitchenState, id: string): KitchenState {
-  return { ...state, pantry: state.pantry.filter((stock) => stock.id !== id) };
 }

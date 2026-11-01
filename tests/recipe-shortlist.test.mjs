@@ -72,3 +72,15 @@ test("explaining a shortlist does not change its ranking or include excluded sea
   assert.equal(pure.search.catalogMatchReason(shortlist[0], query), "Matches your search words: pasta.");
   assert.deepEqual(shortlist, before);
 });
+
+test("broad dinner choices use measured stock without making unrelated requests relevant", () => {
+  const choices = [recipe("dry", "A Rice", ["rice"]), recipe("cooked", "Z Rice Leftovers", ["rice, cooked"])];
+  choices.forEach((choice) => { choice.servings = 2; choice.ingredients[0].measure = "200 g"; });
+  const stockContext = { pantry: [{ id: "leftovers", name: "cooked rice", measure: "200 g", useBy: "2026-10-26" }], meals: [], targetDate: "2026-10-25", today: "2026-10-25" };
+  const candidates = pure.search.rankCatalogRecipes(choices, { query: "Dinner", pantry: ["rice"], stockContext });
+  assert.equal(candidates[0].recipe.id, "cooked");
+  assert.equal(candidates[0].readiness.coveredCount, 1);
+  assert.equal(candidates[1].readiness.missingCount, 1);
+  const unrelated = pure.search.rankCatalogRecipes(choices, { query: "quantum spaceship", stockContext });
+  assert.deepEqual(pure.search.selectCatalogShortlist(unrelated, "quantum spaceship"), []);
+});

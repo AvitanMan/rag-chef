@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "description": "Source-backed timing annotations for three existing Wikibooks recipes. Original recipe records and the 30-dinner core are preserved. Source text is CC BY-SA 4.0, attributed to Wikibooks contributors; only number formatting and a range upper bound are normalized. Each annotation is bound to the captured recipe hash and cites the reviewed page revision.",
+  "entries": [
+    {
+      "recipeId": "wikibooks:dfd7acf6463fa043a97463a3c4e215b4313d8e542cb5028bb69d555ef0683752",
+      "title": "Chickpea Omelette",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chickpea_Omelette",
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "2076d984c93fb15420d36372fec2f386ec05938054b6ca83445f522855d80f86",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": 5,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Selected for the reviewed 30-dinner core. Original source ingredients, amounts, servings and directions are preserved; egg dishes are light main dishes, with no nutritional-completeness claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main dinner or light main dish rather than a sauce, dessert, or garnish. Source title: Chickpea Omelette"
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients: no listed animal-derived ingredients. This is ingredient-based diet suitability, not allergy certification. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed complete ingredients and method: no listed meat or fish. Product composition and cross-contact are not certified. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source does not establish verified gluten-free suitability for all prepared ingredients or serving additions. No certification inferred. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: no reviewed nutritional values or agreed carbohydrate threshold are present in the captured source. No macros or dietary threshold inferred."
+          },
+          "totalMinutes": {
+            "basis": "source",
+            "evidence": "Time: 5 minutes"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Required cooking appliances reviewed from the unchanged method; pots, pans, knives and ordinary utensils are not appliance exclusions. Heat up a skillet on medium heat and add the olive oil. Spread the oil across the pan and let it heat up a little. | Pour the batter into the skillet. Cook until bubbles form in the middle. Then, carefully flip using a spatula."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 1"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed source ingredient names and amounts without rewriting or silently resolving alternatives. Unknown/as-needed amounts remain unresolved. 1 cup chickpea flour | 1 teaspoon baking powder | Salt | 1 teaspoon ground turmeric | 1 teaspoon paprika | 1 cup soy milk or water | 1 tablespoon olive oil"
+          }
+        },
+        "reviewedBy": "Codex review of source timing and matching captured recipe",
+        "reviewedAt": "2026-10-29T15:54:41.537Z"
+      },
+      "sourceRevisionUrl": "https://en.wikibooks.org/w/index.php?title=Cookbook:Chickpea_Omelette&oldid=4512644"
+    },
+    {
+      "recipeId": "wikibooks:4c98f6bbc4f9e1a893bf376d5757f3847eaeeac62f81888a1f8db527379555b3",
+      "title": "Quick Risotto",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Quick_Risotto",
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "6d7a41b77d7fb5b1f35ef1fd2ab7b0e3073bc4b9f54cc0c68868ac3b4847ceba",
+        "coreDinner": false,
+        "dinnerRole": "unknown",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "unknown",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": 10,
+        "equipment": null,
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "totalMinutes": {
+            "basis": "source",
+            "evidence": "When really pressed for time, the following recipe will produce a reasonable semblance of risotto within ten minutes."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          }
+        },
+        "reviewedBy": "Codex review of source timing and matching captured recipe",
+        "reviewedAt": "2026-10-29T15:54:41.538Z"
+      },
+      "sourceRevisionUrl": "https://en.wikibooks.org/w/index.php?title=Cookbook:Quick_Risotto&oldid=4517967"
+    },
+    {
+      "recipeId": "wikibooks:166d449989634279222a18ca2364ddafb4d63f67d53e3643a32c8e94aaf36645",
+      "title": "Tomato Pasta",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Tomato_Pasta",
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "9fdf0c748e760cc7b39633e33525db6ea9a7e5c12e9a40eb305582a328dd16c3",
+        "coreDinner": false,
+        "dinnerRole": "unknown",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "unknown",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": 25,
+        "equipment": null,
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "totalMinutes": {
+            "basis": "source",
+            "evidence": "Time: 20-25 minutes"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "This time-only review does not establish this field. Original ingredients, quantities, servings and directions remain unchanged; unknown suitability is not a safety claim."
+          }
+        },
+        "reviewedBy": "Codex review of source timing and matching captured recipe",
+        "reviewedAt": "2026-10-29T15:54:41.538Z"
+      },
+      "sourceRevisionUrl": "https://en.wikibooks.org/w/index.php?title=Cookbook:Tomato_Pasta&oldid=4516489"
+    }
+  ]
+}

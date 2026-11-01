@@ -44,6 +44,8 @@ next-env.d.ts
 /outputs/
 /work/
 /output/playwright/
+/output/code-audit/
+/output/verified-times/
 /.playwright-cli/
 /.venv-recipes/
 /recipe-runs/

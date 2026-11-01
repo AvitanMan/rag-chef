@@ -71,3 +71,9 @@ test("pantry names normalize safely without treating related ingredients as inte
   const sorted = browseRecipes([recipe("v", "A Vinegar", ["rice vinegar"]), recipe("r", "Z Rice", ["rice"])], "", ["rice"]);
   assert.deepEqual(sorted.map((r) => r.id), ["r", "v"]);
 });
+
+test("pantry coverage uses the same preparation identities and clear quantities as planning", () => {
+  const dinner = recipe("a", "Rice", ["rice, cooked", "uncooked rice", "200 g dried chickpeas", "dried basil"]);
+  assert.deepEqual(recipePantryDetails(dinner, ["rice", "chickpeas", "basil"]).matched, ["uncooked rice", "200 g dried chickpeas"]);
+  assert.deepEqual(recipePantryDetails(dinner, ["cooked rice"]).matched, ["rice, cooked"]);
+});

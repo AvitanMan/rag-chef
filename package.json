@@ -1,6 +1,6 @@
 {
   "name": "rag-chef-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "packageManager": "pnpm@11.25.0",
@@ -15,6 +15,8 @@
     "test:source": "node tools/testing/run-source.mjs",
     "test:integration": "node tools/testing/run-isolated.mjs integration",
     "test:e2e": "node tools/testing/run-isolated.mjs e2e",
+    "test:setup": "node tools/testing/run-isolated.mjs setup --project=desktop && node tools/testing/run-isolated.mjs setup --project=mobile",
+    "test:smoke": "node tools/testing/run-isolated.mjs smoke",
     "typecheck": "tsc --noEmit",
     "db:migrate": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply DB --local --config wrangler.jsonc --persist-to .wrangler/state",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
@@ -23,9 +25,12 @@
     "recipes:embed": "node tools/recipes/embed.mjs",
     "recipes:eval": "node tools/recipes/evaluate.mjs",
     "recipes:chef-eval": "node tools/recipes/evaluate-chef.mjs",
+    "recipes:rag-eval": "node tools/recipes/evaluate-rag.mjs",
+    "recipes:grounding-eval": "node tools/testing/run-isolated.mjs chef",
     "recipes:curate": "node tools/recipes/curate.mjs",
     "recipes:relevance-eval": "node tools/recipes/evaluate-relevance.mjs",
-    "recipes:test": ".venv-recipes/bin/python -m unittest discover -s tools/recipes/tests -v"
+    "recipes:test": ".venv-recipes/bin/python -m unittest discover -s tools/recipes/tests -v",
+    "recipes:journey-eval": "node tools/testing/run-isolated.mjs journeys"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

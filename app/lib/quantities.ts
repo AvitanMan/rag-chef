@@ -20,6 +20,7 @@ export interface ShoppingItem {
   requiredMeasure: string;
   pantryMeasure: string;
   needsReview: boolean;
+  preparationNote?: string;
   notes: string[];
   recipeTitles: string[];
   mealDates: string[];
@@ -51,11 +52,63 @@ const INGREDIENT_ALIASES: Record<string, string> = {
   courgette: "zucchini",
   courgettes: "zucchini",
   zucchinis: "zucchini",
+  "any small pasta": "pasta",
 };
 
+// Only reviewed, non-transforming descriptions of these foods are equivalent.
+// Keep heat treatment, preservation, alternatives and different products intact.
+const PREPARABLE_FOODS = new Set(["onion", "red onion", "white onion", "yellow onion", "spring onion", "carrot", "potato", "zucchini", "tomato", "cucumber", "mushroom", "bell pepper", "garlic", "cheese"]);
+const SIZED_PRODUCE = new Set(["onion", "red onion", "white onion", "yellow onion", "carrot", "potato", "zucchini", "tomato", "cucumber", "bell pepper", "lemon", "lime"]);
+
+function ingredientLabel(name: string): string {
+  const normalized = name.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ").replace(/\s*,\s*/g, ", ");
+  const alias = (value: string) => INGREDIENT_ALIASES[value] ?? value;
+  const sized = (value: string) => {
+    const match = value.match(/^(?:small|medium|large) (.+)$/);
+    const food = alias(match?.[1] ?? value);
+    return match && SIZED_PRODUCE.has(food) ? food : alias(value);
+  };
+  const preparation = normalized.match(/^(.+?), (?:(?:finely|coarsely|roughly|thinly|freshly) )?(?:chopped|diced|minced|sliced|grated|shredded)$/);
+  if (preparation) {
+    const food = sized(preparation[1]);
+    if (PREPARABLE_FOODS.has(food)) return food;
+  }
+  return sized(normalized);
+}
+
+// These pantry staples conventionally mean the uncooked form. Keep this list
+// explicit: dried fruit, herbs, mushrooms, canned beans, etc. are different foods.
+const UNCOOKED_STAPLES = /^(?:(?:(?:white|brown|basmati|jasmine|arborio|long[- ]grain|short[- ]grain) )?rice|(?:whole wheat |penne |fusilli |rigatoni |farfalle |macaroni |tagliatelle |fettuccine |linguine )?pasta|spaghetti|penne|fusilli|rigatoni|macaroni|couscous|quinoa|bulgur|barley|lentils?|(?:red |green |brown )lentils?|chickpea|(?:black |white |kidney |pinto |navy |cannellini )?beans?)$/;
+
+function ingredientIdentity(name: string) {
+  const normalized = ingredientLabel(name);
+  // Accept only a standalone prefix/suffix; alternatives and preparation prose
+  // remain exact names, so "cooked or raw rice" cannot silently lose its choice.
+  const prefix = normalized.match(/^(cooked|uncooked|raw|dry|dried)\s+(.+)$/);
+  const suffix = normalized.match(/^(.+?)(?:\s*,\s*|\s+)(cooked|uncooked|raw|dry|dried)$/)
+    ?? normalized.match(/^(.+?)\s*\((cooked|uncooked|raw|dry|dried)\)$/);
+  const state = prefix?.[1] ?? suffix?.[2];
+  const base = ingredientLabel(prefix?.[2] ?? suffix?.[1] ?? normalized);
+  if (/\b(?:cooked|uncooked|raw|dry|dried|or|and)\b/.test(base)) return { base: normalized, preparation: "unspecified", key: normalized };
+  const staple = UNCOOKED_STAPLES.test(base);
+  if ((state === "dry" || state === "dried") && !staple) return { base: normalized, preparation: "unspecified", key: normalized };
+  const preparation = state === "cooked" ? "cooked" : state !== undefined || staple ? "uncooked" : "unspecified";
+  const key = preparation === "cooked" ? `cooked ${base}` : preparation === "uncooked" && !staple ? `uncooked ${base}` : base;
+  return { base, preparation, key };
+}
+
 export function canonicalIngredient(name: string): string {
-  const normalized = name.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
-  return INGREDIENT_ALIASES[normalized] ?? normalized;
+  return ingredientIdentity(name).key;
+}
+
+function preparationNotes(name: string, pantry: PantryStock[]): string[] {
+  const required = ingredientIdentity(name);
+  const different = pantry.filter((stock) => {
+    const available = ingredientIdentity(stock.name);
+    return available.base === required.base && available.preparation !== required.preparation
+      && parseMeasure(stock.measure)?.quantity !== 0;
+  });
+  return different.length ? [`Pantry has ${[...new Set(different.map((stock) => stock.name))].join(", ")}; dinner needs ${name}. Cooked and uncooked amounts are kept separate. Review preparation; no automatic conversion is applied.`] : [];
 }
 
 type UnitDefinition = { unit: string; dimension: string; factor: number };
@@ -144,19 +197,19 @@ export function normalizePlanningIngredient(ingredient: RecipeIngredient): Recip
     const metric = parseMeasure(dual[2]);
     // Only comparable equivalents can be checked; never assume food density.
     if (!first || !metric || first.quantity <= 0 || first.dimension !== metric.dimension || Math.abs(first.quantity - metric.quantity) / first.quantity > 0.05 || /\b(?:or|and)\b|[()]/i.test(dual[3])) return original;
-    return { name: canonicalIngredient(dual[3]), measure: formatMeasure(metric.quantity, metric.unit) };
+    return { name: ingredientLabel(dual[3]), measure: formatMeasure(metric.quantity, metric.unit) };
   }
   // Anything parenthesized or expressed as a range/alternative needs review.
   if (/[()–—]|\d\s*-\s*\d|\b(?:to|or|and|of|approximately|about)\b/i.test(text)) return original;
   const leading = text.match(new RegExp(`^(${amount})(?:\\s*([a-zA-Z]+))?\\s+(.+)$`));
   if (!leading) return original;
   const withUnit = parseMeasure(`${leading[1]} ${leading[2] ?? ""}`);
-  if (withUnit) return { name: canonicalIngredient(leading[3]), measure: formatMeasure(withUnit.quantity, withUnit.unit) };
+  if (withUnit) return { name: ingredientLabel(leading[3]), measure: formatMeasure(withUnit.quantity, withUnit.unit) };
   if (leading[2]) return original;
   // No unit: accept a simple count, retaining the complete ingredient name.
   const count = text.match(new RegExp(`^(${amount})\\s+(.+)$`));
   const parsed = count && parseMeasure(count[1]);
-  return parsed ? { name: canonicalIngredient(count![2]), measure: formatMeasure(parsed.quantity, parsed.unit) } : original;
+  return parsed ? { name: ingredientLabel(count![2]), measure: formatMeasure(parsed.quantity, parsed.unit) } : original;
 }
 
 interface Requirement {
@@ -258,6 +311,30 @@ export interface MealStockAllocation {
   coveredByGroup: Map<string, number>;
 }
 
+export interface MealReadiness {
+  coveredCount: number;
+  partialCount: number;
+  missingCount: number;
+  reviewCount: number;
+  coverage: number;
+  useSoonCoverage: number;
+  shopping: Array<Pick<ShoppingItem, "name" | "measure" | "needsReview" | "preparationNote">>;
+}
+
+export function mealReadiness(meal: PlannedMeal, pantry: PantryStock[], today = currentLocalDate()): MealReadiness {
+  const allocation = allocateMealStock(meal, pantry, today);
+  const summary = { coveredCount: 0, partialCount: 0, missingCount: 0, reviewCount: 0 };
+  for (const requirement of requirementsFor([meal])) {
+    const covered = allocation.coveredByGroup.get(requirementKey(requirement)) ?? 0;
+    if (!requirement.parsed || requirement.needsReview) summary.reviewCount++;
+    else if (covered >= requirement.quantity) summary.coveredCount++;
+    else if (covered > 0) summary.partialCount++;
+    else summary.missingCount++;
+  }
+  return { ...summary, coverage: allocation.coverage, useSoonCoverage: allocation.useSoonCoverage,
+    shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote }) => ({ name, measure, needsReview, ...(preparationNote ? { preparationNote } : {}) })) };
+}
+
 function requirementKey(requirement: Requirement): string {
   return JSON.stringify([requirement.identity, requirement.parsed?.dimension ?? "review", requirement.parsed ? "" : requirement.raw.toLowerCase()]);
 }
@@ -285,6 +362,7 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
   const soon = dateAfter(stockDate, 3);
   for (const requirement of requirements) {
     if (!requirement.parsed) {
+      notes.push(...preparationNotes(requirement.name, stock));
       notes.push(`${requirement.name}: amount needs review; no stock deducted.`, ...requirement.descriptions);
       continue;
     }
@@ -312,7 +390,7 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
       coverage += covered / requirement.quantity;
       useSoonCoverage += usedSoon / requirement.quantity;
     }
-    if (remaining > 0) notes.push(`${requirement.name}: ${formatMeasure(remaining, requirement.parsed.unit)} unavailable in compatible pantry units; not deducted.`);
+    if (remaining > 0) notes.push(...preparationNotes(requirement.name, stock), `${requirement.name}: ${formatMeasure(remaining, requirement.parsed.unit)} unavailable in compatible pantry units; not deducted.`);
     if (requirement.needsReview) notes.push(...requirement.descriptions);
   }
   const denominator = requirements.length;
@@ -345,6 +423,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     const matches = matchingStock(requirement, stock);
     const recipeTitles = [...requirement.recipeTitles].sort();
     const mealDates = [...requirement.mealDates].sort();
+    const preparation = preparationNotes(requirement.name, stock);
     const notes = [...requirement.descriptions].sort();
     if (!requirement.parsed) {
       if (matches.length) notes.push("Pantry stock was not subtracted because the required amount is not quantified.");
@@ -356,6 +435,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
         requiredMeasure: measure,
         pantryMeasure: matches.map(({ stock: entry }) => entry.measure || "Unknown amount").join(" + ") || "0",
         needsReview: true,
+        ...(preparation.length ? { preparationNote: preparation[0] } : {}),
         notes,
         recipeTitles,
         mealDates,
@@ -364,7 +444,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     }
     const { unit, dimension } = requirement.parsed;
     const available = covered.get(requirementKey(requirement)) ?? 0;
-    let needsReview = requirement.needsReview;
+    let needsReview = requirement.needsReview || preparation.length > 0;
     for (const match of matches) {
       if (match.parsed?.dimension !== dimension) {
         needsReview = true;
@@ -381,6 +461,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
       requiredMeasure: formatMeasure(requirement.quantity, unit),
       pantryMeasure: formatMeasure(available, unit),
       needsReview,
+      ...(preparation.length ? { preparationNote: preparation[0] } : {}),
       notes,
       recipeTitles,
       mealDates,

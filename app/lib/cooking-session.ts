@@ -4,6 +4,7 @@ import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validati
 
 export const COOKING_SESSION_KEY = "rag-chef-cooking-v1";
 export const MAX_TIMER_MS = 86_400_000;
+export const MAX_COOKING_TIMERS = 8;
 export interface CookingTimer {
   durationMs: number;
   remainingMs: number;
@@ -19,7 +20,31 @@ export interface CookingSession {
   method: string;
   step: number;
   timer: CookingTimer;
+  timerLabel?: string;
+  extraTimers?: Array<CookingTimer & { id: string; label: string }>;
   soundEnabled: boolean;
+}
+
+function validTimer(timer: CookingTimer): boolean {
+  return Boolean(timer && ["idle", "running", "paused", "finished"].includes(timer.status)
+    && Number.isFinite(timer.durationMs) && timer.durationMs >= 1000 && timer.durationMs <= MAX_TIMER_MS
+    && Number.isFinite(timer.remainingMs) && timer.remainingMs >= 0 && timer.remainingMs <= timer.durationMs
+    && (timer.endAt === null || Number.isFinite(timer.endAt) && timer.endAt >= 0)
+    && (timer.status === "running" ? timer.endAt !== null : timer.endAt === null)
+    && (timer.status !== "finished" || timer.remainingMs === 0));
+}
+
+export function cookingHasRunningTimer(session: CookingSession): boolean {
+  return [session.timer, ...(session.extraTimers ?? [])].some(timer => timer.status === "running");
+}
+
+/** Finish all elapsed timers in one update so simultaneous alarms cannot overwrite each other. */
+export function finishElapsedTimers(session: CookingSession, now = Date.now()): CookingSession {
+  const finish = (timer: CookingTimer) => timer.status === "running" && remainingTimerMs(timer, now) === 0 ? timerAction(timer, "finish", now) : timer;
+  const timer = finish(session.timer);
+  const extraTimers = session.extraTimers?.map(item => ({ ...item, ...finish(item) }));
+  if (timer === session.timer && !session.extraTimers?.some((item, index) => item.status !== extraTimers![index].status)) return session;
+  return { ...session, timer, ...(extraTimers ? { extraTimers } : {}) };
 }
 
 export function plannedDinnerFingerprint(meal: PlannedMeal): string {
@@ -63,8 +88,17 @@ export function parseCookingSession(text: string | null): CookingSession | null 
     validateRecipeSnapshot(value.recipe);
     if (!Array.isArray(value.instructions) || value.instructions.length < 1 || value.instructions.length > 300 || value.instructions.some((step) => typeof step !== "string" || !step.trim() || step.length > 4000)) return null;
     if (typeof value.method !== "string" || value.method.length > 200 || !Number.isInteger(value.step) || value.step < 0 || value.step >= value.instructions.length) return null;
-    const timer = value.timer;
-    if (!timer || !["idle", "running", "paused", "finished"].includes(timer.status) || !Number.isFinite(timer.durationMs) || timer.durationMs < 1000 || timer.durationMs > MAX_TIMER_MS || !Number.isFinite(timer.remainingMs) || timer.remainingMs < 0 || timer.remainingMs > timer.durationMs || (timer.endAt !== null && (!Number.isFinite(timer.endAt) || timer.endAt < 0)) || (timer.status === "running" && timer.endAt === null) || (timer.status !== "running" && timer.endAt !== null) || (timer.status === "finished" && timer.remainingMs !== 0)) return null;
+    if (!validTimer(value.timer)) return null;
+    const validLabel = (label: unknown) => typeof label === "string" && Boolean(label.trim()) && label.length <= 80 && !/[\x00-\x1f\x7f]/.test(label);
+    if (Object.hasOwn(value, "timerLabel") && !validLabel(value.timerLabel)) return null;
+    if (Object.hasOwn(value, "extraTimers")) {
+      if (!Array.isArray(value.extraTimers) || value.extraTimers.length >= MAX_COOKING_TIMERS) return null;
+      const ids = new Set<string>(["main"]);
+      for (const timer of value.extraTimers) {
+        if (!validTimer(timer) || typeof timer.id !== "string" || !timer.id.trim() || timer.id.length > 200 || ids.has(timer.id) || !validLabel(timer.label)) return null;
+        ids.add(timer.id);
+      }
+    }
     if (Object.hasOwn(value, "plannedMeal")) {
       if (!value.plannedMeal) return null;
       const meal = value.plannedMeal;

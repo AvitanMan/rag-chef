@@ -9,6 +9,17 @@ const constraints = (value) => pure.constraints.normalizeConstraints(value);
 const recipe = (id, title, names) => ({ id, title, ingredients: names.map((name) => ({ name, measure: "1" })), instructions: ["Use the source directions."], tags: [], image: null, category: "Dinner", cuisine: "Test", source: { name: "Test", url: "https://example.com/" }, sourceUrl: "https://example.com/" });
 const recipes = [recipe("pasta", "Cheese Pasta", ["penne", "mozzarella"]), recipe("tomato", "Tomato Rice", ["rice", "chopped tomatoes"]), recipe("plain", "Garlic Rice", ["rice", "garlic"]), recipe("beans", "Bean Stew", ["beans", "onions"]), recipe("eggplant", "Eggplant Bowl", ["eggplant", "rice"]), recipe("egg", "Egg Rice", ["eggs", "rice"])];
 
+test("natural dinner questions request recipes without treating source questions as discovery", () => {
+  for (const query of ["What can I cook with what I have?", "What can I cook with eggplant?", "What should we make for dinner?", "Which recipes could I try with rice?", "What's for dinner?", "Can you find a dinner with rice?"]) {
+    assert.equal(pure.search.queryRequestsRecipes(query), true, query);
+  }
+  for (const query of ["Why rinse the rice?", "How long does this recipe take?", "What can I cook this in?", "What can I use instead of milk?", "What should the lentils feel like?", "What is the next source direction?"]) {
+    assert.equal(pure.search.queryRequestsRecipes(query), false, query);
+  }
+  assert.equal(recipeQueryIntent("What should we cook with eggplant?").topic, "eggplant");
+  for (const query of ["What should we make for dinner?", "What's for dinner?", "What should we eat tomorrow?"]) assert.equal(recipeQueryIntent(query).broad, true, query);
+});
+
 test("common dietary wording becomes constraints rather than positive search words", () => {
   for (const query of ["Meatless dinner", "MEAT-FREE dinner", "a meat free meal"]) {
     const intent = recipeQueryIntent(query);
@@ -154,4 +165,26 @@ test("broad dinners prefer reviewed mains while specific searches retain relevan
   assert.equal(specific[0].recipe.id, "dessert");
   const excluded = rankCatalogRecipes(source, { query: "Dinner without rice" }, new Map(), null, metadata);
   assert.ok(excluded.every((row) => row.recipe.id !== "main"), "A reviewed role cannot override a request exclusion");
+});
+
+test("counted broad requests retrieve dinners without treating counts as a dish", () => {
+  for (const count of ["three", "3", "9"]) {
+    const query = `Suggest ${count} different vegetarian dinners for tonight.`;
+    const intent = recipeQueryIntent(query);
+    assert.equal(intent.broad, true); assert.equal(intent.requestedCount, 3);
+    assert.deepEqual(intent.diets, ["vegetarian"]);
+    assert.equal(pure.search.recipeRetrievalQuery(query), "");
+    assert.ok(rankCatalogRecipes(recipes, { query }).length >= 3);
+  }
+  assert.equal(recipeQueryIntent("Three Bean Soup").topic, "three bean soup");
+  assert.equal(recipeQueryIntent("Three Bean Soup").requestedCount, undefined);
+});
+test("scheduling and recipe choices do not authorize food adaptations", () => {
+  for (const query of ["Recommend Cheese Pasta for tonight instead.", "Change my dinner to Bean Stew", "Replace tonight's meal with Garlic Rice", "Suggest a different recipe instead", "Replace this recipe with Bean Stew"]) assert.equal(recipeQueryIntent(query, true).mode, "recommendation", query);
+  for (const query of ["Use milk instead of cream", "Swap cheese for tofu", "Replace the butter with oil", "Change this recipe to vegan", "Change this meal to vegan", "Change the cooking method", "Double the recipe", "Make Cheese Pasta dairy-free"]) assert.equal(recipeQueryIntent(query, true).mode, "adaptation", query);
+});
+
+test("ingredient replacement questions need no preselected replacement", () => {
+  for (const query of ["How can I replace the milk?", "Can I replace the cheese?", "What could replace butter?", "Replace the milk", "What is a replacement for milk?"]) assert.equal(recipeQueryIntent(query, true).mode, "adaptation", query);
+  for (const query of ["Can I replace this recipe?", "Replace my dinner", "Replace this recipe with Bean Stew", "Recommend Cheese Pasta for tonight instead.", "Suggest a replacement recipe", "Find a replacement for this dinner"]) assert.equal(recipeQueryIntent(query, true).mode, "recommendation", query);
 });

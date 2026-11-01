@@ -16,24 +16,23 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("fresh kitchen browses synthetic recipes and persists a selected dinner", async ({ page, request }) => {
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   const card = page.locator(".recipe-card").filter({ has: page.getByRole("heading", { name: "Tomato Rice", exact: true }) });
   await expect(card).toBeVisible();
   await expect(card).toContainText("0 of 2 ingredients in pantry");
-  await card.getByRole("button", { name: /^Add to plan:/ }).click();
-  await page.getByRole("dialog", { name: "Choose dinner day" }).getByRole("button", { name: "Add dinner", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+  await card.getByRole("button", { name: /^Choose for tonight:/ }).click();
+  await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
   await expect.poll(async () => Object.values((await (await request.get("/api/kitchen")).json()).state?.meals ?? {}).length).toBe(1);
-  await page.reload();
+  await page.reload(); await navigate(page, "Plan");
   await expect(page.locator(".day-card.filled")).toHaveCount(1);
   await expect(page.locator(".day-card.filled")).toContainText("Tomato Rice");
 });
 
 test("zero stock is unavailable and removing duplicate names preserves the other ID", async ({ page, request }) => {
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice-zero", name: "rice", measure: "0 g" }, { id: "rice-positive", name: "rice", measure: "400 g" }, { id: "tomato-zero", name: "tomato", measure: "0" }] });
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   await expect(page.locator(".recipe-card")).toContainText("1 of 2 ingredients in pantry");
@@ -46,10 +45,10 @@ test("zero stock is unavailable and removing duplicate names preserves the other
 });
 
 test("allergy aliases and diet conflicts agree across browsing, planning and Chef", async ({ page, request }) => {
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
-  await page.getByLabel("Allergies", { exact: false }).fill("milk, peanut");
+  await page.getByRole("textbox", { name: "Allergies", exact: true }).fill("milk, peanut");
   await navigate(page, "Recipes");
   const cards = page.locator(".recipe-card");
   await expect(cards.filter({ hasText: "Cheese Pasta" })).toHaveCount(0);
@@ -72,7 +71,7 @@ test("allergy aliases and diet conflicts agree across browsing, planning and Che
 });
 
 test("backup restore previews changes and rejects invalid files without changing saved state", async ({ page, request }) => {
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const before = await readKitchen(request);
   const file = page.getByLabel("Restore backup file", { exact: true });
@@ -84,12 +83,15 @@ test("backup restore previews changes and rejects invalid files without changing
   const preview = page.getByRole("region", { name: "Backup preview" });
   await expect(preview).toContainText("1 pantry rows");
   expect(await readKitchen(request)).toEqual(before);
+  await expect(preview).toContainText("This older backup has no cooking preferences");
+  await expect(preview.getByRole("button", { name: "Replace kitchen with backup" })).toBeDisabled();
+  await preview.getByRole("checkbox", { name: "I reviewed the cooking preferences, including allergies and equipment." }).check();
   await preview.getByRole("button", { name: "Replace kitchen with backup" }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry).toEqual(restored.pantry);
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export backup", exact: true }).click();
   expect((await downloadPromise).suggestedFilename()).toMatch(/\.json$/);
-  await page.reload();
+  await page.reload(); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("300 g");
 });
@@ -101,7 +103,7 @@ test("another tab draft can be reviewed and recovered without deleting its origi
   await page.addInitScript(({ key, draft, revision }) => {
     localStorage.setItem(key, JSON.stringify({ revision, state: draft, dirty: true, updatedAt: "2026-10-22T09:00:00.000Z", reason: "edit" }));
   }, { key, draft, revision: document.revision });
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await page.getByText(/Unsaved kitchens found/).click();
   await expect(page.locator(".recovery-candidate")).toContainText("1 pantry rows");
   await page.getByRole("button", { name: "Recover this draft" }).click();
@@ -115,7 +117,7 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
     if (!failed) { failed = true; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Test storage unavailable" }) }); }
     else await route.continue();
   });
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await expect(page.getByRole("button", { name: "Retry catalog" })).toBeVisible();
   await page.getByRole("button", { name: "Retry catalog" }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
@@ -123,7 +125,7 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
 });
 
 test("offline pantry edits survive closing the tab and can be explicitly recovered after reconnecting", async ({ page, context, request }) => {
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await context.setOffline(true);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
@@ -142,20 +144,41 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
 });
 
 test("two tabs expose a revision conflict and keep server and browser versions until a choice", async ({ page, context, request }) => {
-  await page.goto("/");
+  await page.goto("/"); await navigate(page, "Pantry");
   const other = await context.newPage();
-  await other.goto("/");
-  await navigate(page, "Pantry");
-  await navigate(other, "Pantry");
-  await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
-  await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
-  await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
-  await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
-  await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
-  await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();
-  expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
-  expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
-  await other.getByRole("button", { name: "Load saved version", exact: true }).click();
-  await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
-  await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
+  let releaseWrite = () => {};
+  const heldWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+  let writeStarted = () => {};
+  const writing = new Promise<void>(resolve => { writeStarted = resolve; });
+  let otherRevision: number | undefined;
+  try {
+    await other.goto("/"); await navigate(other, "Pantry");
+    await expect(other.locator(".save-indicator")).toHaveText("Saved");
+    // Hold a genuine unsaved edit while the first tab saves from the same revision.
+    // Clean tabs now refresh automatically, so sequential edits should not conflict.
+    await other.route("**/api/kitchen", async route => {
+      if (route.request().method() === "PUT") {
+        otherRevision = route.request().postDataJSON().revision;
+        writeStarted(); await heldWrite;
+      }
+      await route.continue();
+    });
+    await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
+    await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    await writing;
+    const pageWrite = page.waitForRequest(request => request.url().endsWith("/api/kitchen") && request.method() === "PUT");
+    await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
+    await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    expect((await pageWrite).postDataJSON().revision).toBe(otherRevision);
+    await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+    const conflictResponse = other.waitForResponse(response => response.url().endsWith("/api/kitchen") && response.request().method() === "PUT");
+    releaseWrite();
+    expect((await conflictResponse).status()).toBe(409);
+    await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();
+    expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
+    expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
+    await other.getByRole("button", { name: "Load saved version", exact: true }).click();
+    await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
+    await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
+  } finally { releaseWrite(); await other.close(); }
 });

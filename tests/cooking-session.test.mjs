@@ -8,15 +8,48 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-cooking-session-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["cooking-session", "kitchen-validation"]) {
+for (const name of ["cooking-session", "kitchen-validation", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, canCompleteCookingSession } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
+const { createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
 const recipe = () => ({ id: "rice", title: "Test Rice", image: null, category: "Dinner", cuisine: "International", source: { name: "Wikibooks", url: "https://en.wikibooks.org/" }, sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Rice", ingredients: [{ name: "rice", measure: "100 g" }], instructions: ["Rinse rice.", "Simmer for 10 minutes."], tags: [], servings: 2 });
 const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 4, batches: 1, locked: false, status: "planned", ingredientOverrides: {} });
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
 const parse = (value) => parseCookingSession(JSON.stringify(value));
+
+test("multiple named timers survive reload and simultaneous deadlines finish in one immutable update", () => {
+  const session = fresh();
+  session.timerLabel = "Sauce";
+  session.timer = timerAction(session.timer, "start", 1000, 3000);
+  session.extraTimers = [
+    { ...timerAction(fresh().timer, "start", 1000, 3000), id: "rice", label: "Rice" },
+    { ...timerAction(fresh().timer, "start", 1000, 10_000), id: "oven", label: "Oven" },
+  ];
+  const before = structuredClone(session);
+  const restored = parse(session);
+  assert.deepEqual(restored, before);
+  assert.equal(finishElapsedTimers(restored, 2000), restored);
+  const next = finishElapsedTimers(restored, 5000);
+  assert.equal(next.timer.status, "finished"); assert.equal(next.extraTimers[0].status, "finished");
+  assert.equal(next.extraTimers[1].status, "running"); assert.equal(remainingTimerMs(next.extraTimers[1], 5000), 6000);
+  assert.equal(cookingHasRunningTimer(next), true);
+  assert.deepEqual(session, before);
+  assert.equal(cookingHasRunningTimer(finishElapsedTimers(next, 20_000)), false);
+});
+
+test("named timers reject corrupt labels, duplicate IDs and excessive counts while legacy sessions remain valid", () => {
+  const original = fresh();
+  assert.deepEqual(parse(original), original);
+  const extra = { ...original.timer, id: "rice", label: "Rice" };
+  for (const patch of [
+    { timerLabel: "" }, { timerLabel: "x".repeat(81) }, { extraTimers: null },
+    { extraTimers: [extra, extra] }, { extraTimers: [{ ...extra, id: "main" }] },
+    { extraTimers: [{ ...extra, label: "" }] }, { extraTimers: [{ ...extra, status: "running", endAt: null }] },
+    { extraTimers: Array.from({ length: MAX_COOKING_TIMERS }, (_, index) => ({ ...extra, id: String(index) })) },
+  ]) assert.equal(parse({ ...original, ...patch }), null);
+  assert.ok(parse({ ...original, extraTimers: Array.from({ length: MAX_COOKING_TIMERS - 1 }, (_, index) => ({ ...extra, id: String(index) })) }));
+});
 
 test("completion requires the same dinner and the same source and final quantities shown while cooking", () => {
   const session = fresh();

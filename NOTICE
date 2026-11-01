@@ -1,12 +1,28 @@
 Third-party recipe content
 
+Original starter recipes
+app/lib/demo-recipes.ts contains original RAG Chef starter recipes distributed
+under this repository's MIT license. They are separate from both the synthetic
+test fixtures and the third-party evaluation corpus described below. Loading
+them is an explicit setup action; it does not copy the user's kitchen.
+
 Wikibooks Cookbook
 The Wikibooks entries in tools/recipes/fixtures/relevance-catalog.json and the
-source excerpts in tools/recipes/core-dinners.v1.json are attributed to Wikibooks
+source excerpts in tools/recipes/core-dinners.v1.json and
+tools/recipes/verified-times.v1.json are attributed to Wikibooks
 contributors under CC BY-SA 4.0. Each record retains its source URL and attribution;
 the source page history identifies contributors. Extraction normalizes formatting.
+The timing annotations retain source statements and reviewed revision links;
+numeric values normalize number wording and use the upper bound of a source range.
 https://creativecommons.org/licenses/by-sa/4.0/
 https://en.wikibooks.org/wiki/Wikibooks:Copyrights
+
+The reviewed boiling and simmering definitions in app/lib/chef-context.ts are
+paraphrases of the following Wikibooks Cookbook pages, by Wikibooks contributors,
+under CC BY-SA 4.0. They are displayed separately from recipe facts, with source
+and license links. Their page histories identify contributors.
+https://en.wikibooks.org/wiki/Cookbook:Boiling
+https://en.wikibooks.org/wiki/Cookbook:Simmering
 
 TheMealDB
 Six entries in tools/recipes/fixtures/relevance-catalog.json originate from

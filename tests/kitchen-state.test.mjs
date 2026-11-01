@@ -13,7 +13,7 @@ for (const name of ["kitchen-state", "kitchen-types", "quantities"]) {
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(directory, `${name}.mjs`), compiled);
 }
-const { addDateDays, weekStart, createPlannedMeal, migrateLegacyKitchen, rankWeeklyCandidates, dinnerSelectionStatus, placePlannedDinner } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
+const { addDateDays, weekStart, createPlannedMeal, migrateLegacyKitchen, dinnerSelectionStatus, placePlannedDinner } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
 
 const recipe = { id: "themealdb:123", title: "Test dinner", image: null, category: "", cuisine: "", ingredients: [{ name: "Rice", measure: "400 g" }], instructions: ["Cook rice."], tags: [], source: { name: "Test", url: "https://example.com" }, sourceUrl: "https://example.com" };
 
@@ -91,20 +91,6 @@ test("servings are taken only from an explicitly supplied recipe yield", () => {
   const known = createPlannedMeal("2026-10-20", { ...recipe, servings: 4 });
   assert.equal(known.baseServings, 4);
   assert.equal(known.servings, 4);
-});
-
-test("weekly candidates use the full catalog, pantry coverage, and stable weekly ties without repeats", () => {
-  const recipes = Array.from({ length: 102 }, (_, i) => ({ ...recipe, id: `r${i}`, title: `Dinner ${i}`, ingredients: [{ name: i === 101 ? "200 g tomatoes" : "pasta", measure: "" }] }));
-  const meals = { "2026-10-20": { ...createPlannedMeal("2026-10-20", recipes[0]), locked: true }, "2026-10-21": { ...createPlannedMeal("2026-10-21", recipes[1]), status: "cooked" } };
-  const before = structuredClone(meals);
-  const ranked = rankWeeklyCandidates(recipes, ["tomato"], "2026-10-19", meals);
-  assert.equal(ranked.length, 100);
-  assert.equal(ranked[0].id, "r101");
-  assert.ok(!ranked.some((r) => r.id === "r0" || r.id === "r1"));
-  assert.deepEqual(ranked, rankWeeklyCandidates(recipes.slice().reverse(), ["tomato"], "2026-10-19", meals));
-  assert.deepEqual(meals, before);
-  assert.equal(rankWeeklyCandidates([recipes[0]], [], "2026-10-19", meals).length, 0);
-  assert.equal(new Set(ranked.map((r) => r.id)).size, ranked.length);
 });
 
 test("new planning ingredients keep source wording; legacy migration does not change calculations", () => {

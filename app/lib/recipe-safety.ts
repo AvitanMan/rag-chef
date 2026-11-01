@@ -6,7 +6,7 @@ const ALLERGY_GROUPS: Array<{ labels: string[]; terms: string[] }> = [
   { labels: ["dairy", "milk", "lactose"], terms: ["milk", "cream", "butter", "cheese", "whey", "casein", "yogurt", "yoghurt", "ghee", "lactose", "mozzarella", "parmesan", "parmigiano", "pecorino", "feta", "ricotta", "cheddar", "paneer", "buttermilk", "mascarpone", "brie", "gorgonzola"] },
   { labels: ["egg", "eggs"], terms: ["egg", "eggs", "mayonnaise", "meringue", "albumen"] },
   { labels: ["peanut", "peanuts"], terms: ["peanut", "peanuts", "groundnut", "groundnuts"] },
-  { labels: ["tree nut", "tree nuts", "nut", "nuts"], terms: ["nut", "nuts", "almond", "almonds", "walnut", "walnuts", "cashew", "cashews", "pistachio", "pistachios", "pecan", "pecans", "hazelnut", "hazelnuts", "macadamia", "brazil nut", "pine nut", "marzipan"] },
+  { labels: ["tree nut", "tree nuts"], terms: ["nut", "nuts", "almond", "almonds", "walnut", "walnuts", "cashew", "cashews", "pistachio", "pistachios", "pecan", "pecans", "hazelnut", "hazelnuts", "macadamia", "brazil nut", "pine nut", "marzipan"] },
   { labels: ["gluten"], terms: ["gluten", "wheat", "flour", "barley", "rye", "spelt", "semolina", "couscous", "breadcrumbs", "bread crumbs", "bread", "pasta", "farfalle", "ziti", "penne", "macaroni", "spaghetti", "fettuccine", "lasagne", "lasagna", "orzo", "soy sauce", "seitan", "bulgur", "udon"] },
   { labels: ["wheat"], terms: ["wheat", "flour", "semolina", "couscous", "breadcrumbs", "bread crumbs", "bread", "pasta", "farfalle", "ziti", "penne", "macaroni", "spaghetti", "fettuccine", "lasagne", "lasagna", "orzo", "seitan", "bulgur", "udon"] },
   { labels: ["soy", "soya"], terms: ["soy", "soya", "tofu", "tempeh", "edamame", "miso", "tamari", "soy sauce"] },
@@ -31,13 +31,17 @@ export function matchedRecipeAllergies(recipe: { ingredients: RecipeIngredient[]
   return allergies.filter((raw) => {
     const allergy = normalizeIngredientText(raw).replace(/\b(?:allergy|allergies|allergic|intolerance|intolerant|to)\b/g, " ").replace(/\s+/g, " ").trim();
     if (!allergy) return false;
-    const group = ALLERGY_GROUPS.find(({ labels }) => labels.some((label) => allergy === label || containsIngredientTerm(allergy, label)));
-    return (group?.terms ?? [allergy]).some((term) => containsIngredientTerm(text, term));
+    return allergyTerms(allergy).some((term) => containsIngredientTerm(text, term));
   });
 }
 
 function allergyTerms(label: string): string[] {
-  return ALLERGY_GROUPS.find((group) => group.labels.includes(label))?.terms ?? [label];
+  const group = ALLERGY_GROUPS.find(({ labels }) => labels.some((name) => label === name || containsIngredientTerm(label, name)));
+  if (group) return group.terms;
+  // An unspecified nut allergy conservatively covers both families. Explicit
+  // tree-nut and peanut labels retain their separate ingredient boundaries.
+  if (["nut", "nuts"].some((name) => containsIngredientTerm(label, name))) return [...allergyTerms("peanut"), ...allergyTerms("tree nut")];
+  return [label];
 }
 
 const EXCLUSION_FAMILIES: Record<string, string[]> = {
@@ -47,7 +51,7 @@ const EXCLUSION_FAMILIES: Record<string, string[]> = {
   dairy: allergyTerms("dairy"),
   egg: allergyTerms("egg"),
   peanut: allergyTerms("peanut"),
-  nuts: [...allergyTerms("peanut"), ...allergyTerms("nuts")],
+  nuts: allergyTerms("nuts"),
   "tree nut": allergyTerms("tree nut"),
   "tree nuts": allergyTerms("tree nuts"),
   gluten: allergyTerms("gluten"),

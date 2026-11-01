@@ -23,6 +23,18 @@ test("allergies expand the same aliases used across browsing, Chef and planning"
   assert.equal(decide(["eggplant", "rice vinegar"], { allergies: ["egg", "peanut"] }).eligible, true);
 });
 
+test("generic nut allergies cover peanuts and tree nuts without broadening explicit families", () => {
+  for (const allergy of ["nut", "nuts", "Nut allergy"]) {
+    for (const name of ["peanut butter", "peanuts", "groundnuts", "almonds", "walnuts"]) {
+      assert.equal(decide([name], { allergies: [allergy] }).eligible, false, `${allergy}/${name}`);
+    }
+    assert.equal(decide(["nutmeg", "rice"], { allergies: [allergy] }).eligible, true);
+  }
+  assert.equal(decide(["peanuts"], { allergies: ["tree nuts"] }).eligible, true);
+  assert.equal(decide(["walnuts"], { allergies: ["peanut"] }).eligible, true);
+  assert.equal(decide(["walnuts"], { allergies: ["tree nuts"] }).eligible, false);
+});
+
 test("known diet conflicts are excluded while unknowns stay eligible and labeled", () => {
   for (const [diet, names] of [["Vegetarian", ["chicken stock"]], ["Vegan", ["butter"]], ["Vegan", ["mozzarella"]], ["Gluten-free", ["farfalle"]]]) assert.equal(decide(names, { diet }).eligible, false);
   const unknown = decide(["rice", "tomatoes"], { diet: "Vegan" });

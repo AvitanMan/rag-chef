@@ -1,8 +1,9 @@
 import type { KitchenState, PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
-import { canonicalIngredient, normalizePlanningIngredient } from "./quantities";
+import { normalizePlanningIngredient } from "./quantities";
 
 export const LEGACY_STORAGE_KEY = "rag-chef-prototype-v1";
+export const PREFERENCES_STORAGE_KEY = "rag-chef-preferences-v2";
 export const KITCHEN_CACHE_KEY = "rag-chef-kitchen-v2";
 export const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -44,22 +45,6 @@ export function placePlannedDinner(state: KitchenState, date: string, recipe: Re
   const meal = template ? { ...structuredClone(template), planningIngredients: structuredClone(template.planningIngredients ?? fresh.planningIngredients), id: fresh.id, date, locked: false, status: "planned" as const } : fresh;
   delete meal.completion;
   return { ...state, meals: { ...state.meals, [date]: meal } };
-}
-
-export function rankWeeklyCandidates(recipes: Recipe[], pantry: string[], week: string, meals: Record<string, PlannedMeal>): Recipe[] {
-  const dates = new Set(Array.from({ length: 7 }, (_, i) => addDateDays(week, i)));
-  const used = new Set(Object.values(meals).filter((meal) => dates.has(meal.date)).map((meal) => meal.recipeId));
-  const stock = new Set(pantry.map(canonicalIngredient));
-  const hash = (value: string) => {
-    let result = 2166136261;
-    for (const char of value) result = Math.imul(result ^ char.charCodeAt(0), 16777619);
-    return result >>> 0;
-  };
-  return [...new Map(recipes.map((recipe) => [recipe.id, recipe])).values()]
-    .filter((recipe) => !used.has(recipe.id))
-    .map((recipe) => ({ recipe, score: recipe.ingredients.length ? recipe.ingredients.filter((item) => stock.has(canonicalIngredient(normalizePlanningIngredient(item).name))).length / recipe.ingredients.length : 0, tie: hash(`${week}:${recipe.id}`) }))
-    .sort((a, b) => b.score - a.score || a.tie - b.tie || a.recipe.id.localeCompare(b.recipe.id))
-    .map((item) => item.recipe);
 }
 
 export function migrateLegacyKitchen(
