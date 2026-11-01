@@ -5,6 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { ragCases, ragRecipes } from "./rag-cases.mjs";
+import { summarizeRagResults } from "./evaluation-grading.mjs";
+import { fingerprintFiles } from "./evaluation-fingerprints.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 
@@ -51,22 +53,14 @@ export async function evaluateRag({ reportPath = join(ROOT, "output/playwright/r
         coreStepIds: selection.coreStepIds, selectedIds: selection.items.map((row) => row.evidenceId), contextCharacters: selection.items.reduce((sum, row) => sum + row.text.length, 0) });
       console.error(`${item.id}: ${results.at(-1).correct ? "pass" : "FAIL"} · ${checked.verification.status} (${checked.milliseconds} ms)`);
     }
-    const metrics = (rows) => {
-      const positive = rows.filter((row) => row.supported), negative = rows.filter((row) => !row.supported);
-      return { cases: rows.length, evidenceRecallAt6: positive.filter((row) => row.evidenceHit).length / positive.length,
-        baselineEvidenceRecallAt6: positive.filter((row) => row.baselineEvidenceHit).length / positive.length,
-        supportedAnswerAcceptance: positive.filter((row) => row.accepted).length / positive.length,
-        unsupportedClaimAcceptance: negative.filter((row) => row.accepted).length / negative.length,
-        baselineUnsupportedClaimAcceptance: negative.filter((row) => row.baselineAccepted).length / negative.length };
-    };
-    const overall = metrics(results), latency = results.map((row) => row.verificationMs).sort((a, b) => a - b);
-    const report = { reportVersion: 1, generatedAt: new Date().toISOString(), labelsSha256: hash(await readFile(join(ROOT, "tools/recipes/rag-cases.mjs"), "utf8")),
+    const summary = summarizeRagResults(results), latency = results.map((row) => row.verificationMs).sort((a, b) => a - b);
+    const evaluationFingerprint = await fingerprintFiles(ROOT, ["tools/recipes/evaluate-rag.mjs", "tools/recipes/evaluation-grading.mjs", "tools/recipes/evaluation-fingerprints.mjs", "tools/recipes/rag-cases.mjs"]);
+    const report = { reportVersion: 2, generatedAt: new Date().toISOString(), labelsSha256: hash(await readFile(join(ROOT, "tools/recipes/rag-cases.mjs"), "utf8")),
       model: installed.name, modelDigest: installed.digest, embeddingModel: embedModel.name, embeddingDigest: embedModel.digest,
       sourceSha256: hash((await Promise.all(names.map((name) => readFile(join(ROOT, `app/lib/${name}.ts`), "utf8")))).join("\n")),
-      overall, development: metrics(results.filter((row) => row.split === "development")), heldout: metrics(results.filter((row) => row.split === "heldout")),
+      evaluationSha256: evaluationFingerprint.sha256, evaluationFiles: evaluationFingerprint.files, ...summary,
       latency: { medianMs: latency[Math.floor(latency.length / 2)], p95Ms: latency[Math.ceil(latency.length * 0.95) - 1] },
-      gatesPassed: overall.evidenceRecallAt6 >= 0.9 && overall.supportedAnswerAcceptance >= 0.9 && overall.unsupportedClaimAcceptance <= 0.05,
-      scope: "40 fixed original synthetic cases, split by recipe. No application database or paid provider is accessed. Baseline is the unchanged lexical evidence selector and numeric-only guard.", results };
+      scope: "40 fixed original synthetic cases, split by recipe. Complete case coverage, development, held-out and aggregate thresholds must each pass. No application database or paid provider is accessed. Baseline is the unchanged lexical evidence selector and numeric-only guard.", results };
     await mkdir(dirname(reportPath), { recursive: true }); await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
     return report;
   } finally { await rm(directory, { recursive: true, force: true }); }
