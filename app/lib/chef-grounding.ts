@@ -2,7 +2,7 @@ import type { ChefStructuredAnswer } from "./chef-schema";
 import type { Recipe, RecipeMetadata, RecipeMetadataMap } from "./recipe-types";
 
 type Detail = { kind: string; minimum: number; maximum: number };
-type SourceEvidence = { evidenceId?: string; text: string };
+type SourceEvidence = { recipeId?: string; evidenceId?: string; text: string };
 type SourceContext = { recipeId: string; evidence: Array<{ evidenceId: string; text: string }> };
 export type ChefGroundingIssue = "unsupported_detail" | "unsupported_total_time" | "unlabeled_time_estimate";
 
@@ -121,8 +121,11 @@ export function lacksRequestedTotalTime(query: string, recipe: Recipe, metadata?
   const asksTotal = /\b(?:total|overall)\s+(?:(?:recipe|cooking|cook|preparation|prep)\s+)?(?:time|duration)\b|\bstart[ -]to[ -]finish\b/i.test(query)
     || /\bhow long\b.*\boverall\b/i.test(query)
     || /\bhow long (?:does|will|would) (?:(?:this|the) (?:recipe|dish|dinner|meal)|(?:the )?(?:first|second|third) (?:one|recipe|dish|suggestion|option)) take(?: to (?:make|cook|prepare))?[?!.\s]*$/i.test(query);
-  return asksTotal && metadata?.totalMinutes == null
-    && !recipe.instructions.some(text => totalTimeDetails(text, false, true).length > 0)
+  if (!asksTotal) return false;
+  // A complete review can reject an original Time label because it omits
+  // prerequisites. Retaining that note must not undo the reviewed unknown.
+  if (metadata) return metadata.totalMinutes === null;
+  return !recipe.instructions.some(text => totalTimeDetails(text, false, true).length > 0)
     && !(recipe.sourceNotes ?? []).some(text => totalTimeDetails(text, false, true, true).length > 0);
 }
 
@@ -149,7 +152,7 @@ export function lacksRequestedNutrition(query: string, recipe: Recipe): boolean 
 /** Validate only source claims. Explicit advisory changes stay separate. */
 export function chefGroundingIssue(answer: ChefStructuredAnswer, sources: SourceContext[], metadata: RecipeMetadataMap, options: { cookingStep: boolean }): ChefGroundingIssue | null {
   const contexts = new Map(sources.map((source) => [source.recipeId, source]));
-  const cited = answer.sourceFacts.map((fact) => ({ evidenceId: fact.evidenceId, text: fact.fact }));
+  const cited = answer.sourceFacts.map((fact) => ({ recipeId: fact.recipeId, evidenceId: fact.evidenceId, text: fact.fact }));
   const metadataTexts = (recipeIds: string[]) => recipeIds.flatMap((id) => {
     const entry = metadata[id];
     if (entry?.totalMinutes == null) return [];
@@ -169,7 +172,8 @@ export function chefGroundingIssue(answer: ChefStructuredAnswer, sources: Source
     const available = [...support.flatMap(source => details(source.text).filter(detail => !source.evidenceId?.startsWith("I") || !detail.kind.startsWith("nutrition:"))), ...metadataEvidence.flatMap(text => details(text)).filter((detail) => totals.some((total) => supported(total, [detail])))];
     const ingredientLabels = support.flatMap(ingredientLabelDetails);
     if (details(text, { ingredientLabels }).some((detail) => !supported(detail, available))) return "unsupported_detail";
-    const totalEvidence = [...support.flatMap((source) => totalTimeDetails(source.text, false, true, /^N[1-9]\d{0,2}$/.test(source.evidenceId ?? ""))), ...metadataEvidence.flatMap(text => details(text))];
+    const totalEvidence = [...support.filter(source => !source.recipeId || metadata[source.recipeId]?.totalMinutes !== null)
+      .flatMap((source) => totalTimeDetails(source.text, false, true, /^N[1-9]\d{0,2}$/.test(source.evidenceId ?? ""))), ...metadataEvidence.flatMap(text => details(text))];
     if (totals.some((detail) => !supported(detail, totalEvidence))) return "unsupported_total_time";
     const usesEstimate = totals.some((detail) => recipeIds.some((id) => {
       const entry = metadata[id];
@@ -189,7 +193,7 @@ export function chefGroundingIssue(answer: ChefStructuredAnswer, sources: Source
     if (issue) return issue;
   }
   for (const recommendation of answer.recommendations) {
-    const evidence = contexts.get(recommendation.recipeId)?.evidence ?? [];
+    const evidence = (contexts.get(recommendation.recipeId)?.evidence ?? []).map(item => ({ ...item, recipeId: recommendation.recipeId }));
     const issue = check(recommendation.reason, evidence, [recommendation.recipeId]);
     if (issue) return issue;
   }

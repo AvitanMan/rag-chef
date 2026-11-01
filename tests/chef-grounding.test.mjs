@@ -18,6 +18,24 @@ const sources = [{ recipeId: "bake", evidence: [{ evidenceId: "I1", text: "200 g
 const answer = (text, extra = {}) => ({ answer: text, sourceFacts: facts, recommendations: [], chefChanges: [], warnings: [], ...extra });
 const check = (text, extra = {}, metadata = {}, options = {}) => chefGroundingIssue(answer(text, extra), sources, metadata, { cookingStep: false, ...options });
 
+test("an explicitly unknown reviewed total overrides a preserved source time label", () => {
+  const recipe = { ingredients: [{ name: "cooked rice", measure: "1 cup" }], instructions: ["Fry the cooked rice."], sourceNotes: ["Time: 20 minutes"] };
+  const unknown = { totalMinutes: null, provenance: { totalMinutes: { basis: "curator_assessment", evidence: "Cooking the rice is an untimed prerequisite." } } };
+  assert.equal(lacksRequestedTotalTime("What is the total recipe time?", recipe), false);
+  assert.equal(lacksRequestedTotalTime("What is the total recipe time?", recipe, unknown), true);
+  assert.equal(lacksRequestedTotalTime("How long does this recipe take?", recipe, unknown), true);
+  assert.equal(lacksRequestedTotalTime("How long should I fry it?", recipe, unknown), false);
+  const sourceFacts = [{ recipeId: "rice", evidenceId: "N1", fact: recipe.sourceNotes[0] }];
+  const source = [{ recipeId: "rice", evidence: [{ evidenceId: "N1", text: recipe.sourceNotes[0] }] }];
+  const total = answer("Total time: 20 minutes.", { sourceFacts });
+  assert.equal(chefGroundingIssue(total, source, {}, { cookingStep: false }), null);
+  assert.equal(chefGroundingIssue(total, source, { rice: unknown }, { cookingStep: false }), "unsupported_total_time");
+  const quotation = answer("The source note says Time: 20 minutes. The complete total is unknown.", { sourceFacts });
+  assert.equal(chefGroundingIssue(quotation, source, { rice: unknown }, { cookingStep: false }), null);
+  const recommendation = answer("Try this recipe.", { sourceFacts: [], recommendations: [{ recipeId: "rice", reason: "Total time: 20 minutes." }] });
+  assert.equal(chefGroundingIssue(recommendation, source, { rice: unknown }, { cookingStep: false }), "unsupported_total_time");
+});
+
 test("missing nutrition is explicit while source-provided nutrition stays answerable", () => {
   const recipe = { ingredients: [{ measure: "200 g", name: "rice" }], instructions: ["Boil for 10 minutes."], sourceNotes: [] };
   assert.equal(lacksRequestedNutrition("How many calories per serving?", recipe), true);

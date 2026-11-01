@@ -590,12 +590,20 @@ Apply migrations before using reviewed metadata. Reviews live in a separate,
 versioned table bound to the source content hash. Stale reviews become unknown;
 metadata changes do not rewrite source recipes, embeddings or saved dinners.
 
-With the local app running, inspect and load the attributed 30-dinner review:
+The current **v2 dinner review** covers the same 30 Wikibooks mains. Refresh the
+matching sources with the current collector before applying it. The two explicit
+link lists stay within the collector's 20-page limit; each recipe still requires
+review in the terminal.
+
+With the local app running and migrations applied:
 
 ```bash
-pnpm recipes:curate -- validate tools/recipes/core-dinners.v1.json
-pnpm recipes:curate -- preview tools/recipes/core-dinners.v1.json
-pnpm recipes:curate -- import tools/recipes/core-dinners.v1.json
+pnpm recipes:collect -- tools/recipes/core-dinners.v2.part1.txt
+pnpm recipes:collect -- tools/recipes/core-dinners.v2.part2.txt
+pnpm recipes:curate -- validate tools/recipes/core-dinners.v2.json
+pnpm recipes:curate -- preview tools/recipes/core-dinners.v2.json
+pnpm recipes:curate -- import tools/recipes/core-dinners.v2.json
+pnpm recipes:embed
 pnpm recipes:curate -- report recipe-runs/quality-report.json
 pnpm recipes:curate -- export recipe-runs/review-worksheet.json
 ```
@@ -604,17 +612,37 @@ Preview verifies source hashes and field provenance without writing. Repeated
 imports are idempotent. Reports classify unresolved amounts and retain source
 links; worksheets require explicit review before import. Use a new output path
 for each report/worksheet. Add `--app http://localhost:PORT` for another local
-preview. The checked-in core annotates existing catalog records; it is not a seed
-dataset. Import the matching source recipes first on a fresh installation.
+preview; for `recipes:embed`, set `RECIPES_APP_URL=http://localhost:PORT` instead.
+Embedding refresh updates source and step search vectors without fetching pages.
+The checked-in core annotates existing catalog records. Source recipes
+are collected separately; this review does not preload a fresh installation.
+If preview reports a changed source hash, review the new source and its complete
+metadata again. Do not force an older annotation onto changed content. Blocked
+source pages stay untouched and must be reported as deferred.
 
-All 30 reviews retain explicit source servings. Total cooking time and low-carb
-suitability remain unknown where the captured source cannot establish them.
+All 30 reviews retain explicit source servings. The November 1, 2026 review
+captured original source notes for 19 recipes without changing ingredients,
+directions or servings. Twelve mains have complete source-backed totals; eight
+other source time labels remain unknown because of omitted preparation or
+inconsistent timing. Ten sources state no complete total. Twenty-nine mains
+still have at least one amount requiring review. These include seasonings,
+ranges and prepared ingredients; missing amounts are not invented.
+
+In **Recipes**, enable **Reviewed dinners** to narrow results to reviewed mains.
+Its matching count respects the selected collection, search, saved exclusions,
+and time limit before pagination. It also works in **Favorites** and **Cook again**.
+Main-dish classification does not establish quantified amounts or dietary safety.
+
 **Maximum total minutes** includes only complete, source-backed totals, never
-step durations or curator estimates. Consequently the initial core has no time
-filter matches until source-backed totals are reviewed. All other recipes remain
-available with explicit unknowns.
+step durations or curator estimates. Required preparation outside the directions,
+such as cooking rice or thawing an ingredient, keeps the complete total unknown.
+Optional serving suggestions are outside the main dish's stated time. Unknown
+times remain browsable when the time filter is cleared. Chef also honors an
+explicit unknown-total review: preserving an incomplete original time label
+does not make that label a complete total in answers or recommendations. See the
+[30-dinner review](dinner-review.md) for outcomes and outstanding gaps.
 
-Source-time reviews for Quick Risotto, Tomato Pasta, and Chickpea Omelette are in
+The earlier source-time reviews for Quick Risotto, Tomato Pasta, and Chickpea Omelette are in
 `tools/recipes/verified-times.v1.json`, with links to the reviewed source revisions.
 The source statements are retained as **Original source notes**, separate from
 cooking steps. Tomato Pasta’s 20–25 minute source range uses its upper bound for
@@ -629,7 +657,11 @@ pnpm recipes:curate -- preview tools/recipes/verified-times.v1.json
 pnpm recipes:curate -- import tools/recipes/verified-times.v1.json
 ```
 
-Both curation manifests are tied to their captured source hashes. A source-note
+Apply that earlier timing manifest **before** `core-dinners.v2.json` when using
+both, so the refreshed Chickpea Omelette review stays current. The v2 manifest
+supersedes `core-dinners.v1.json`; the older file remains a historical review.
+
+All curation manifests are tied to their captured source hashes. A source-note
 change requires a fresh metadata review; older metadata cannot silently carry
 forward to a new source version. The collector displays source notes during
 approval and includes them in the review hash.

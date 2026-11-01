@@ -8,12 +8,16 @@ them is an explicit setup action; it does not copy the user's kitchen.
 
 Wikibooks Cookbook
 The Wikibooks entries in tools/recipes/fixtures/relevance-catalog.json and the
-source excerpts in tools/recipes/core-dinners.v1.json and
+source excerpts in tools/recipes/core-dinners.v1.json,
+tools/recipes/core-dinners.v2.json and
 tools/recipes/verified-times.v1.json are attributed to Wikibooks
 contributors under CC BY-SA 4.0. Each record retains its source URL and attribution;
 the source page history identifies contributors. Extraction normalizes formatting.
 The timing annotations retain source statements and reviewed revision links;
 numeric values normalize number wording and use the upper bound of a source range.
+The v2 dinner review refreshes original source notes and records why incomplete
+or inconsistent source time labels remain unknown; ingredients, directions and
+source servings are retained without changes.
 https://creativecommons.org/licenses/by-sa/4.0/
 https://en.wikibooks.org/wiki/Wikibooks:Copyrights
 

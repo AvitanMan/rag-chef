@@ -1,0 +1,11 @@
+# Explicit source URLs for the v2 30-dinner review. Review every collected draft.
+https://en.wikibooks.org/wiki/Cookbook:Keralan_Vegetable_Stew
+https://en.wikibooks.org/wiki/Cookbook:Khichdi_%28South_Asian_Rice_and_Lentils%29
+https://en.wikibooks.org/wiki/Cookbook:Lentil_Rice_Loaf
+https://en.wikibooks.org/wiki/Cookbook:Denver_Omelet
+https://en.wikibooks.org/wiki/Cookbook:Mapo_Tofu
+https://en.wikibooks.org/wiki/Cookbook:Paneer_Butter_Masala
+https://en.wikibooks.org/wiki/Cookbook:Indian_Omelet
+https://en.wikibooks.org/wiki/Cookbook:Red_Lentil_Soup
+https://en.wikibooks.org/wiki/Cookbook:Taco_Soup
+https://en.wikibooks.org/wiki/Cookbook:Zucchini_Pasta_Bake

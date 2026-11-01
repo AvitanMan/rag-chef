@@ -560,13 +560,19 @@ export default function RagChefApp() {
   const recentOrder = useMemo(() => new Map(recentlyCooked.map((meal, index) => [meal.recipeId, index])), [recentlyCooked]);
   const collectionCatalog = useMemo(() => browseCatalog.filter(recipe => recipeCollection === "all" || (recipeCollection === "favorites"
     ? kitchen.state.favoriteRecipeIds?.includes(recipe.id) : recentOrder.has(recipe.id))), [browseCatalog, recipeCollection, kitchen.state.favoriteRecipeIds, recentOrder]);
-  const browserMatches = useMemo(() => browseRecipes(collectionCatalog, recipeQuery, pantry)
-    .filter(recipe => !coreDinnersOnly || metadataByRecipeId[recipe.id]?.coreDinner), [collectionCatalog, recipeQuery, pantry, coreDinnersOnly, metadataByRecipeId]);
+  const browserSearchMatches = useMemo(() => browseRecipes(collectionCatalog, recipeQuery, pantry), [collectionCatalog, recipeQuery, pantry]);
+  const browserMatches = useMemo(() => browserSearchMatches
+    .filter(recipe => !coreDinnersOnly || metadataByRecipeId[recipe.id]?.coreDinner), [browserSearchMatches, coreDinnersOnly, metadataByRecipeId]);
   const verifiedTimeRecipes = useMemo(() => browserMatches.filter(recipe => {
     const metadata = metadataByRecipeId[recipe.id];
     return metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source";
   }), [browserMatches, metadataByRecipeId]);
   const timeLimit = Number(maxMinutes) > 0 ? Number(maxMinutes) : null;
+  const reviewedDinnerCount = browserSearchMatches.filter(recipe => {
+    const metadata = metadataByRecipeId[recipe.id];
+    return metadata?.coreDinner && (timeLimit === null || (metadata.totalMinutes != null
+      && metadata.provenance.totalMinutes?.basis === "source" && metadata.totalMinutes <= timeLimit));
+  }).length;
   const browserResults = [...(timeLimit === null ? browserMatches : verifiedTimeRecipes.filter(recipe => metadataByRecipeId[recipe.id].totalMinutes! <= timeLimit))];
   if (recipeCollection === "recent") browserResults.sort((a, b) => recentOrder.get(a.id)! - recentOrder.get(b.id)!);
   const timeHidesMatches = timeLimit !== null && browserMatches.length > 0 && browserResults.length === 0;
@@ -1131,7 +1137,8 @@ export default function RagChefApp() {
             </div>
             {recipeCollection === "recent" && <p className="quantity-note">Pick a dinner you’ve cooked before. Current recipe quantities and your selected portions apply.</p>}
             {recipeCollection === "favorites" && <p className="quantity-note">Your saved favorites. Saved exclusions still apply; unavailable recipes are hidden.</p>}
-            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Core dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label>{timeLimit !== null && <button className="text-button" onClick={() => { setMaxMinutes(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear time limit</button>}</div>
+            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" aria-describedby="reviewed-dinners-help" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Reviewed dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label>{timeLimit !== null && <button className="text-button" onClick={() => { setMaxMinutes(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear time limit</button>}</div>
+              {catalogState === "ready" && <p id="reviewed-dinners-help" className="quantity-note">{reviewedDinnerCount} reviewed {reviewedDinnerCount === 1 ? "dinner matches" : "dinners match"} these filters. Selected as main dishes; amounts and dietary suitability may still need review.</p>}
               {catalogState === "ready" && <p className="quantity-note" role="status">{verifiedTimeRecipes.length} of {browserMatches.length} matching recipes have verified total cooking times.</p>}
               {timeLimit !== null && <p className="quantity-note">Time filtering includes source-backed total times only. Recipes with unknown times are hidden.</p>}
             </div>
@@ -1590,7 +1597,7 @@ export function RecipeCard({
           {toggleFavorite && <button className="text-button favorite-toggle" aria-pressed={Boolean(favorite)} aria-label={`${favorite ? "Remove favorite" : "Favorite"}: ${recipe.title}`} onClick={toggleFavorite}>{favorite ? "★ Saved" : "☆ Save favorite"}</button>}
         </div>
         <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
-        {metadata?.coreDinner && <span className="core-badge">Core dinner</span>}
+        {metadata?.coreDinner && <span className="core-badge">Reviewed dinner</span>}
         {!readiness && <><p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p><small className="coverage-note">Names only · amounts not checked</small></>}
         {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
         <small className="recipe-quality">{recipe.servings ? `${recipe.servings} source servings` : "Yield unknown · recipe batches"}{completeness.amountReviewCount ? ` · ${completeness.amountReviewCount} amounts to review` : " · Amounts quantified"}{metadata?.totalMinutes !== null && metadata?.totalMinutes !== undefined ? ` · ${metadata.totalMinutes} min${metadata.provenance.totalMinutes?.basis === "source" ? " total" : " estimated"}` : ""}</small>

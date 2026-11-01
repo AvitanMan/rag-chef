@@ -814,6 +814,23 @@ function metadataRequest(entries, extra = {}) {
   return new Request("http://localhost:3000/api/admin/recipes/metadata", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ entries, ...extra }) });
 }
 
+test("Chef honors an unknown reviewed total even when the original note has a time label", async () => {
+  await importOne(await draft(0, { ingredients: [{ name: "cooked rice", measure: "1 cup" }], instructions: ["Fry the cooked rice."], sourceNotes: ["Time: 20 minutes"] }));
+  const review = await metadataReview();
+  review.metadata.provenance.totalMinutes.evidence = "Cooking rice is an untimed prerequisite; the source label is not a complete total.";
+  assert.equal((await metadataRoute.POST(metadataRequest([review]))).status, 200);
+  const recipe = (await store.listCatalogRecipes())[0].recipe;
+  const before = await kitchen.getKitchenDocument();
+  const response = await chefRoute.POST(chefRequest({ query: "What is the total recipe time?", context: { recipeId: recipe.id } }));
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.answerStatus, "unsupported");
+  assert.match(result.answer, /does not establish a total recipe time/i);
+  assert.equal(result.verification.status, "not_required");
+  assert.deepEqual(await kitchen.getKitchenDocument(), before);
+  assert.deepEqual((await store.listCatalogRecipes())[0].recipe.sourceNotes, ["Time: 20 minutes"]);
+});
+
 test("metadata preview is read-only; imports are idempotent, hash-bound, and preserve recipes, embeddings and saved meals", async () => {
   await importOne(await draft());
   const rawBefore = JSON.stringify(db.prepare("SELECT * FROM recipes").all());
@@ -889,6 +906,43 @@ test("the curated manifest has exactly 30 reviewed main dinners, source attribut
     assert.match(entry.sourceUrl, /^https:\/\/en\.wikibooks\.org\/wiki\/Cookbook:/);
     assert.equal(entry.source.licenseId, "CC-BY-SA-4.0"); assert.ok(entry.source.attributionText);
   }
+});
+
+test("the refreshed dinner review binds original source notes to all 30 mains and withholds incomplete totals", async () => {
+  const original = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v1.json", import.meta.url), "utf8"));
+  const refreshed = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v2.json", import.meta.url), "utf8"));
+  const frozen = JSON.parse(await readFile(new URL("../tools/recipes/fixtures/relevance-catalog.json", import.meta.url), "utf8")).recipes;
+  const recipes = new Map(frozen.map(recipe => [recipe.id, recipe]));
+  assert.deepEqual(refreshed.entries.map(entry => entry.recipeId), original.entries.map(entry => entry.recipeId));
+  assert.equal(refreshed.coreDinnerCount, 30);
+  let verified = 0;
+  for (const entry of refreshed.entries) {
+    const metadata = store.validateRecipeMetadata(entry.metadata);
+    const recipe = { ...recipes.get(entry.recipeId), ...(entry.sourceReview.sourceNotes.length ? { sourceNotes: entry.sourceReview.sourceNotes } : {}) };
+    const captured = embeddings.buildRecipeSearchText(recipe);
+    assert.equal(await embeddings.sha256Hex(captured), metadata.sourceContentHash, `${entry.title}: source hash includes the captured notes`);
+    assert.equal(metadata.coreDinner, true);
+    assert.equal(metadata.dinnerRole, "main");
+    assert.equal(entry.source.licenseId, "CC-BY-SA-4.0");
+    for (const evidence of Object.values(metadata.provenance)) if (evidence.basis === "source") assert.ok(captured.includes(evidence.evidence), entry.title);
+    if (metadata.totalMinutes !== null) {
+      verified++;
+      assert.equal(metadata.provenance.totalMinutes.basis, "source");
+      assert.ok(entry.sourceReview.sourceNotes.includes(metadata.provenance.totalMinutes.evidence));
+    }
+  }
+  assert.equal(verified, 12);
+  const byTitle = new Map(refreshed.entries.map(entry => [entry.title, entry]));
+  assert.equal(byTitle.get("Taco Soup").metadata.totalMinutes, 30, "Source range uses its upper bound");
+  assert.equal(byTitle.get("Baked Ziti").metadata.totalMinutes, 60, "Source range uses its upper bound");
+  assert.equal(byTitle.get("Easy Onion Chicken").metadata.totalMinutes, 60, "Source hours normalize to minutes");
+  for (const title of ["Garlic Parmesan Pasta", "Chicken Fried Rice", "Eggplant Pasta", "Black-Eyed Peas and Kale"]) {
+    const entry = byTitle.get(title);
+    assert.ok(entry.sourceReview.sourceNotes.some(note => note.startsWith("Time:")), title);
+    assert.equal(entry.metadata.totalMinutes, null, `${title}: a time label does not establish a complete total`);
+    assert.equal(entry.metadata.provenance.totalMinutes.basis, "curator_assessment");
+  }
+  assert.equal(byTitle.get("Red Lentil Soup").metadata.totalMinutes, null, "Step times are not complete totals");
 });
 
 test("pinned follow-ups resolve approved source IDs without repeating a global search", async () => {
