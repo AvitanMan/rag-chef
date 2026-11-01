@@ -181,7 +181,7 @@ export const CHEF_RESPONSE_JSON_SCHEMA = {
         additionalProperties: false,
         properties: {
           recipeId: { type: "string", enum: ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"] },
-          evidenceId: { type: "string", pattern: "^[IS][1-9][0-9]{0,2}$" },
+          evidenceId: { type: "string", pattern: "^[ISN][1-9][0-9]{0,2}$" },
         },
         required: ["recipeId", "evidenceId"],
       },

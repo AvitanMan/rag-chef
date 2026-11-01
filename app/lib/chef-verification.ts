@@ -38,6 +38,72 @@ export function validateVerification(value: unknown, claims: Claim[], supports: 
   return { status: rejected ? "rejected" : "checked", usedRefs: [...used] };
 }
 
+// A deterministic novelty guard for causal prose. It deliberately does not
+// replace entailment verification: shared words cannot prove a causal claim.
+// It requires an explicit source relation and anchors both sides in one source
+// sentence for recognized causal constructions, even when the model agrees.
+// Implicit causality and semantic equivalence still need the existing verifier.
+type CausalClause = { action: Set<string>; outcome: Set<string>; relation: string; actionNegated: boolean; outcomeNegated: boolean };
+const CAUSAL_MARKER = /\b(because|so that|in order to|therefore|thus|which (?:helps?|allows?|ensures?)|(?:helps?\s+)?(?:prevent\w*|avoid\w*|stop\w*)|(?:can\s+|may\s+)?(?:caus\w*|mak\w*(?!\s+\d)|lead\w* to|result\w* in|produc\w*|creat\w*)|keep\w*|(?:helps?\s+)?(?:reduc\w*|balanc\w*|neutraliz\w*|ensur\w*|protect\w*|preserv\w*|retain\w*|maintain\w*|improv\w*|allow\w*|enabl\w*|soften\w*|tenderiz\w*))\b/i;
+const CAUSAL_STOP_WORDS = new Set("a an the this that these those it its they them their you your we our i as at by for from in into of on or out over than then there through to up with without and be been being is are was were do does did has have had can could may might must should will would source recipe step instruction instructions say says said tell tells according because so order therefore thus which help helps not no never don't doesn't didn't isn't aren't won't can't cannot".split(" "));
+// Remove discourse wording only at the start of a cooking command. Its verb,
+// negation and any later causal clause stay intact; subjects such as "heating"
+// or "the milk" are never stripped as if they were sequencing words.
+const COMMAND_PREFIX = /^(?:(?:next|now|then|first|finally|please)\b\s*,?\s+)+(?=(?:(?:do not|don['’]t|never)\s+)?(?:add|stir|mix|heat|boil|simmer|bake|roast|fry|cook|grease|keep|stop|avoid|reduce|make|allow|maintain|fold|whisk|remove|rest|serve)\b)/i;
+function causalTerms(text: string): Set<string> {
+  const words = text.toLowerCase().replaceAll("’", "'").match(/[a-z]+(?:'[a-z]+)?/g) ?? [];
+  return new Set(words.filter(word => !CAUSAL_STOP_WORDS.has(word)).map(word => {
+    // Inflection only: no ingredient or culinary-cause synonym expansion.
+    let stem = word.replace(/(?:ing|ed|es|s)$/, "").replace(/e$/, "");
+    if (/(.)\1$/.test(stem)) stem = stem.slice(0, -1);
+    return stem;
+  }).filter(word => word.length > 1));
+}
+function negated(text: string): boolean {
+  return /\b(?:not|no|never|without|cannot|can't|don't|doesn't|didn't|isn't|aren't|won't)\b/i.test(text.replaceAll("’", "'"));
+}
+function causalClause(text: string): CausalClause | null {
+  const statement = text.replace(COMMAND_PREFIX, "");
+  for (const match of statement.matchAll(new RegExp(CAUSAL_MARKER.source, "gi"))) {
+    const before = statement.slice(0, match.index), after = statement.slice(match.index + match[0].length);
+    const action = causalTerms(before), outcome = causalTerms(after);
+    // An imperative such as "Avoid boiling" is an instruction, not a reason.
+    if (!action.size && /\b(?:it|this|that|they)\b/i.test(before)) action.add("*");
+    if (!action.size || !outcome.size) continue;
+    const marker = match[0].toLowerCase();
+    const relation = /prevent|avoid|stop/.test(marker) || /keep/.test(marker) && /\bfrom\b/.test(after) ? "prevent"
+      : /caus|mak|lead|result|produc|creat/.test(marker) ? "cause"
+      : /because/.test(marker) ? "because"
+      : /so that|in order|therefore|thus/.test(marker) ? "purpose"
+      : [...causalTerms(marker)].join(" ");
+    return { action, outcome, relation, actionNegated: negated(before), outcomeNegated: negated(after) };
+  }
+  return null;
+}
+function causalSentences(text: string): string[] {
+  return [...new Intl.Segmenter("en", { granularity: "sentence" }).segment(text)].map(part => part.segment);
+}
+export function unsupportedCausalClaim(claims: Claim[], evidence: VerificationEvidence[], options: {
+  sourceFocus?: { recipeId: string; stepEvidenceId?: string };
+  techniqueGuidance?: Array<{ recipeId: string; explanation: string }>;
+} = {}): boolean {
+  const recipeIds = new Set(evidence.map(row => row.recipeId));
+  const sources = [...evidence.filter(row => !options.sourceFocus?.stepEvidenceId || row.evidenceId === options.sourceFocus.stepEvidenceId || row.evidenceId.startsWith("N")),
+    ...(options.techniqueGuidance ?? []).filter(row => recipeIds.has(row.recipeId)).map(row => ({ ...row, text: row.explanation }))];
+  return claims.some(claim => {
+    const clause = causalClause(claim.text);
+    if (!clause) return false;
+    const recipeId = claim.recipeId ?? options.sourceFocus?.recipeId;
+    return !sources.filter(row => !recipeId || row.recipeId === recipeId).some(row => causalSentences(row.text).some(text => {
+      const original = causalClause(text);
+      return original && clause.relation === original.relation
+        && clause.actionNegated === original.actionNegated && clause.outcomeNegated === original.outcomeNegated
+        && [...clause.action].every(term => term === "*" || original.action.has(term))
+        && [...clause.outcome].every(term => original.outcome.has(term));
+    }));
+  });
+}
+
 export async function verifyChefAnswer(answer: ChefStructuredAnswer, evidence: VerificationEvidence[], options: {
   baseUrl: string; model: string; metadata: RecipeMetadataMap;
   planningAmounts?: Array<{ name: string; measure: string; needsReview?: boolean }>; planningRecipeId?: string;
@@ -53,6 +119,7 @@ export async function verifyChefAnswer(answer: ChefStructuredAnswer, evidence: V
   const result = (verification: AnswerVerification, sourceFacts: ChefStructuredAnswer["sourceFacts"] = []) => ({ verification, sourceFacts, milliseconds: Math.round(performance.now() - started) });
   const claims = verificationClaims(answer);
   if (!claims.length || claims.length > 12) return result({ status: "unavailable", checkedSentenceCount: 0, reason: "claim_limit" });
+  if (unsupportedCausalClaim(claims, evidence, options)) return result({ status: "rejected", checkedSentenceCount: claims.length, reason: "unsupported_causal_claim" });
   const supports: Support[] = evidence.map((item, index) => ({ ref: `E${index + 1}`, ...item }));
   const recipeIds = new Set(evidence.map((item) => item.recipeId));
   for (const guide of options.techniqueGuidance ?? []) if (recipeIds.has(guide.recipeId)) {

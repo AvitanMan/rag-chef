@@ -17,6 +17,7 @@
     "test:e2e": "node tools/testing/run-isolated.mjs e2e",
     "test:setup": "node tools/testing/run-isolated.mjs setup --project=desktop && node tools/testing/run-isolated.mjs setup --project=mobile",
     "test:smoke": "node tools/testing/run-isolated.mjs smoke",
+    "test:dev": "node tools/testing/run-isolated.mjs dev",
     "typecheck": "tsc --noEmit",
     "db:migrate": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply DB --local --config wrangler.jsonc --persist-to .wrangler/state",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",

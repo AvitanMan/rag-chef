@@ -6,7 +6,7 @@ export type CookingTechniqueGuide = { term: string; explanation: string; sourceN
 
 /** Reviewed technique definitions, separate from any recipe's facts or timings. */
 const COOKING_TECHNIQUES = [
-  { pattern: /\bboil(?:ing|ed)?\b/i, term: "Boiling", explanation: "Boiling means cooking food in boiling water. Look for large bubbles rising and breaking continuously at the surface.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Boiling" },
+  { pattern: /\bboil(?:ing|ed)?\b/i, term: "Boiling", explanation: "Boiling means cooking food in boiling water, with large bubbles rising and breaking continuously at the surface.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Boiling" },
   { pattern: /\bsimmer(?:ing|ed)?\b/i, term: "Simmering", explanation: "Simmering cooks food in liquid below a boil. The liquid moves gently rather than rapidly.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Simmering" },
 ];
 
@@ -27,7 +27,23 @@ export function cookingTechniqueGuides(stepText: string, query: string): Cooking
 
 /** Only standalone meaning requests; compound or recipe-specific questions still use Chef. */
 export function isCookingMeaningQuestion(query: string): boolean {
-  return /^(?:please\s+)?(?:what does (?:this|the|this source|the current) (?:step|instruction|direction) mean|what does (?:boil(?:ing)?|simmer(?:ing)?) mean|explain (?:this|the|the current) (?:source )?(?:step|instruction|direction)|what does this mean)[?.!\s]*$/i.test(query.trim());
+  return /^(?:please\s+)?(?:what does (?:this|the|this source|the current) (?:step|instruction|direction) mean|what does (?:boil(?:ing)?|simmer(?:ing)?) mean|explain (?:this|the|the current) (?:source )?(?:step|instruction|direction)|what does this mean)(?:\s+(?:in plain english|in simple terms|simply))?[?.!\s]*$/i.test(query.trim());
+}
+
+/** Preserve every source action and restriction before adding term definitions. */
+export function focusedCookingMeaningAnswer(step: ReturnType<typeof focusedCookingStep>, query: string, guides: CookingTechniqueGuide[]): string | undefined {
+  if (!step || !guides.length || !isCookingMeaningQuestion(query)) return undefined;
+  const source = `Source step ${step.number}: ${step.text}`;
+  const asksTerm = /^(?:please\s+)?what does (?:boil(?:ing)?|simmer(?:ing)?) mean[?.!\s]*$/i.test(query.trim());
+  // A general explanation must never turn a prohibited action into advice.
+  // Quoting the complete step also preserves alternatives and conditional bans.
+  if (!asksTerm && /\b(?:not|never|without|avoid|don['’]t|doesn['’]t|mustn['’]t|shouldn['’]t)\b/i.test(step.text)) {
+    const avoidsBoiling = /\b(?:do not|must not|should not|don['’]t|never|without|avoid)\s+boil(?:ing)?\b(?!\s+(?:over|dry))|\bnot to boiling\b|\bnot\s+(?:to\s+)?(?:let|allow)\b[^.;!?]{0,70}\bboil\b(?!\s+(?:over|dry))/i.test(step.text);
+    const boiling = guides.find(guide => guide.term === "Boiling");
+    if (avoidsBoiling && boiling) return `${source}\n\nThis step says to avoid boiling. The term reference describes that state: ${boiling.explanation}`;
+    return source;
+  }
+  return `${source}\n\nTerm reference only; follow the source instruction above:\n${guides.map(guide => guide.explanation).join("\n\n")}`;
 }
 
 /** Preview explicit planning changes without changing stored amounts or cooking. */
@@ -47,7 +63,8 @@ export async function chefRecipeHash(recipe: Recipe): Promise<string> {
 
 export function recipeEvidence(recipe: Recipe) {
   return [...recipe.ingredients.map((item, i) => ({ evidenceId: `I${i + 1}`, text: [item.measure, item.name].filter(Boolean).join(" ") })),
-    ...recipe.instructions.map((text, i) => ({ evidenceId: `S${i + 1}`, text }))];
+    ...recipe.instructions.map((text, i) => ({ evidenceId: `S${i + 1}`, text })),
+    ...(recipe.sourceNotes ?? []).map((text, i) => ({ evidenceId: `N${i + 1}`, text }))];
 }
 
 /** Keep original IDs and whole source steps. Missing context is explicit. */
@@ -82,7 +99,7 @@ export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: s
     if (all.reduce((size, item) => size + item.text.length, 0) <= 16_000) return all;
     for (const index of [0, 1, 2, recipe.instructions.length - 2, recipe.instructions.length - 1]) addStep(index);
   }
-  return all.filter((item) => selected.has(item.evidenceId));
+  return all.filter((item) => selected.has(item.evidenceId) || item.evidenceId.startsWith("N"));
 }
 
 /** Ordered matching works for old sessions and multiple source methods. */

@@ -12,14 +12,24 @@ for (const name of ["chef-planning-answer", "chef-context", "chef-schema", "quan
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)));
-const { chefMealPreview, chefRecipeHash, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion } = await load("chef-context");
-const { parseChefRequest } = await load("chef-schema");
+const { chefMealPreview, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
+const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
 test("recipe version includes source quantities, directions and yield while ignoring display-only images", async () => {
   assert.equal(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, image: "new" }));
   assert.notEqual(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, servings: 4 }));
   assert.notEqual(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, instructions: ["Changed"] }));
+  assert.notEqual(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, sourceNotes: ["Total time: 30 minutes."] }));
+});
+test("source notes have canonical IDs without renumbering ingredients or steps", () => {
+  const source = { ...recipe, sourceNotes: ["Total time: 45 minutes.", "Protein: 12 g per serving."] };
+  assert.deepEqual(recipeEvidence(source).slice(-2), source.sourceNotes.map((text, index) => ({ evidenceId: `N${index + 1}`, text })));
+  assert.deepEqual(recipeEvidence(source).slice(0, 32), recipeEvidence(recipe));
+  assert.deepEqual(selectQuestionEvidence(source, "Explain this step", "S20").slice(-2), recipeEvidence(source).slice(-2));
+  const validId = new RegExp(CHEF_RESPONSE_JSON_SCHEMA.properties.sourceFacts.items.properties.evidenceId.pattern);
+  for (const id of ["I1", "S20", "N1", "N20"]) assert.ok(validId.test(id), id);
+  for (const id of ["N0", "N01", "N-1", "Q1"]) assert.ok(!validId.test(id), id);
 });
 test("step evidence keeps original IDs and adjacent directions without sending an entire long method", () => {
   const evidence = selectQuestionEvidence(recipe, "Explain this step", "S20");
@@ -57,6 +67,40 @@ test("reviewed technique definitions explain only verbs present in the focused s
 test("only standalone meaning requests use reviewed definitions without generation", () => {
   for (const question of ["What does this instruction mean?", "Explain this source step.", "Please explain this step", "What does boiling mean?"]) assert.equal(isCookingMeaningQuestion(question), true, question);
   for (const question of ["What does this instruction mean, and how long does it take?", "Explain step 2", "How do I tell when it is cooked?", "Why boil instead of simmer?", "What does this instruction mean? Can I substitute rice?"]) assert.equal(isCookingMeaningQuestion(question), false, question);
+});
+test("step meanings retain every source action and do not turn source prohibitions into boiling advice", () => {
+  for (const text of [
+    "Do not boil the yogurt. Remove the pan from heat and stir it in gently.",
+    "Add the cream and enough of the remaining asparagus cooking water to give the soup the consistency you want. Season to taste with salt, freshly ground black pepper, and cayenne pepper. Reheat gently over low heat, making sure not to let the soup boil.",
+    "Heat thoroughly, but not to boiling.",
+    "Do one of the following: Put on the lid, turn down the heat, and allow the potatoes to cook in their own steam until cooked through. A little extra water can be added if necessary, but as little as possible should be used. The potatoes should not boil. Put the spiced potatoes on a tray in a hot oven until cooked through.",
+    "Don’t boil the milk; heat gently.",
+  ]) {
+    const step = { evidenceId: "S1", number: 1, text };
+    const query = "What does this step mean?";
+    const result = focusedCookingMeaningAnswer(step, query, cookingTechniqueGuides(text, query));
+    assert.ok(result.startsWith(`Source step 1: ${text}`));
+    assert.match(result, /This step says to avoid boiling/);
+    assert.match(result, /The term reference describes that state: Boiling means/);
+    assert.doesNotMatch(result, /Look for|curdl|because/);
+  }
+});
+test("positive step meanings keep endpoints and standalone term meanings remain descriptive references", () => {
+  const text = "Boil the potatoes until cooked through, then drain them and return the pan to low heat.";
+  const step = { evidenceId: "S2", number: 2, text };
+  const result = focusedCookingMeaningAnswer(step, "Explain this step", cookingTechniqueGuides(text, "Explain this step"));
+  assert.ok(result.startsWith(`Source step 2: ${text}`));
+  assert.match(result, /Term reference only/);
+  assert.match(result, /large bubbles/);
+  assert.doesNotMatch(result, /Look for|minutes?|fork/);
+  const negative = { ...step, text: "Do not boil the milk." };
+  const definition = focusedCookingMeaningAnswer(negative, "What does boiling mean?", cookingTechniqueGuides(negative.text, "What does boiling mean?"));
+  assert.match(definition, /Do not boil the milk/);
+  assert.match(definition, /Term reference only; follow the source instruction/);
+  assert.match(definition, /Boiling means/);
+  assert.doesNotMatch(definition, /Look for/);
+  assert.equal(focusedCookingMeaningAnswer(step, "How long should I boil it?", cookingTechniqueGuides(text, "Explain this step")), undefined);
+  assert.equal(focusedCookingMeaningAnswer(step, "Explain this step", []), undefined);
 });
 test("discussion and dinner context are bounded, typed and backward compatible", () => {
   assert.equal(parseChefRequest({ query: "Dinner" }).context, undefined);
@@ -156,4 +200,15 @@ test("mixed amount and cooking questions keep their entire request on the eviden
     "How much milk do I need\nand I want it without lumps?",
   ]) assert.equal(isPlanningQuantityQuestion(query), false, query);
   for (const query of ["How much pasta and milk do I need for this saved dinner?", "How much cooked rice do we need?", "What are all the ingredient amounts?"]) assert.equal(isPlanningQuantityQuestion(query), true, query);
+});
+
+test("plain-English meaning requests explain the prohibited boiling state without inventing a cause", () => {
+  const step = { evidenceId: "S1", number: 1, text: "Heat thoroughly, but not to boiling." };
+  const answer = focusedCookingMeaningAnswer(step, "Explain this step in plain English.", cookingTechniqueGuides(step.text, "Explain this step in plain English."));
+  assert.ok(answer.includes(step.text)); assert.match(answer, /says to avoid boiling/); assert.match(answer, /large bubbles/);
+  assert.doesNotMatch(answer, /curdl|because|Look for/);
+  const conditional = { ...step, text: "If the water is not boiling yet, turn up the heat until it boils." };
+  assert.doesNotMatch(focusedCookingMeaningAnswer(conditional, "Explain this step simply.", cookingTechniqueGuides(conditional.text, "Explain this step simply.")), /says to avoid boiling/);
+  const positive = { ...step, text: "Do not drain the beans, but bring to a boil." };
+  assert.doesNotMatch(focusedCookingMeaningAnswer(positive, "Explain this step simply.", cookingTechniqueGuides(positive.text, "Explain this step simply.")), /says to avoid boiling/);
 });

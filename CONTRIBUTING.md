@@ -12,6 +12,10 @@ Setup changes also need `pnpm test:setup`, which starts with an empty disposable
 database. Collector changes need the Python environment described in the guide
 and `pnpm recipes:test`.
 
+Development-server and theme changes need `pnpm test:dev`. It checks the actual
+development app with connected and unavailable HMR sockets, including browser
+error handling and theme persistence. It uses its own database and port.
+
 Add tests for behavior that could regress, including failure and recovery paths.
 Keep small presentation changes easy to review with screenshots. The test runner
 uses isolated project/database copies; do not point browser tests at a personal

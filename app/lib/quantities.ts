@@ -493,9 +493,9 @@ export function completeMeal(state: KitchenState, date: string, deduct: boolean,
   };
 }
 
-export function undoMeal(state: KitchenState, date: string): KitchenState {
+function previewMealUndo(state: KitchenState, date: string): { state: KitchenState; problem: string } {
   const meal = state.meals[date];
-  if (!meal || (meal.status === "planned" && !meal.completion)) return state;
+  if (!meal || (meal.status === "planned" && !meal.completion)) return { state, problem: "" };
   const pantry = state.pantry.slice();
   const existingIds = new Set(pantry.map((stock) => stock.id));
   const legacyRequirements = requirementsFor([{ ...meal, status: "planned" }]);
@@ -533,11 +533,29 @@ export function undoMeal(state: KitchenState, date: string): KitchenState {
     existingIds.add(id);
     pantry.push({ id, name, measure: formatMeasure(quantity, before.unit), ...(deduction.useBy ? { useBy: deduction.useBy } : {}) });
   }
+  // Check the complete restoration before changing either stock or completion.
+  // Restoring into existing rows is still allowed when the pantry is full.
+  if (pantry.length > 500) {
+    const excess = pantry.length - 500;
+    return { state, problem: `Make room in your pantry before undoing this dinner. Remove ${excess} pantry ${excess === 1 ? "row" : "rows"} so the restored stock fits within the 500-row limit.` };
+  }
   const plannedMeal = { ...meal };
   delete plannedMeal.completion;
   return {
-    ...state,
-    pantry,
-    meals: { ...state.meals, [date]: { ...plannedMeal, status: "planned" } },
+    state: {
+      ...state,
+      pantry,
+      meals: { ...state.meals, [date]: { ...plannedMeal, status: "planned" } },
+    },
+    problem: "",
   };
+}
+
+/** Explain a blocked undo without changing the dinner or its pantry deductions. */
+export function undoMealProblem(state: KitchenState, date: string): string {
+  return previewMealUndo(state, date).problem;
+}
+
+export function undoMeal(state: KitchenState, date: string): KitchenState {
+  return previewMealUndo(state, date).state;
 }

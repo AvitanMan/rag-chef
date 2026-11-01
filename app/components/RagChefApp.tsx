@@ -30,14 +30,15 @@ import { ChefGrounding, recipeEvidenceExcerpt } from "./ChefGrounding";
 import { chefMealHash, chefMealPreview, chefRecipeHash, cookingSourceStep } from "../lib/chef-context";
 import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
 import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
-import { COOKING_SESSION_KEY, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
+import { COOKING_SESSION_KEY, writeCookingSession, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
 import { useKitchen } from "../lib/use-kitchen";
 import { DEFAULT_COOKING_PROFILE, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, localDate, placePlannedDinner, weekStart } from "../lib/kitchen-state";
 import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
-import { canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, allocateStockForMeals, mealReadiness } from "../lib/quantities";
+import { canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, undoMealProblem, allocateStockForMeals, mealReadiness } from "../lib/quantities";
 import { dateLabel, DinnerAmounts, DurablePlanView, DurableShoppingView } from "./WeeklyKitchenViews";
 import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
+import { metricMeasure } from "../lib/recipe-presentation";
 import { browsePantry, type PantrySort } from "../lib/pantry-browser";
 
 type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
@@ -180,28 +181,6 @@ const STORAGE_KEY = PREFERENCES_STORAGE_KEY;
 
 function tidyIngredient(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function metricMeasure(measure: string, metric: boolean) {
-  if (!metric) return measure;
-  const normalized = measure.toLowerCase().trim();
-  const mixed = normalized.match(/^(\d+(?:\.\d+)?)\s+(\d+)\/(\d+)/);
-  const fraction = normalized.match(/^(\d+)\/(\d+)/);
-  const decimal = normalized.match(/^(\d+(?:\.\d+)?)/);
-  const amount = mixed
-    ? Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
-    : fraction
-      ? Number(fraction[1]) / Number(fraction[2])
-      : decimal
-        ? Number(decimal[1])
-        : Number.NaN;
-  if (!Number.isFinite(amount)) return measure;
-  if (normalized.includes("tbsp")) return `${Math.round(amount * 15)} ml`;
-  if (normalized.includes("tsp")) return `${Math.round(amount * 5)} ml`;
-  if (/\bcups?\b/.test(normalized)) return `${Math.round(amount * 240)} ml`;
-  if (/\boz\b/.test(normalized)) return `${Math.round(amount * 28.35)} g`;
-  if (/\blb\b|pound/.test(normalized)) return `${Math.round(amount * 454)} g`;
-  return measure;
 }
 
 function sourceLabel(recipe: Recipe) {
@@ -376,6 +355,12 @@ export default function RagChefApp() {
   const [hydrated, setHydrated] = useState(false);
   const [cooking, setCooking] = useState(false);
   const [cookingSession, setCookingSession] = useState<CookingSession | null>(null);
+  const cookingSnapshot = useRef<string | null>(null);
+  const cookingUnsaved = useRef(false);
+  const cookingResolution = useRef(false);
+  const [cookingResolving, setCookingResolving] = useState(false);
+  const [cookingConflict, setCookingConflict] = useState<{ stored: string | null } | null>(null);
+  const [renderedCookingSnapshot, setRenderedCookingSnapshot] = useState<string | null>(null);
   const [cookingStorageNotice, setCookingStorageNotice] = useState("");
   const [pendingCookingStart, setPendingCookingStart] = useState<CookingSession | null>(null);
   const [backupExportError, setBackupExportError] = useState("");
@@ -399,7 +384,11 @@ export default function RagChefApp() {
       } catch {
         // A corrupt local draft should never prevent the app from opening.
       }
-      try { setCookingSession(parseCookingSession(window.localStorage.getItem(COOKING_SESSION_KEY))); }
+      try {
+        cookingSnapshot.current = window.localStorage.getItem(COOKING_SESSION_KEY);
+        setCookingSession(parseCookingSession(cookingSnapshot.current));
+        setRenderedCookingSnapshot(cookingSnapshot.current);
+      }
       catch { /* Cooking recovery never prevents the kitchen from opening. */ }
       setHydrated(true);
     }, 0);
@@ -415,6 +404,56 @@ export default function RagChefApp() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...(legacyProfile ? { profile: legacyProfile } : {}), settings }));
     } catch { /* Kitchen recovery is managed separately from preferences. */ }
   }, [hydrated, settings, kitchen.state.cookingProfile, kitchen.saveState]);
+
+  const adoptCookingSnapshot = useCallback((text: string | null) => {
+    if (cookingUnsaved.current) {
+      setCookingConflict({ stored: text });
+      setCookingStorageNotice("Another tab saved different cooking progress. Your unsaved progress is kept in this tab; choose which session to keep.");
+      return;
+    }
+    const previous = parseCookingSession(cookingSnapshot.current);
+    const next = parseCookingSession(text);
+    cookingSnapshot.current = text;
+    setRenderedCookingSnapshot(text); setCookingSession(next);
+    if (previous?.id !== next?.id) {
+      setCooking(false); setCompletionDate(null); setPendingCompletion(null);
+    }
+    setCookingStorageNotice("Cooking progress changed in another tab. The latest saved session is available here.");
+  }, []);
+
+  useEffect(() => {
+    const sync = (event?: StorageEvent) => {
+      if (event && event.key !== COOKING_SESSION_KEY && event.key !== null) return;
+      try {
+        const text = window.localStorage.getItem(COOKING_SESSION_KEY);
+        if (text !== cookingSnapshot.current) adoptCookingSnapshot(text);
+      } catch { /* A failed read must not discard the session in this tab. */ }
+    };
+    window.addEventListener("storage", sync);
+    const focus = () => sync();
+    window.addEventListener("focus", focus);
+    return () => { window.removeEventListener("storage", sync); window.removeEventListener("focus", focus); };
+  }, [adoptCookingSnapshot]);
+
+  const persistCookingSession = useCallback(async (next: CookingSession | null, expected = renderedCookingSnapshot): Promise<boolean> => {
+    const save = () => {
+      const result = writeCookingSession(window.localStorage, expected, next);
+      if (!result.saved) { adoptCookingSnapshot(result.stored); return false; }
+      cookingUnsaved.current = false; setCookingConflict(null);
+      cookingSnapshot.current = result.stored;
+      setRenderedCookingSnapshot(result.stored); setCookingSession(next); setCookingStorageNotice("");
+      return true;
+    };
+    try {
+      // Serialize writes from cooperating tabs, then check their exact snapshot.
+      return await (navigator.locks ? navigator.locks.request(COOKING_SESSION_KEY, save) : save());
+    } catch {
+      cookingUnsaved.current = true;
+      setCookingSession(next);
+      setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it.");
+      return true;
+    }
+  }, [adoptCookingSnapshot, renderedCookingSnapshot]);
 
   useEffect(() => {
     if (!pendingCompletion) return;
@@ -432,7 +471,7 @@ export default function RagChefApp() {
       setChefFlow(current => ({ kind: "dinner", date: meal.date, origin: current.origin })); setView("chef");
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [pendingCompletion, kitchen.recoverable, kitchen.state.meals, cookingSession, completionFingerprint]);
+  }, [pendingCompletion, kitchen.recoverable, kitchen.state.meals, cookingSession, completionFingerprint, persistCookingSession]);
 
   const navigationSnapshot = useRef("");
   useEffect(() => {
@@ -456,6 +495,7 @@ export default function RagChefApp() {
         setDiscoveryQuery(""); setChefRefinements([]); setChefPortions(""); lastChefPrompt.current = "";
       }
       setSelectedRecipe(null); setPendingChoice(null); setShoppingReviewDate(null); setMethodDate(null);
+      setPantryPreview(null); setPurchaseItems(null);
       setToday(currentDate); setView(restored.view); setChefFlow(restored.flow);
       setUseSoonId(restored.useSoonId); setPantryFilter(restored.pantryFilter); setPantryFocusId(restored.pantryFocusId);
     };
@@ -616,7 +656,7 @@ export default function RagChefApp() {
         ...(saved ? { mealDate: saved.date, mealId: saved.id, mealHash: await chefMealHash(saved) } : {}),
         ...(override ?? { purpose: "planning", targetDate: selectionDate ?? saved?.date ?? today,
           ...(chefPortions ? { servings: Number(chefPortions) } : {}),
-          ...(chefResult ? { previousRecipeIds: chefResult.recommendations.slice(0, 3).map((item) => item.recipeId) } : {}),
+          ...(chefResult ? { previousRecipeIds: chefResult.recipes.filter(recipe => chefResult.recommendations.some(item => item.recipeId === recipe.id)).slice(0, 3).map(recipe => recipe.id) } : {}),
         }) };
       const continuingDiscussion = !override || target?.id === pinnedRecipe?.id && (mealDate ?? null) === chefMealDate;
       const history = continuingDiscussion ? chefTurns.flatMap((turn) => [{ role: "user" as const, content: turn.query }, { role: "assistant" as const, content: turn.answer }]).slice(-6) : [];
@@ -849,16 +889,13 @@ export default function RagChefApp() {
     setSelectedRecipe(recipe);
   }
 
-  function persistCookingSession(next: CookingSession | null) {
-    setCookingSession(next);
-    try {
-      if (next) window.localStorage.setItem(COOKING_SESSION_KEY, JSON.stringify(next));
-      else window.localStorage.removeItem(COOKING_SESSION_KEY);
-      setCookingStorageNotice("");
-    } catch { setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it."); }
+  function undoCooked(date: string) {
+    const problem = undoMealProblem(kitchen.state, date);
+    setUndoNotice(problem);
+    if (!problem) kitchen.update(state => undoMeal(state, date));
   }
 
-  function startCooking(
+  async function startCooking(
     recipe: Recipe,
     steps: string[],
     method: string,
@@ -867,8 +904,16 @@ export default function RagChefApp() {
     if (!steps.length) return;
     const meal = plannedDinner ?? (cookingMealDate ? kitchen.state.meals[cookingMealDate] : undefined);
     const next = createCookingSession(recipe, steps, method, meal?.recipeId === recipe.id ? meal : undefined);
+    try {
+      const text = window.localStorage.getItem(COOKING_SESSION_KEY);
+      const current = parseCookingSession(text);
+      if (current) {
+        if (text !== cookingSnapshot.current) adoptCookingSnapshot(text);
+        setPendingCookingStart(next); return;
+      }
+    } catch { /* Retain the in-tab replacement prompt when storage is unavailable. */ }
     if (cookingSession) { setPendingCookingStart(next); return; }
-    persistCookingSession(next);
+    if (!await persistCookingSession(next)) { setPendingCookingStart(next); return; }
     setSelectedRecipe(null);
     setCooking(true);
   }
@@ -931,7 +976,7 @@ export default function RagChefApp() {
   const completionValid = Boolean(completionMeal && completionMeal.id === completionMealId && completionMeal.status === "planned"
     && plannedDinnerFingerprint(completionMeal) === completionFingerprint
     && (!cooking || cookingSession && canCompleteCookingSession(cookingSession, completionMeal)));
-  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>This recipe was not attached to a saved dinner. Your plan and pantry stay as entered.</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={() => { persistCookingSession(null); setCompletionDate(null); setCooking(false); }}>Finish session</button></section>
+  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>This recipe was not attached to a saved dinner. Your plan and pantry stay as entered.</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(null)) { setCompletionDate(null); setCooking(false); } }}>Finish session</button></section>
     : completionDate && (completionMeal || cookingSession?.plannedMeal) ? <DinnerCompletionReview
       meal={completionMeal ?? cookingSession!.plannedMeal!} preview={pendingCompletion?.preview ?? consumptionPreview(completionMeal ?? cookingSession!.plannedMeal!, kitchen.state.pantry, today)} valid={completionValid}
       deduct={deductStock} setDeduct={setDeductStock} confirm={confirmCompletion} cancel={() => setCompletionDate(null)} pending={Boolean(pendingCompletion)} retry={kitchen.retrySave} /> : null;
@@ -1012,7 +1057,7 @@ export default function RagChefApp() {
               patch={patch => patchDinner(chosenDinner.date, chosenDinner.id, patch)} cook={() => cookMeal(chosenDinner.date)} change={newDinnerSearch}
               details={() => { setCookingMealDate(chosenDinner.date); setSelectedRecipe(chosenDinner.recipe ?? null); }}
               shop={() => { setShoppingDinnerDate(chosenDinner.date); setWeek(weekStart(chosenDinner.date)); navigate("shop"); }}
-              undo={() => kitchen.update(state => undoMeal(state, chosenDinner.date))}
+              undo={() => undoCooked(chosenDinner.date)}
               methods={chosenDinner.recipe ? instructionSections(chosenDinner.recipe) : []} methodsOpen={methodDate === chosenDinner.date}
               cancelMethod={() => setMethodDate(null)} selectMethod={index => {
                 if (!chosenDinner.recipe) return;
@@ -1128,7 +1173,7 @@ export default function RagChefApp() {
             setPreferReviewedMains={setPreferReviewedMains}
             openMeal={(date) => { const meal = kitchen.state.meals[date]; if (meal?.recipe) { setCookingMealDate(date); setSelectedRecipe(meal.recipe); } }}
             markCooked={date => beginCompletion(kitchen.state.meals[date])}
-            undoCooked={(date) => kitchen.update((state) => undoMeal(state, date))}
+            undoCooked={undoCooked}
             goShopping={() => setView("shop")}
             shoppingCount={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length}
           />
@@ -1251,7 +1296,13 @@ export default function RagChefApp() {
           }}
         />
       )}
-      {pendingCookingStart && <Modal className="kitchen-modal-backdrop" label="Replace cooking session" close={() => setPendingCookingStart(null)}><section className="panel kitchen-modal"><h2>Keep your current cooking session?</h2><p>{cookingSession?.recipe.title} has saved progress{cookingSession && cookingHasRunningTimer(cookingSession) ? " and running timers" : ""}. Starting {pendingCookingStart.recipe.title} will replace that progress and all timers.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setPendingCookingStart(null)}>Keep current session</button><button className="primary-button" onClick={() => { persistCookingSession(pendingCookingStart); setPendingCookingStart(null); setSelectedRecipe(null); setCooking(true); }}>Replace cooking session</button></div></section></Modal>}
+      {cookingConflict && <Modal className="kitchen-modal-backdrop" label="Cooking progress changed" close={() => { if (!cookingResolution.current) setCookingConflict(null); }}><section className="panel kitchen-modal"><h2>Keep your unsaved cooking progress?</h2><p>This tab has progress that could not be saved. Another tab saved a different session. Choose which progress to keep.</p><div className="modal-actions"><button className="secondary-button" disabled={cookingResolving} onClick={() => { if (cookingResolution.current) return; cookingUnsaved.current = false; setCookingConflict(null); adoptCookingSnapshot(cookingConflict.stored); }}>Use saved session</button><button className="primary-button" disabled={cookingResolving} onClick={async () => {
+        if (cookingResolution.current) return;
+        cookingResolution.current = true; setCookingResolving(true);
+        try { await persistCookingSession(cookingSession, cookingConflict.stored); }
+        finally { cookingResolution.current = false; setCookingResolving(false); }
+      }}>Keep this tab’s progress</button></div></section></Modal>}
+      {pendingCookingStart && <Modal className="kitchen-modal-backdrop" label="Replace cooking session" close={() => setPendingCookingStart(null)}><section className="panel kitchen-modal"><h2>Keep your current cooking session?</h2><p>{cookingSession?.recipe.title} has saved progress{cookingSession && cookingHasRunningTimer(cookingSession) ? " and running timers" : ""}. Starting {pendingCookingStart.recipe.title} will replace that progress and all timers.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setPendingCookingStart(null)}>Keep current session</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(pendingCookingStart)) { setPendingCookingStart(null); setSelectedRecipe(null); setCooking(true); } }}>Replace cooking session</button></div></section></Modal>}
     </div>
   );
 }
@@ -1669,18 +1720,22 @@ function SettingsView({
   const [restorePreview, setRestorePreview] = useState<ReturnType<typeof parseKitchenBackup> | null>(null);
   const [restoreError, setRestoreError] = useState("");
   const [reviewedProfile, setReviewedProfile] = useState("");
+  const backupRead = useRef(0);
+  useEffect(() => () => { ++backupRead.current; }, []);
   const restoreProfile = restorePreview?.state.cookingProfile ?? profile;
-  const restoreProfileKey = JSON.stringify(restoreProfile);
+  const restoreProfileKey = JSON.stringify([restorePreview, restoreProfile]);
   async function readBackup(file: File | undefined) {
+    const readId = ++backupRead.current;
     setRestorePreview(null);
     setRestoreError("");
     setReviewedProfile("");
     if (!file) return;
     try {
       if (file.size > 2_000_000) throw new Error("This backup exceeds the 2 MB kitchen limit.");
-      setRestorePreview(parseKitchenBackup(await file.text()));
+      const preview = parseKitchenBackup(await file.text());
+      if (readId === backupRead.current) setRestorePreview(preview);
     } catch (error) {
-      setRestoreError(error instanceof Error ? error.message : "This backup could not be read.");
+      if (readId === backupRead.current) setRestoreError(error instanceof Error ? error.message : "This backup could not be read.");
     }
   }
   return (
@@ -1716,7 +1771,7 @@ function SettingsView({
           <p>Allergies: {restoreProfile.allergies.join(", ") || "None entered"}. Diet: {restoreProfile.diet}. Equipment: {restoreProfile.equipment.join(", ") || "None selected"}.</p>
           <p>Dislikes: {restoreProfile.dislikes.join(", ") || "None entered"}. Skill: {restoreProfile.skillLevel}. Budget: {restoreProfile.budget}.</p>
           <label><input type="checkbox" checked={reviewedProfile === restoreProfileKey} onChange={event => setReviewedProfile(event.target.checked ? restoreProfileKey : "")} />I reviewed the cooking preferences, including allergies and equipment.</label>
-          <div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => { ++backupRead.current; setRestorePreview(null); setReviewedProfile(""); }}>Cancel restore</button>
             <button className="primary-button" disabled={!canRestore || reviewedProfile !== restoreProfileKey} onClick={() => {
               if (restoreBackup({ ...restorePreview.state, cookingProfile: restoreProfile })) { setRestorePreview(null); setRestoreError(""); }
               else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying.");

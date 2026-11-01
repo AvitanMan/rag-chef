@@ -3,6 +3,16 @@ import type { Recipe } from "./recipe-types";
 import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validation";
 
 export const COOKING_SESSION_KEY = "rag-chef-cooking-v1";
+
+/** Reject stale edits, including deletion, before replacing another tab's progress. */
+export function writeCookingSession(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">, expected: string | null, next: CookingSession | null) {
+  const stored = storage.getItem(COOKING_SESSION_KEY);
+  if (stored !== expected) return { saved: false, stored };
+  const text = next ? JSON.stringify(next) : null;
+  if (text === null) storage.removeItem(COOKING_SESSION_KEY);
+  else storage.setItem(COOKING_SESSION_KEY, text);
+  return { saved: true, stored: text };
+}
 export const MAX_TIMER_MS = 86_400_000;
 export const MAX_COOKING_TIMERS = 8;
 export interface CookingTimer {

@@ -9,12 +9,12 @@ import { startModelStub } from "./model-stub.mjs";
 import { parseJourneyOptions } from "../recipes/journey-grading.mjs";
 
 const mode = process.argv[2];
-if (!["integration", "e2e", "setup", "smoke", "chef", "journeys"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, chef, or journeys.");
+if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, or journeys.");
 const journeyOptions = mode === "journeys" ? parseJourneyOptions(process.argv.slice(3)) : undefined;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "rag-chef-test-"));
 const project = join(directory, "project");
-const state = join(directory, "d1-state");
+const state = mode === "dev" ? join(project, ".wrangler", "state") : join(directory, "d1-state");
 const artifacts = resolve(root, "output", "playwright", `${mode}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`);
 await mkdir(artifacts, { recursive: true });
 await mkdir(project);
@@ -37,6 +37,8 @@ const env = {
   TMPDIR: process.env.TMPDIR ?? tmpdir(),
   SYSTEMROOT: process.env.SYSTEMROOT,
   CI: "1",
+  // Exercise Vite's agent-default console forwarding as well as ordinary dev.
+  ...(mode === "dev" ? { AI_AGENT: "codex", RAG_CHEF_TEST_VITE_CACHE_DIR: join(project, ".wrangler", "node_modules", ".vite") } : {}),
   WRANGLER_SEND_METRICS: "false",
   WRANGLER_WRITE_LOGS: "false",
   WRANGLER_LOG_PATH: join(directory, "wrangler.log"),
@@ -99,7 +101,7 @@ try {
   const directories = ["app", "build", "db", "drizzle", "worker", "public", "tests", "tools", ".openai"];
   const names = new Set((await readdir(root)));
   for (const name of directories) if (names.has(name)) await cp(join(root, name), join(project, name), { recursive: true, filter: (source) => !source.includes("__pycache__") });
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts", "playwright.smoke.config.ts"]) {
+  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts", "playwright.smoke.config.ts", "playwright.dev.config.ts"]) {
     if (names.has(name)) await cp(join(root, name), join(project, name));
   }
   await symlink(join(root, "node_modules"), join(project, "node_modules"), process.platform === "win32" ? "junction" : "dir");
@@ -111,8 +113,8 @@ try {
   if (stub) env.RAG_CHEF_TEST_MODEL_URL = stub.url;
   // Wrangler explicitly injects these test values into the isolated Worker.
   await writeFile(join(project, ".dev.vars"), `OLLAMA_BASE_URL=${JSON.stringify(ollamaURL)}\n`);
-  console.log(`Building disposable project; artifacts: ${artifacts}`);
-  await launch("build", ["node_modules/vinext/dist/cli.js", "build"]);
+  console.log(`${mode === "dev" ? "Starting development checks" : "Building disposable project"}; artifacts: ${artifacts}`);
+  if (mode !== "dev") await launch("build", ["node_modules/vinext/dist/cli.js", "build"]);
   if (mode === "integration") {
     await launch("rendered-html", ["--test", "tests/rendered-html.test.mjs"]);
     console.log("Isolated built-worker checks passed.");
@@ -127,7 +129,10 @@ try {
     const port = await freePort();
     const inspectorPort = await freePort([port]);
     env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
-    const preview = await launch("preview", [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`], { wait: false });
+    const previewArgs = mode === "dev"
+      ? ["node_modules/vinext/dist/cli.js", "dev", "--hostname", "127.0.0.1", "--port", String(port)]
+      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`];
+    const preview = await launch("preview", previewArgs, { wait: false });
     await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
     if (["chef", "journeys"].includes(mode)) {
       const indexed = await fetch(`${env.RAG_CHEF_TEST_BASE_URL}/api/admin/catalog`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ embeddingsOnly: true }), signal: AbortSignal.timeout(300_000) });
@@ -142,7 +147,8 @@ try {
     } else {
       console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
       if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(mode === "smoke" ? ["--config", "playwright.smoke.config.ts"] : []), ...process.argv.slice(3)]);
+      const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
+      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...process.argv.slice(3)]);
       console.log("Isolated browser checks passed.");
     }
   }

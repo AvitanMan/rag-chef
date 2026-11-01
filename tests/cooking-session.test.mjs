@@ -12,7 +12,7 @@ for (const name of ["cooking-session", "kitchen-validation", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
+const { COOKING_SESSION_KEY, writeCookingSession, createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
 const recipe = () => ({ id: "rice", title: "Test Rice", image: null, category: "Dinner", cuisine: "International", source: { name: "Wikibooks", url: "https://en.wikibooks.org/" }, sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Rice", ingredients: [{ name: "rice", measure: "100 g" }], instructions: ["Rinse rice.", "Simmer for 10 minutes."], tags: [], servings: 2 });
 const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 4, batches: 1, locked: false, status: "planned", ingredientOverrides: {} });
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
@@ -126,4 +126,25 @@ test("corrupt, oversized and incompatible cooking snapshots are rejected without
 test("source timer shortcuts accept a single point duration and reject ranges, fractions, compound or ambiguous durations", () => {
   for (const [text, seconds] of [["Simmer for about 10 minutes.", 600], ["Rest 30 seconds.", 30], ["Bake 1 hour at 180 C.", 3600], ["Heat for 24 hours.", 86400]]) assert.equal(stepTimerSeconds(text), seconds, text);
   for (const text of ["Cook until tender.", "Cook 5–10 minutes.", "Cook 5-10 minutes.", "Cook 5 to 10 minutes.", "Cook 5 or 10 minutes.", "Cook 1.5 minutes.", "Cook 1/2 hour.", "Cook 1½ hours.", "Cook 1 hour 30 minutes.", "Simmer 5 minutes, then rest 10 minutes.", "Wait 0 seconds.", "Cook 25 hours."]) assert.equal(stepTimerSeconds(text), null, text);
+});
+
+
+test("stale tabs cannot replace, edit or delete another cooking snapshot", () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, text) => values.set(key, text), removeItem: key => values.delete(key) };
+  const active = fresh(); active.step = 1; active.timer = timerAction(active.timer, "start", 1000, 600000);
+  const first = writeCookingSession(storage, null, active);
+  assert.equal(first.saved, true);
+  for (const next of [fresh(), null]) {
+    assert.deepEqual(writeCookingSession(storage, null, next), { saved: false, stored: first.stored });
+    assert.deepEqual(parseCookingSession(storage.getItem(COOKING_SESSION_KEY)), active);
+  }
+  const paused = { ...active, timer: timerAction(active.timer, "pause", 2000) };
+  const second = writeCookingSession(storage, first.stored, paused);
+  assert.equal(second.saved, true);
+  assert.equal(writeCookingSession(storage, first.stored, { ...active, step: 0 }).saved, false);
+  assert.equal(writeCookingSession(storage, first.stored, null).saved, false);
+  assert.deepEqual(parseCookingSession(storage.getItem(COOKING_SESSION_KEY)), paused);
+  assert.equal(writeCookingSession(storage, second.stored, null).saved, true);
+  assert.equal(storage.getItem(COOKING_SESSION_KEY), null);
 });
