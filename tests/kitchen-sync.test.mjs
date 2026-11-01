@@ -72,6 +72,17 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   return { get result() { return runtime.result; }, pump, tick, calls, local, session, dispatch: event => events.dispatchEvent(event), respond: (fn) => { handler = fn; } };
 }
 
+test("a fresh kitchen becomes ready without any recipe discovery request", async () => {
+  const h = await setup({ fetch: url => {
+    assert.equal(url, "/api/kitchen");
+    return Response.json(document(0, null));
+  } });
+  assert.equal(h.result.ready, true);
+  assert.deepEqual(h.result.state.pantry, []);
+  assert.deepEqual(h.result.state.meals, {});
+  assert.equal(h.calls.length, 1);
+});
+
 test("legacy browser preferences migrate once without overriding the authoritative kitchen profile", async () => {
   const seed = await setup();
   seed.local.setItem("rag-chef-preferences-v2", JSON.stringify({ profile: cookingProfile(), settings: { provider: "openai" } }));

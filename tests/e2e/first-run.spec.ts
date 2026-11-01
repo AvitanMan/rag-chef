@@ -8,7 +8,12 @@ test("fresh installation recovers from setup failure and reaches dinner without 
     return route.continue();
   });
   let chefCalls = 0;
-  page.on("request", req => { if (new URL(req.url()).pathname === "/api/chef") chefCalls++; });
+  let discoveryCalls = 0;
+  page.on("request", req => {
+    const path = new URL(req.url()).pathname;
+    if (path === "/api/chef") chefCalls++;
+    if (path === "/api/recipes") discoveryCalls++;
+  });
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Load starter recipes", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Load starter recipes", exact: true }).click();
@@ -39,5 +44,6 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Cooking Tomato Chickpea Pan" })).toBeVisible();
   expect(chefCalls).toBe(0);
+  expect(discoveryCalls).toBe(0);
   await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/first-cooking-${test.info().project.name}.png` });
 });

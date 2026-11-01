@@ -131,8 +131,10 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
         savedJson.current = document ? "" : JSON.stringify(chosen);
       } else {
         let knownRecipes = fallbackRecipes;
-        try {
-          const response = await fetch("/api/recipes", { signal: AbortSignal.timeout(5_000) });
+        // Only an old plan needs recipe resolution. A fresh kitchen must not
+        // wait for the discovery adapter or make a third-party recipe request.
+        if (legacy?.plan && typeof legacy.plan === "object") try {
+          const response = await fetch("/api/recipes/catalog", { signal: AbortSignal.timeout(5_000) });
           const result = response.ok ? await response.json() as { recipes?: Recipe[] } : null;
           if (Array.isArray(result?.recipes)) knownRecipes = [...fallbackRecipes, ...result.recipes];
         } catch { /* Unresolved old recipes stay visible in the plan. */ }
