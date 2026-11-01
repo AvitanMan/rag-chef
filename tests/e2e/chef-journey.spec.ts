@@ -662,6 +662,9 @@ test("saved amount help works offline in Chef and cooking with source quantities
     await page.locator(`#dinner-${TODAY}`).getByRole("button", { name: /Cook/ }).click();
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
     await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+    // Start from a paused clock so slower CI rendering does not consume part
+    // of the five-minute deadline before the explicit thirty-second advance.
+    await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
     await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
     await cooking.locator(".cook-help > summary").click();
     await cooking.getByLabel("Question about this step", { exact: true }).fill("How much rice do I need?");
