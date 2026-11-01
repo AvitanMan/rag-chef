@@ -1,10 +1,11 @@
 import { mealScale } from "./kitchen-types";
-import type { RecipeIngredient } from "./recipe-types";
+import type { Recipe, RecipeIngredient } from "./recipe-types";
 import type {
   KitchenState,
   PantryDeduction,
   PantryStock,
   PlannedMeal,
+  PersonalRecipeAmounts,
 } from "./kitchen-types";
 
 export interface ParsedMeasure {
@@ -212,6 +213,38 @@ export function normalizePlanningIngredient(ingredient: RecipeIngredient): Recip
   return parsed ? { name: ingredientLabel(count![2]), measure: formatMeasure(parsed.quantity, parsed.unit) } : original;
 }
 
+/** Blank means inherit; saved personal quantities must be measurable and positive. */
+export function personalAmountInputProblem(value: string): string {
+  if (!value.trim()) return "";
+  const parsed = parseMeasure(value);
+  return value.length <= 160 && parsed && parsed.quantity > 0 && parsed.quantity <= 1_000_000_000
+    ? "" : "Enter a positive measured amount, such as 300 g, 1 cup, or 2.";
+}
+
+export function personalAmountsMatch(recipe: Recipe, amounts: PersonalRecipeAmounts | undefined, contentHash: string | undefined): boolean {
+  return Boolean(amounts && contentHash && amounts.contentHash === contentHash
+    && amounts.referenceServings === (recipe.servings ?? null)
+    && amounts.amounts.every(item => recipe.ingredients[item.ingredientIndex]?.name === item.originalName));
+}
+
+/** Shared by selection and every stock preview. Only the planning copy changes. */
+export function applyPersonalRecipeAmounts(meal: PlannedMeal, amounts: PersonalRecipeAmounts | undefined, contentHash: string | undefined): PlannedMeal {
+  if (!meal.recipe || !amounts || !personalAmountsMatch(meal.recipe, amounts, contentHash)) return meal;
+  const ingredients = meal.recipe.ingredients.map(normalizePlanningIngredient);
+  for (const item of amounts.amounts) ingredients[item.ingredientIndex].measure = item.measure;
+  return { ...meal, planningIngredients: ingredients, personalAmountIndices: amounts.amounts.map(item => item.ingredientIndex) };
+}
+
+export function mealAmountBasis(meal: PlannedMeal, index: number): "saved_override" | "personal_scaled" | "source_scaled" {
+  return Object.hasOwn(meal.ingredientOverrides, String(index)) ? "saved_override"
+    : meal.personalAmountIndices?.includes(index) ? "personal_scaled" : "source_scaled";
+}
+
+export function mealAmountLabel(meal: PlannedMeal, index: number): string {
+  const basis = mealAmountBasis(meal, index);
+  return basis === "saved_override" ? "Dinner override" : basis === "personal_scaled" ? "Personal amount · scaled for this dinner" : "Scaled from source";
+}
+
 interface Requirement {
   identity: string;
   name: string;
@@ -257,7 +290,7 @@ function requirementsFor(meals: PlannedMeal[]): Requirement[] {
       group.recipeTitles.add(title);
       group.mealDates.add(meal.date);
       group.needsReview ||= !overridden && !validScale;
-      group.descriptions.push(`${title} (${meal.date}): ${raw || "amount missing"}${overridden ? " (custom amount for this meal)" : ` × ${displayQuantity(effectiveScale)}`}${!overridden && !validScale ? " (invalid portions; check amount)" : ""}`);
+      group.descriptions.push(`${title} (${meal.date}): ${raw || "amount missing"}${overridden ? " (custom amount for this meal)" : `${meal.personalAmountIndices?.includes(index) ? " (personal amount)" : ""} × ${displayQuantity(effectiveScale)}`}${!overridden && !validScale ? " (invalid portions; check amount)" : ""}`);
     }
   }
   return [...groups.values()].sort((a, b) => a.identity.localeCompare(b.identity) || (a.parsed?.dimension ?? a.raw).localeCompare(b.parsed?.dimension ?? b.raw));
@@ -312,6 +345,7 @@ export interface MealStockAllocation {
 }
 
 export interface MealReadiness {
+  personalAmountsApplied?: boolean;
   coveredCount: number;
   partialCount: number;
   missingCount: number;
@@ -332,6 +366,7 @@ export function mealReadiness(meal: PlannedMeal, pantry: PantryStock[], today = 
     else summary.missingCount++;
   }
   return { ...summary, coverage: allocation.coverage, useSoonCoverage: allocation.useSoonCoverage,
+    ...(meal.personalAmountIndices?.some(index => mealAmountBasis(meal, index) === "personal_scaled") ? { personalAmountsApplied: true } : {}),
     shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote }) => ({ name, measure, needsReview, ...(preparationNote ? { preparationNote } : {}) })) };
 }
 

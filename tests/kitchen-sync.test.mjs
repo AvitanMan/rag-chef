@@ -255,18 +255,21 @@ test("offline reconnect detects newer revisions without overwriting either versi
 
 test("keeping a conflicted draft retries against the selected saved revision", async () => {
   const h = await setup();
-  h.result.update((current) => ({ ...current, pantry: [] })); await h.pump();
+  const personalRecipeAmounts = { rice: { contentHash: "a".repeat(64), referenceServings: 4, amounts: [{ ingredientIndex: 0, originalName: "rice", measure: "300 g" }] } };
+  h.result.update((current) => ({ ...current, pantry: [], personalRecipeAmounts })); await h.pump();
   h.respond(() => Response.json({ current: document(2) }, { status: 409 })); await h.tick();
   h.respond((_url, options) => {
     const request = JSON.parse(options.body);
     assert.equal(request.revision, 2);
     assert.equal(request.state.pantry.length, 0);
+    assert.deepEqual(request.state.personalRecipeAmounts, personalRecipeAmounts);
     return Response.json(document(3, request.state));
   });
   h.result.resolveConflict(true); await h.pump(); await h.tick();
   assert.equal(h.result.saveState, "saved");
   assert.equal(h.result.conflict, null);
   assert.equal(h.result.state.pantry.length, 0);
+  assert.deepEqual(h.result.state.personalRecipeAmounts, personalRecipeAmounts);
 });
 
 test("refreshing a clean tab adopts another tab's kitchen and revision without writing it back", async () => {

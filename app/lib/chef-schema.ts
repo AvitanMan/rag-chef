@@ -131,7 +131,7 @@ export type ChefPlanningFact = {
   name: string;
   measure: string;
   needsReview: boolean;
-  basis: "source_scaled" | "saved_override";
+  basis: "source_scaled" | "saved_override" | "personal_scaled";
 };
 
 export type ChefApiResponse = ChefStructuredAnswer & {

@@ -10,7 +10,7 @@ import type { KitchenState, PlannedMeal } from "../lib/kitchen-types";
 import { mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
-import { formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
+import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
 import { setShoppingItemBought } from "../lib/shopping-purchases";
 import { ShoppingExport } from "./ShoppingExport";
 
@@ -175,6 +175,7 @@ export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patc
   const date = meal.date;
   const immutable = meal.locked || meal.status === "cooked";
   if (!meal.recipe) return null;
+  const baseline = { ...meal, ingredientOverrides: {} };
   return <section className="dinner-amount-editor">
     {immutable && <p className="quantity-note">This dinner is {meal.status === "cooked" ? "cooked" : "locked"}; its saved amounts cannot be edited.</p>}
                 <label>Original recipe servings (if known)<ValidatedInput type="number" min={1} max={10000} step={1} allowEmpty placeholder="Unknown" aria-label={`Original servings ${dateLabel(date)}`} value={meal.baseServings ?? ""} disabled={Boolean(immutable)} onCommit={(text) => {
@@ -182,14 +183,14 @@ export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patc
                   patch({ baseServings, servings: baseServings ? (meal.servings ?? baseServings) : null });
                 }} /></label>
                 <p>{meal.baseServings ? "Amounts scale to your serving count." : "Servings are unknown, so quantities use recipe batches."} Enter a final amount below to correct any ingredient. Source wording stays unchanged.</p>{(meal.planningIngredients ?? meal.recipe!.ingredients).map((ingredient, index) => {
-                const parsed = plannedIngredientMeasure(meal, index, ingredient);
+                const parsed = plannedIngredientMeasure(baseline, index, ingredient);
                 const scaled = parsed ? formatMeasure(parsed.quantity * mealScale(meal), parsed.unit) : ingredient.measure;
-                return <label key={index}>{ingredient.name}<ValidatedInput validate={measureInputProblem} value={meal.ingredientOverrides[String(index)] ?? ""} placeholder={scaled || "Amount needs review"} aria-label={`${ingredient.name} amount ${dateLabel(date)}`} disabled={Boolean(immutable)} onCommit={(value) => {
+                return <label key={index}>{ingredient.name}<small>{mealAmountLabel(baseline, index)} · Baseline: {scaled || "Amount needs review"}</small><ValidatedInput validate={measureInputProblem} value={meal.ingredientOverrides[String(index)] ?? ""} placeholder={scaled || "Amount needs review"} aria-label={`${ingredient.name} amount ${dateLabel(date)}`} disabled={Boolean(immutable)} onCommit={(value) => {
                   const overrides = { ...meal.ingredientOverrides };
                   if (value.trim()) overrides[String(index)] = value;
                   else delete overrides[String(index)];
                   patch({ ingredientOverrides: overrides });
-                }} />{meal.planningIngredients && ingredient.name !== meal.recipe!.ingredients[index].name && <small>Source: {meal.recipe!.ingredients[index].measure} {meal.recipe!.ingredients[index].name}</small>}</label>;
+                }} />{Object.hasOwn(meal.ingredientOverrides, String(index)) && <small>Dinner override · final amount for this dinner</small>}{meal.planningIngredients && ingredient.name !== meal.recipe!.ingredients[index].name && <small>Source: {meal.recipe!.ingredients[index].measure} {meal.recipe!.ingredients[index].name}</small>}</label>;
               })}
   </section>;
 }

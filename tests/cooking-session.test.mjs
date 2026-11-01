@@ -8,15 +8,30 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-cooking-session-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["cooking-session", "kitchen-validation", "kitchen-types"]) {
+for (const name of ["cooking-session", "kitchen-validation", "kitchen-types", "quantities"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { COOKING_SESSION_KEY, writeCookingSession, createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
+const { COOKING_SESSION_KEY, writeCookingSession, createCookingSession, parseCookingSession, remainingTimerMs, timerAction, parseTimerDuration, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
 const recipe = () => ({ id: "rice", title: "Test Rice", image: null, category: "Dinner", cuisine: "International", source: { name: "Wikibooks", url: "https://en.wikibooks.org/" }, sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Rice", ingredients: [{ name: "rice", measure: "100 g" }], instructions: ["Rinse rice.", "Simmer for 10 minutes."], tags: [], servings: 2 });
 const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 4, batches: 1, locked: false, status: "planned", ingredientOverrides: {} });
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
 const parse = (value) => parseCookingSession(JSON.stringify(value));
+
+test("custom timer fields distinguish minute and second limits and accept up to 24 hours", () => {
+  for (const [minutes, seconds, duration] of [["0", "1", 1], ["90", "15", 5415], ["1440", "0", 86400], [" 60 ", " 0 ", 3600]]) {
+    assert.equal(parseTimerDuration(minutes, seconds), duration);
+  }
+  for (const minutes of ["", " ", "-1", "1.5", "1441", "NaN", "Infinity"]) {
+    assert.throws(() => parseTimerDuration(minutes, "0"), /whole minutes from 0 to 1440/);
+  }
+  for (const seconds of ["", " ", "-1", "0.5", "60", "NaN", "Infinity"]) {
+    assert.throws(() => parseTimerDuration("90", seconds), /whole seconds from 0 to 59/);
+  }
+  for (const [minutes, seconds] of [["0", "0"], ["1440", "1"]]) {
+    assert.throws(() => parseTimerDuration(minutes, seconds), /between 1 second and 24 hours/);
+  }
+});
 
 test("multiple named timers survive reload and simultaneous deadlines finish in one immutable update", () => {
   const session = fresh();

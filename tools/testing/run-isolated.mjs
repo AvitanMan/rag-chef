@@ -101,7 +101,7 @@ try {
   const directories = ["app", "build", "db", "drizzle", "worker", "public", "tests", "tools", ".openai"];
   const names = new Set((await readdir(root)));
   for (const name of directories) if (names.has(name)) await cp(join(root, name), join(project, name), { recursive: true, filter: (source) => !source.includes("__pycache__") });
-  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "postcss.config.mjs", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts", "playwright.smoke.config.ts", "playwright.dev.config.ts"]) {
+  for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "vite.config.ts", "next.config.ts", "tsconfig.json", "cloudflare-env.d.ts", "wrangler.jsonc", "playwright.config.ts", "playwright.smoke.config.ts", "playwright.dev.config.ts"]) {
     if (names.has(name)) await cp(join(root, name), join(project, name));
   }
   await symlink(join(root, "node_modules"), join(project, "node_modules"), process.platform === "win32" ? "junction" : "dir");

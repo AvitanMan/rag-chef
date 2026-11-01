@@ -1,7 +1,7 @@
 import type { PlannedMeal } from "./kitchen-types";
 import type { ChefPlanningFact } from "./chef-schema";
 import type { Recipe } from "./recipe-types";
-import { canonicalIngredient, resolvedMealIngredients } from "./quantities";
+import { mealAmountBasis, canonicalIngredient, resolvedMealIngredients } from "./quantities";
 
 /** Quantity-only requests: source wording and cooking advice keep their own path. */
 export function isPlanningQuantityQuestion(query: string): boolean {
@@ -47,7 +47,7 @@ export function planningQuantityAnswer(meal: PlannedMeal, query: string) {
   const planningFacts: ChefPlanningFact[] = [...selected].sort((a, b) => a - b).map(index => ({
     recipeId: meal.recipeId, ingredientIndex: index, sourceEvidenceId: `I${index + 1}`,
     name: amounts[index].name, measure: amounts[index].measure, needsReview: amounts[index].needsReview,
-    basis: Object.hasOwn(meal.ingredientOverrides, String(index)) ? "saved_override" : "source_scaled",
+    basis: mealAmountBasis(meal, index),
   }));
   const clarify = !planningFacts.length || unmatched.length > 0 || ambiguous || planningFacts.some(row => row.needsReview);
   const yieldLabel = meal.baseServings ? `${meal.servings} servings` : `${meal.batches} recipe ${meal.batches === 1 ? "batch" : "batches"}`;

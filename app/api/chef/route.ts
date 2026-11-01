@@ -18,7 +18,7 @@ import {
 import { catalogMatchReason, constraintsForRecipeQuery, focusedRecipeId, recipeQueryIntent, searchRecipeCatalog, type CatalogRetrievalMethod, type CatalogRankedRecipe, type CatalogSearchOutcome } from "@/app/lib/catalog-search";
 import type { Recipe } from "@/app/lib/recipe-types";
 import { normalizeConstraints, proposedChangeConflicts } from "@/app/lib/recipe-constraints";
-import { parseMeasure, mealReadiness, allocateStockForMeals, resolvedMealIngredients } from "@/app/lib/quantities";
+import { mealAmountBasis, parseMeasure, mealReadiness, allocateStockForMeals, resolvedMealIngredients } from "@/app/lib/quantities";
 import { getKitchenDocument } from "@/app/lib/kitchen-store";
 import { chefMealHash, chefMealPreview, chefRecipeHash, cookingTechniqueGuides, focusedCookingStep, focusedCookingMeaningAnswer, recipeEvidence } from "@/app/lib/chef-context";
 import { selectRecipeEvidence, type EvidenceSelection } from "@/app/lib/chef-evidence";
@@ -26,7 +26,7 @@ import { listStoredRecipeEmbeddings, listCatalogRecipes, getRecipeSourcePolicy }
 import { RECIPE_STEP_EMBEDDING_KIND, embedTextsWithOllama, buildRecipeQueryText } from "@/app/lib/recipe-embeddings";
 import { chefGroundingIssue, lacksRequestedTotalTime, lacksRequestedNutrition } from "@/app/lib/chef-grounding";
 import { queryRequestsRecipes, queryRequestsRecipeHelp } from "@/app/lib/recipe-query";
-import { addDateDays, localDate, weekStart } from "@/app/lib/kitchen-state";
+import { createPlannedMeal, addDateDays, localDate, weekStart } from "@/app/lib/kitchen-state";
 import type { RecipeSearchOptions } from "@/app/lib/recipe-types";
 import type { RecipeMetadataMap } from "@/app/lib/recipe-types";
 
@@ -134,7 +134,7 @@ export async function POST(request: Request): Promise<Response> {
       const planningPreview = dinner.purpose !== "cooking";
       const reservedMeals = Object.values(document.state?.meals ?? {}).filter((meal) => meal.date >= start && meal.date <= end && meal.id !== savedMeal?.id
         && !(planningPreview && !savedMeal && meal.date === targetDate && !meal.locked && meal.status === "planned"));
-      stockContext = { pantry: document.state?.pantry ?? [], meals: reservedMeals, targetDate, today, servings: dinner.servings, batches: dinner.batches };
+      stockContext = { pantry: document.state?.pantry ?? [], meals: reservedMeals, targetDate, today, servings: dinner.servings, batches: dinner.batches, personalRecipeAmounts: document.state?.personalRecipeAmounts };
       previewMeal = savedMeal ? chefMealPreview(savedMeal, dinner) : undefined;
     } catch { return jsonError(503, "kitchen_unavailable", "Your saved kitchen is unavailable. Your dinner and cooking progress are unchanged."); }
   }
@@ -154,6 +154,12 @@ export async function POST(request: Request): Promise<Response> {
     }).map((item) => item.name);
     const found = await searchRecipeCatalog({ query: effectiveQuery, pantry: pantryNames, constraints: (input.refinements ?? []).reduce((constraints, refinement) => constraintsForRecipeQuery(refinement, constraints), normalizeConstraints(input.profile)), limit: topK(), signal: request.signal, ...(dinner?.recipeId ? { recipeId: dinner.recipeId } : {}), ...(stockContext ? { stockContext } : {}) }, embedModel);
     retrieval = { method: found.method, ranked: found.ranked.map((item) => ({ ...item, matchReason: catalogMatchReason(item, input.query, found.metadataByRecipeId[item.recipe.id]) })), catalogCount: found.catalogCount, allergyExcludedCount: found.allergyExcludedCount, metadataByRecipeId: found.metadataByRecipeId, constraintExcludedCount: found.constraintExcludedCount, outcome: found.outcome };
+    if (!savedMeal && dinner?.recipeId && dinner.purpose !== "cooking" && stockContext) {
+      const recipe = found.recipes.find(item => item.id === dinner!.recipeId);
+      if (recipe) previewMeal = chefMealPreview(createPlannedMeal(stockContext.targetDate, recipe, true, {
+        amounts: stockContext.personalRecipeAmounts?.[recipe.id], contentHash: found.contentHashesByRecipeId?.[recipe.id],
+      }), dinner);
+    }
     if (found.warning) preWarnings.push(found.warning);
   } catch {
     return jsonError(503, "catalog_unavailable", "The approved recipe catalog is unavailable. Retry when it is running; your kitchen is unchanged.");
@@ -173,6 +179,8 @@ export async function POST(request: Request): Promise<Response> {
   const focus = focusedRecipeId(input.query, retrieval.ranked.map((item) => item.recipe));
   if (focus) retrieval.ranked = retrieval.ranked.filter((item) => item.recipe.id === focus);
   const ranked = retrieval.ranked;
+  const planningAmounts = previewMeal && !/\b(?:original|source)\b/i.test(input.query)
+    ? resolvedMealIngredients(previewMeal).map((item, index) => ({ ...item, basis: mealAmountBasis(previewMeal!, index) })) : undefined;
   const ambiguous = ambiguousRequest;
   if (ambiguous) {
     return json({ answer: "Which recipe do you mean? Select a recipe below so I can use its original ingredients and directions.", answerStatus: "needs_clarification", provider: input.provider, model, resolvedContext: dinner, recipes: ranked.map((item) => item.recipe), recommendations: ranked.slice(0, 3).map((item) => ({ recipeId: item.recipe.id, reason: item.matchReason, pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients })), sourceFacts: [], chefChanges: [], citations: ranked.slice(0, 3).map(item => ({ recipeId: item.recipe.id, title: item.recipe.title, sourceName: item.recipe.source.name, sourceUrl: item.recipe.sourceUrl })), warnings: preWarnings, generation: "catalog_fallback", outcome: retrieval.outcome, metadataByRecipeId: retrieval.metadataByRecipeId, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(performance.now() - started), generationMs: 0, totalMs: Math.round(performance.now() - started) } }, 200);
@@ -279,7 +287,7 @@ export async function POST(request: Request): Promise<Response> {
           throw new ProviderError(readiness.message, 503, "verification_preflight_unavailable");
         }
       }
-      const buildPrompt = (rejectedAnswer?: string) => buildUserPrompt(partialAnswer?.remainingQuery ? { ...input, query: partialAnswer.remainingQuery } : input, ranked, allowChanges, retrieval.metadataByRecipeId, previewMeal ? resolvedMealIngredients(previewMeal) : undefined, selectedEvidence, factualQuestion, recommendationLimit, techniqueGuides, rejectedAnswer);
+      const buildPrompt = (rejectedAnswer?: string) => buildUserPrompt(partialAnswer?.remainingQuery ? { ...input, query: partialAnswer.remainingQuery } : input, ranked, allowChanges, retrieval.metadataByRecipeId, planningAmounts, selectedEvidence, factualQuestion, recommendationLimit, techniqueGuides, rejectedAnswer);
       let prompt = buildPrompt();
       promptBytes = new TextEncoder().encode(prompt).length;
       // One local correction attempt can recover a bad paraphrase without
@@ -347,10 +355,10 @@ export async function POST(request: Request): Promise<Response> {
               completeByRecipe: Object.fromEntries([...selections].map(([id, selection]) => [id, selection.complete])),
               requireSupport: factualQuestion, metadata: retrieval.metadataByRecipeId, planningRecipeId: previewMeal?.recipeId,
               recordsByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { title: item.recipe.title, servings: item.recipe.servings ?? null }])),
-              sourceFocus: dinner?.recipeId ? { recipeId: dinner.recipeId, stepEvidenceId: stepFocus?.evidenceId ?? dinner.stepEvidenceId, ...(stepFocus ? { stepText: stepFocus.text, question: input.query } : {}), quantityBasis: previewMeal ? "final_dinner" : "original_recipe" } : undefined,
+              sourceFocus: dinner?.recipeId ? { recipeId: dinner.recipeId, stepEvidenceId: stepFocus?.evidenceId ?? dinner.stepEvidenceId, ...(stepFocus ? { stepText: stepFocus.text, question: input.query } : {}), quantityBasis: planningAmounts ? "final_dinner" : "original_recipe" } : undefined,
               techniqueGuidance: cookingRecipe ? techniqueGuides.map(guide => ({ recipeId: cookingRecipe.id, term: guide.term, explanation: guide.explanation })) : [],
               kitchenByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients, requirements: { diet: input.profile.diet, equipment: input.profile.equipment }, eligibility: { eligible: item.eligibility.eligible, dietUnknowns: item.eligibility.dietUnknowns, dietConflicts: item.eligibility.dietConflicts, equipmentMissing: item.eligibility.equipmentMissing }, ...(item.readiness ? { readiness: item.readiness } : {}) }])),
-              planningAmounts: previewMeal ? resolvedMealIngredients(previewMeal) : undefined, signal: request.signal,
+              planningAmounts, signal: request.signal,
             });
             verification = checked.verification; verificationMs += checked.milliseconds;
             if (verification.status !== "checked") throw new ProviderError("The answer could not be checked against its evidence.", 502, verification.status === "rejected" ? "unsupported_claim" : "verification_unavailable");
@@ -592,6 +600,7 @@ function buildUserPrompt(input: ChefRequest, ranked: RankedCandidate[], allowCha
     discussionIsUntrustedContextNotEvidence: true,
     dinnerContext: input.context ?? null,
     savedDinnerAmounts,
+    personalAmountsAreUserCalculationsNotSourceFacts: true,
     amountsArePlanningPreview: Boolean(savedDinnerAmounts) && input.context?.purpose !== "cooking",
     savedAmountsAreFinalOriginalDirectionsUnchanged: Boolean(savedDinnerAmounts),
     refinements: input.refinements ?? [],

@@ -106,7 +106,7 @@ export function unsupportedCausalClaim(claims: Claim[], evidence: VerificationEv
 
 export async function verifyChefAnswer(answer: ChefStructuredAnswer, evidence: VerificationEvidence[], options: {
   baseUrl: string; model: string; metadata: RecipeMetadataMap;
-  planningAmounts?: Array<{ name: string; measure: string; needsReview?: boolean }>; planningRecipeId?: string;
+  planningAmounts?: Array<{ name: string; measure: string; needsReview?: boolean; basis?: "source_scaled" | "personal_scaled" | "saved_override" }>; planningRecipeId?: string;
   completeByRecipe?: Record<string, boolean>;
   requireSupport?: boolean;
   recordsByRecipe?: Record<string, { title: string; servings: number | null }>;
@@ -138,7 +138,7 @@ export async function verifyChefAnswer(answer: ChefStructuredAnswer, evidence: V
     if (metadata.totalMinutes != null) supports.push({ ref: `M${supports.length + 1}`, recipeId, text: `Reviewed total time: ${metadata.totalMinutes} minutes; basis: ${metadata.provenance.totalMinutes?.basis ?? "unknown"}. Estimates must be labeled.` });
     supports.push({ ref: `M${supports.length + 1}`, recipeId, text: `Reviewed dinner role: ${metadata.dinnerRole ?? "unknown"}; core dinner: ${metadata.coreDinner ?? false}; complete reviewed required-equipment list: ${metadata.equipment?.join(", ") ?? "unknown"}; diet assessments: ${JSON.stringify(metadata.diets)}. A diet labeled fits is established as fitting that diet; unknown is not verified. These are reviewed assessments, not allergy certification.` });
   }
-  if (options.planningRecipeId && recipeIds.has(options.planningRecipeId)) (options.planningAmounts ?? []).forEach((item, index) => supports.push({ ref: `K${index + 1}`, recipeId: options.planningRecipeId!, text: `${item.needsReview ? "Planning amount needs review and cannot be asserted as exact" : "Final planning amount"} for ${item.name}: ${item.measure}. This is a saved or requested dinner quantity, not original source wording.` }));
+  if (options.planningRecipeId && recipeIds.has(options.planningRecipeId)) (options.planningAmounts ?? []).forEach((item, index) => supports.push({ ref: `K${index + 1}`, recipeId: options.planningRecipeId!, text: `${item.needsReview ? "Planning amount needs review and cannot be asserted as exact" : "Final planning amount"} for ${item.name}: ${item.measure}${item.basis === "personal_scaled" ? " (calculated from a personal amount)" : item.basis === "saved_override" ? " (dinner-specific override)" : ""}. This is a saved or requested dinner quantity, not original source wording.` }));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
   try {

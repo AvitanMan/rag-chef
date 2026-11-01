@@ -2195,3 +2195,16 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .use-soon-empty summary { padding: .65rem 0; cursor: pointer; }
 .catalog-setup { margin: 1rem 0; }
 .catalog-setup p { margin: .8rem 0; }
+.personal-amounts { margin: 28px 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; }
+.personal-amounts > p { margin: 10px 0; }
+.personal-amount-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.personal-amount-row small, .amount-basis { display: block; margin-top: 5px; font-size: 12px; }
+.personal-amount-row label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.personal-amount-row input { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
+.personal-amount-row input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.personal-amounts .modal-actions { flex-wrap: wrap; margin-top: 16px; }
+.stale-personal-amounts { border-left: 3px solid var(--paprika); padding-left: 14px; margin: 16px 0; }
+@media (max-width: 600px) {
+  .personal-amounts { padding: 14px; }
+  .personal-amount-row { grid-template-columns: 1fr; gap: 8px; }
+}

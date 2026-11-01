@@ -286,6 +286,45 @@ test("cross-origin writes, remote unconfigured admin and oversized batches are r
 function chefRequest(overrides = {}) {
   return new Request("http://localhost:3000/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: "Test rice", pantry: ["rice"], provider: "ollama", ...overrides }) });
 }
+
+test("catalog hashes and Chef planning use matching personal amounts without altering source answers", async () => {
+  const sourceDraft = await draft(0);
+  const imported = await importOne(sourceDraft);
+  const stored = (await store.listCatalogRecipes())[0];
+  const catalog = await (await catalogRoute.GET()).json();
+  assert.equal(catalog.contentHashesByRecipeId[imported.catalogId], stored.contentHash);
+  const personal = { contentHash: stored.contentHash, referenceServings: 4, amounts: [{ ingredientIndex: 0, originalName: "rice", measure: "300 g" }] };
+  const value = { schemaVersion: 2, pantry: [{ id: "rice-stock", name: "rice", measure: "200 g" }], meals: {}, shoppingChecked: {}, migratedLegacy: true, personalRecipeAmounts: { [imported.catalogId]: personal } };
+  db.prepare("INSERT OR REPLACE INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(value), 5, "2026-11-01T12:00:00Z");
+  const context = { kitchenRevision: 5, recipeId: imported.catalogId, purpose: "planning", targetDate: "2026-11-01", today: "2026-11-01", servings: 2 };
+  const before = modelCalls;
+  const planned = await (await chefRoute.POST(chefRequest({ query: "How much rice do I need?", context }))).json();
+  assert.equal(planned.answerStatus, "answered");
+  assert.equal(planned.planningFacts[0].measure, "150 g");
+  assert.equal(planned.planningFacts[0].basis, "personal_scaled");
+  const original = await (await chefRoute.POST(chefRequest({ query: "How much rice does the original recipe use?", context }))).json();
+  assert.match(original.answer, /1 ½ cups/); assert.doesNotMatch(original.answer, /150|300/);
+  assert.equal(original.planningFacts, undefined); assert.equal(modelCalls, before);
+  const found = await search.searchRecipeCatalog({ recipeId: imported.catalogId, stockContext: { pantry: value.pantry, meals: [], targetDate: context.targetDate, today: context.today, servings: 2, personalRecipeAmounts: value.personalRecipeAmounts } }, "test-embed");
+  assert.equal(found.ranked[0].readiness.coveredCount, 1);
+  assert.equal(found.ranked[0].readiness.personalAmountsApplied, true);
+  assert.equal(found.ranked[0].readiness.reviewCount, 0);
+  const sourceContexts = []; mockChef(sourceContexts);
+  await chefRoute.POST(chefRequest({ query: "What does the source recipe say to do with rice?", context }));
+  assert.ok(sourceContexts.length);
+  assert.equal(sourceContexts[0].savedDinnerAmounts, undefined, "personal calculations never enter source-only model context");
+  const planningContexts = []; mockChef(planningContexts);
+  await chefRoute.POST(chefRequest({ query: "How should I cook this rice?", context }));
+  assert.ok(planningContexts.length);
+  assert.equal(planningContexts[0].savedDinnerAmounts[0].basis, "personal_scaled");
+  assert.equal(planningContexts[0].savedDinnerAmounts[0].measure, "150 g");
+  const changed = await draft(0, { instructions: ["Boil the rice until tender."] });
+  await importOne(changed);
+  const stale = await (await chefRoute.POST(chefRequest({ query: "How much rice do I need?", context }))).json();
+  assert.equal(stale.planningFacts[0].basis, "source_scaled");
+  assert.notEqual(stale.planningFacts[0].measure, "150 g");
+  assert.deepEqual((await kitchen.getKitchenDocument()).state.personalRecipeAmounts, value.personalRecipeAmounts);
+});
 function assertChefEvidence(record, recipe) {
   assert.equal(Object.hasOwn(record, "ingredients"), false);
   assert.equal(Object.hasOwn(record, "instructions"), false);

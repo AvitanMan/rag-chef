@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
+  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
   ...["retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
@@ -27,7 +27,7 @@ for (const [folder, name, extension] of [
 }
 const { RecipeCard, RecipeDrawer } = await import(pathToFileURL(join(directory, "RagChefApp.mjs")).href);
 const { ChefGrounding } = await import(pathToFileURL(join(directory, "ChefGrounding.mjs")).href);
-const { DurablePlanView, DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")).href);
+const { DinnerAmounts, DurablePlanView, DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")).href);
 const { recipePantryDetails } = await import(pathToFileURL(join(directory, "recipe-browser.mjs")).href);
 const { metricMeasure } = await import(pathToFileURL(join(directory, "recipe-presentation.mjs")).href);
 const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
@@ -187,8 +187,22 @@ test("planned quantities scale once, and recipes with unknown servings stay in b
   meal.batches = 2;
   const html = drawer({ plannedMeal: meal });
   assert.match(html, /2 recipe batches/);
-  assert.match(html, /<small>200 g<\/small>/);
+  assert.match(html, /<small>200 g<span class="amount-basis">Scaled from source<\/span><\/small>/);
   assert.match(html, /<small>100 g<\/small>/);
+});
+
+test("dinner amount editing shows the scaled personal baseline separately from the final override", () => {
+  const meal = createPlannedMeal("2026-10-19", recipe);
+  meal.servings = 1;
+  meal.planningIngredients[0].measure = "300 g";
+  meal.personalAmountIndices = [0];
+  meal.ingredientOverrides = { "0": "175 g" };
+  const html = renderToStaticMarkup(createElement(DinnerAmounts, { meal, patch: noop }));
+  assert.match(html, /Personal amount · scaled for this dinner · Baseline: 150 g/);
+  assert.match(html, /placeholder="150 g"/);
+  assert.match(html, /value="175 g"/);
+  assert.match(html, /Dinner override · final amount for this dinner/);
+  assert.doesNotMatch(html, /87\.5 g/);
 });
 
 test("missing planned amounts remain explicitly unresolved instead of inventing a quantity", () => {

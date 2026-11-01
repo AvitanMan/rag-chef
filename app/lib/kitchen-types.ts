@@ -31,6 +31,13 @@ export interface PantryDeduction {
   useBy?: string;
 }
 
+/** Personal planning quantities for exactly one version of a source recipe. */
+export interface PersonalRecipeAmounts {
+  contentHash: string;
+  referenceServings: number | null;
+  amounts: Array<{ ingredientIndex: number; originalName: string; measure: string }>;
+}
+
 export interface PlannedMeal {
   id: string;
   date: string;
@@ -44,6 +51,8 @@ export interface PlannedMeal {
   status: "planned" | "cooked";
   ingredientOverrides: Record<string, string>;
   planningIngredients?: RecipeIngredient[];
+  /** Frozen with the dinner; later edits to personal defaults do not affect it. */
+  personalAmountIndices?: number[];
   completion?: {
     id: string;
     at: string;
@@ -64,6 +73,7 @@ export interface KitchenState {
   favoriteRecipeIds?: string[];
   /** Optional for older kitchens; new edits and backups preserve the shared profile. */
   cookingProfile?: CookingProfile;
+  personalRecipeAmounts?: Record<string, PersonalRecipeAmounts>;
   migratedLegacy: boolean;
 }
 

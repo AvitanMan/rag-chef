@@ -21,7 +21,7 @@ export function planningRandom(seed: number): () => number {
 }
 
 /** Saved dinners reserve stock before new suggestions; no real state is changed. */
-export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate(), random: () => number = Math.random, options: { metadataByRecipeId?: RecipeMetadataMap; preferReviewedMains?: boolean } = {}): FilledWeeklyPlan {
+export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: string, meals: KitchenState["meals"], today = localDate(), random: () => number = Math.random, options: { metadataByRecipeId?: RecipeMetadataMap; preferReviewedMains?: boolean; personalRecipeAmounts?: KitchenState["personalRecipeAmounts"]; contentHashesByRecipeId?: Record<string, string> } = {}): FilledWeeklyPlan {
   const dates = Array.from({ length: 7 }, (_, index) => addDateDays(week, index));
   const saved = Object.values(meals).filter((meal) => dates.includes(meal.date));
   const used = new Set(saved.map((meal) => meal.recipeId));
@@ -31,7 +31,7 @@ export function fillEmptyDays(recipes: Recipe[], pantry: PantryStock[], week: st
   const reasons: Record<string, string> = {};
   for (const date of dates.filter((day) => day >= today && !meals[day])) {
     const choices = [...new Map(recipes.map((recipe) => [recipe.id, recipe])).values()].filter((recipe) => !used.has(recipe.id)).sort((a, b) => a.id.localeCompare(b.id)).map((recipe) => {
-      const meal = createPlannedMeal(date, recipe);
+      const meal = createPlannedMeal(date, recipe, true, { amounts: options.personalRecipeAmounts?.[recipe.id], contentHash: options.contentHashesByRecipeId?.[recipe.id] });
       const allocation = allocateMealStock(meal, virtualPantry, today);
       const reuse = allocation.ingredientIdentities.filter((identity) => identities.has(identity)).length;
       return { recipe, meal, allocation, reuse };

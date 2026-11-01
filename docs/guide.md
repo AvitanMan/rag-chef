@@ -31,6 +31,23 @@ picker. Recipes uses the same selection action. **Dinner day and portions** is
 shared across Chef and Recipes; choose another day before selecting when needed.
 Source quantities are the default, and unknown yields use recipe batches.
 
+In **Recipe details → Personal amounts**, save measured quantities for the
+source's serving yield, or one recipe batch when yield is unknown. For example,
+300 g saved for four source servings becomes 150 g for a two-serving dinner.
+Blank fields inherit the source amount. **Cancel** discards drafts and **Reset
+to source amounts** clears the defaults. Invalid or unmeasurable entries stay
+in the editor until corrected.
+
+Personal amounts apply to new selections, **Cook again**, automatic planning,
+and pantry-readiness previews. Existing dinners and explicit dinner copies keep
+their captured quantities. Final dinner overrides take priority. Labels identify
+personal calculations separately from source quantities and dinner overrides;
+source directions, ingredient identities, yield, diet eligibility, and verified
+times stay unchanged. If source ingredients, yield, directions, or notes change,
+previous personal amounts remain visible but inactive. Enter and save amounts
+against the current rows to use them again. Kitchen backups and recovery drafts
+include these defaults and show changes before replacement.
+
 **Change dinner** searches for a replacement while keeping the saved meal.
 **Cancel change** returns to it; replacing an occupied day still needs confirmation.
 Locked and cooked dinners stay protected. **Adjust amounts** changes your saved
@@ -99,8 +116,8 @@ batches. **Cook for** changes deterministic planning quantities, while Chef's
 substitution advice remains separate and never rewrites a meal.
 
 For a saved dinner, quantity-only questions show **Your dinner amounts** using
-those same calculations. Serving changes scale original amounts; an explicit
-saved override remains final. Labels distinguish scaled amounts from overrides,
+those same calculations. Serving changes scale source or captured personal
+amounts; an explicit saved override remains final. Labels identify each basis,
 while original ingredient evidence stays visible separately. These answers work
 with the AI provider offline and make no generation or verification call.
 Unclear measures or ingredient names ask for clarification. Questions about the
@@ -730,7 +747,7 @@ held-out quality gates, result definitions, fingerprints, and limitations.
 app/components/       Screens, recipe details, weekly plan, and shopping UI
 app/lib/              Retrieval, provider schemas, storage, and quantities
 app/api/              Chef, recipes, kitchen, and catalog administration
-db/                   Drizzle schema and database access
+db/                   Drizzle schema used for migration generation
 drizzle/              Database migrations
 tools/recipes/        Collection, embedding refresh, and evaluation tools
 tests/                App regression tests

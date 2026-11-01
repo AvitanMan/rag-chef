@@ -80,6 +80,52 @@ test("Cook again deduplicates recent dinners and creates a new meal without chan
   expect(after.state.meals[TODAY].completion).toBeUndefined();
 });
 
+test("main and additional timers share clear validation and accept long durations", async ({ page, request }) => {
+  const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
+  await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });
+  const kitchenBefore = await read(request);
+  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  const minutes = cooking.getByRole("spinbutton", { name: "Minutes", exact: true });
+  const seconds = cooking.getByRole("spinbutton", { name: "Seconds", exact: true });
+  await minutes.fill("1.5");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(cooking.getByRole("alert")).toHaveText("Enter whole minutes from 0 to 1440.");
+  await minutes.fill("90"); await seconds.fill("60");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(cooking.getByRole("alert")).toHaveText("Enter whole seconds from 0 to 59.");
+  await minutes.fill("1440"); await seconds.fill("1");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(cooking.getByRole("alert")).toHaveText("Choose a timer between 1 second and 24 hours.");
+  await expect(cooking.getByRole("button", { name: "Pause timer", exact: true })).toHaveCount(0);
+  await minutes.fill("90"); await seconds.fill("15");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(cooking.getByRole("timer", { name: "Time remaining", exact: true })).toHaveText("1:30:15");
+  await cooking.getByRole("button", { name: "Pause timer", exact: true }).click();
+  await cooking.getByRole("button", { name: "Add another timer", exact: true }).click();
+  const form = cooking.getByRole("form", { name: "New cooking timer", exact: true });
+  await form.getByRole("textbox", { name: "New timer name", exact: true }).fill("Stock");
+  const extraMinutes = form.getByRole("spinbutton", { name: "Additional timer minutes", exact: true });
+  const extraSeconds = form.getByRole("spinbutton", { name: "Additional timer seconds", exact: true });
+  await extraMinutes.fill("1.5");
+  await form.getByRole("button", { name: "Start additional timer", exact: true }).click();
+  await expect(form.getByRole("alert")).toHaveText("Enter whole minutes from 0 to 1440.");
+  await extraMinutes.fill("90"); await extraSeconds.fill("60");
+  await form.getByRole("button", { name: "Start additional timer", exact: true }).click();
+  await expect(form.getByRole("alert")).toHaveText("Enter whole seconds from 0 to 59.");
+  await extraMinutes.fill("1440"); await extraSeconds.fill("1");
+  await form.getByRole("button", { name: "Start additional timer", exact: true }).click();
+  await expect(form.getByRole("alert")).toHaveText("Choose a timer between 1 second and 24 hours.");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/timer-validation-${test.info().project.name}.png`, scale: "css" });
+  await extraSeconds.fill("0");
+  await form.getByRole("button", { name: "Start additional timer", exact: true }).click();
+  await expect(cooking.getByRole("timer", { name: "Stock time remaining", exact: true })).toHaveText("24:00:00");
+  await expect(form).toHaveCount(0);
+  expect(await read(request)).toEqual(kitchenBefore);
+});
+
 test("labeled timers run independently, survive reloads, and require a choice before removing an active timer", async ({ page, request }) => {
   const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });

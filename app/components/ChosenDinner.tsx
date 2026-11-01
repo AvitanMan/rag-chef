@@ -29,6 +29,7 @@ export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook,
       {readiness && <section className="dinner-needs" aria-label="Dinner shopping needs"><h3>What’s missing?</h3>
         <p>{readiness.coveredCount} covered · {readiness.partialCount} partial · {readiness.missingCount} missing · {readiness.reviewCount} need review</p>
         <p className="quantity-note">After reserving stock for your other saved dinners this week. Missing ingredients do not block cooking.</p>
+        {readiness.personalAmountsApplied && <p className="quantity-note">Includes captured personal amounts scaled for this dinner.</p>}
         {readiness.shopping.length ? <ul>{readiness.shopping.map((item, index) => <li key={index}><strong>{item.name}</strong>: {item.measure}{item.needsReview ? " · Review amount" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul> : <p>Known quantities are covered.</p>}
       </section>}
       {!meal.recipe && <p role="alert">This saved recipe is unavailable. Choose a replacement to recover its shopping amounts.</p>}

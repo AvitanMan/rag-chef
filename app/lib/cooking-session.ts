@@ -15,6 +15,22 @@ export function writeCookingSession(storage: Pick<Storage, "getItem" | "setItem"
 }
 export const MAX_TIMER_MS = 86_400_000;
 export const MAX_COOKING_TIMERS = 8;
+const TIMER_DURATION_ERROR = "Choose a timer between 1 second and 24 hours.";
+
+/** Parse both timer forms' whole-minute/second fields into a bounded duration. */
+export function parseTimerDuration(minutes: string, seconds: string): number {
+  const mins = Number(minutes), secs = Number(seconds);
+  if (!minutes.trim() || !Number.isInteger(mins) || mins < 0 || mins > MAX_TIMER_MS / 60_000) {
+    throw new Error(`Enter whole minutes from 0 to ${MAX_TIMER_MS / 60_000}.`);
+  }
+  if (!seconds.trim() || !Number.isInteger(secs) || secs < 0 || secs > 59) {
+    throw new Error("Enter whole seconds from 0 to 59.");
+  }
+  const duration = mins * 60 + secs;
+  if (duration < 1 || duration > MAX_TIMER_MS / 1000) throw new Error(TIMER_DURATION_ERROR);
+  return duration;
+}
+
 export interface CookingTimer {
   durationMs: number;
   remainingMs: number;
@@ -58,7 +74,7 @@ export function finishElapsedTimers(session: CookingSession, now = Date.now()): 
 }
 
 export function plannedDinnerFingerprint(meal: PlannedMeal): string {
-  return JSON.stringify([meal.recipeId, meal.recipe, meal.planningIngredients ?? null, meal.baseServings, meal.servings, meal.batches, meal.ingredientOverrides]);
+  return JSON.stringify([meal.recipeId, meal.recipe, meal.planningIngredients ?? null, meal.personalAmountIndices ?? null, meal.baseServings, meal.servings, meal.batches, meal.ingredientOverrides]);
 }
 
 export function canCompleteCookingSession(session: CookingSession, current: PlannedMeal | undefined): boolean {
@@ -77,7 +93,7 @@ export function timerAction(timer: CookingTimer, action: "start" | "pause" | "re
     const remainingMs = remainingTimerMs(timer, now);
     return { ...timer, endAt: null, remainingMs, status: remainingMs ? "paused" : "finished" };
   }
-  if (!Number.isFinite(durationMs) || durationMs < 1000 || durationMs > MAX_TIMER_MS) throw new Error("Choose a timer between 1 second and 24 hours.");
+  if (!Number.isFinite(durationMs) || durationMs < 1000 || durationMs > MAX_TIMER_MS) throw new Error(TIMER_DURATION_ERROR);
   const resuming = timer.status === "paused" && durationMs === timer.durationMs;
   const remainingMs = resuming ? timer.remainingMs : durationMs;
   return { durationMs, remainingMs, endAt: now + remainingMs, status: "running" };
