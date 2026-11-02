@@ -433,18 +433,38 @@ test("legacy unmatched cooking steps do not display another step's answer", asyn
     saved.instructions = ["Legacy preparation direction.", "Legacy finishing direction."];
     localStorage.setItem("rag-chef-cooking-v1", JSON.stringify(saved));
   });
-  await page.reload();
-  await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
-  const cooking = page.getByRole("dialog", { name: "Cooking Cheese Pasta", exact: true });
-  await cooking.locator(".cook-help > summary").click();
-  await expect(cooking).toContainText("cannot be matched to one source direction");
-  await cooking.getByLabel("Question about this step", { exact: true }).fill("What does the original recipe say about pasta?");
-  const response = page.waitForResponse(r => r.url().endsWith("/api/chef"));
-  await cooking.getByRole("button", { name: "Ask Chef about step", exact: true }).click();
-  expect((await (await response).json()).resolvedContext.stepEvidenceId).toBeUndefined();
-  await expect(cooking.locator(".step-chef-reply")).toBeVisible();
-  await cooking.getByRole("button", { name: /Next step/ }).click();
-  await expect(cooking.locator(".step-chef-reply")).toHaveCount(0);
+  let releaseKitchen!: () => void;
+  const kitchenLoading = new Promise<void>(resolve => { releaseKitchen = resolve; });
+  await page.route("**/api/kitchen", async route => {
+    if (route.request().method() === "GET") await kitchenLoading;
+    await route.continue();
+  });
+  try {
+    await page.reload();
+    await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
+    const cooking = page.getByRole("dialog", { name: "Cooking Cheese Pasta", exact: true });
+    await cooking.locator(".cook-help > summary").click();
+    await expect(cooking).toContainText("cannot be matched to one source direction");
+    const question = cooking.getByLabel("Question about this step", { exact: true });
+    const prompt = "What does the original recipe say about pasta?";
+    await question.fill(prompt);
+    const ask = cooking.getByRole("button", { name: "Ask Chef about step", exact: true });
+    await expect(ask).toBeDisabled();
+    await expect(cooking).toContainText("Chef is waiting for the kitchen");
+    // Form submissions must preserve the draft while Chef is unavailable.
+    await question.evaluate(element => element.closest("form")!.requestSubmit());
+    await expect(question).toHaveValue(prompt);
+    releaseKitchen();
+    await expect(ask).toBeEnabled();
+    const response = page.waitForResponse(r => r.url().endsWith("/api/chef") && r.request().method() === "POST");
+    await ask.click();
+    const result = await response;
+    expect(result.ok()).toBeTruthy();
+    expect((await result.json()).resolvedContext.stepEvidenceId).toBeUndefined();
+    await expect(cooking.locator(".step-chef-reply")).toBeVisible();
+    await cooking.getByRole("button", { name: /Next step/ }).click();
+    await expect(cooking.locator(".step-chef-reply")).toHaveCount(0);
+  } finally { releaseKitchen(); }
 });
 
 test("replacing a dinner does not reserve the old dinner's ingredients", async ({ page, request }) => {

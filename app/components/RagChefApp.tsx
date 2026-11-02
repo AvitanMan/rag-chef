@@ -1323,6 +1323,7 @@ export default function RagChefApp() {
           session={cookingSession}
           visible={cooking}
           chefBusy={askingChef}
+          chefUnavailable={kitchen.saveState === "saved" ? "" : kitchen.status}
           chefError={chefError?.message ?? ""}
           chefReply={chefResult?.resolvedContext?.purpose === "cooking" && chefResult.resolvedContext.recipeId === cookingSession.recipe.id
             && chefResult.resolvedContext.mealId === cookingSession.plannedMeal?.id ? chefResult : null}
