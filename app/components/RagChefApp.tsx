@@ -34,7 +34,7 @@ import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
 import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
 import { COOKING_SESSION_KEY, writeCookingSession, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
 import { useKitchen } from "../lib/use-kitchen";
-import { DEFAULT_COOKING_PROFILE, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
+import { DEFAULT_COOKING_PROFILE, DINNER_AMOUNT_LIMITS, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, localDate, placePlannedDinner, weekStart } from "../lib/kitchen-state";
 import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
 import { mealAmountLabel, canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, undoMealProblem, allocateStockForMeals, mealReadiness } from "../lib/quantities";
@@ -294,12 +294,44 @@ export default function RagChefApp() {
   const [pantryError, setPantryError] = useState("");
   const [removals, setRemovals] = useState<{ id: string; label: string; pantry: PantryStock[]; meals: PlannedMeal[] }[]>([]);
   const recoveryRef = useRef<HTMLElement>(null);
-  const latestRemovalId = removals.at(-1)?.id;
+  const mobileNavRef = useRef<HTMLElement>(null);
+  const hasRemovals = removals.length > 0;
+  // Fixed controls reserve scroll space; only obscured focus should move the page.
   useEffect(() => {
-    if (!latestRemovalId) return;
-    const frame = requestAnimationFrame(() => recoveryRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" }));
-    return () => cancelAnimationFrame(frame);
-  }, [latestRemovalId]);
+    let frame = 0;
+    const overlayInset = () => {
+      const tops = [recoveryRef.current, mobileNavRef.current]
+        .filter((element): element is HTMLElement => Boolean(element?.getClientRects().length))
+        .map(element => element.getBoundingClientRect().top);
+      const inset = tops.length ? Math.max(12, window.innerHeight - Math.min(...tops) + 12) : 12;
+      document.documentElement.style.setProperty("--kitchen-overlay-inset", `${inset}px`);
+      return inset;
+    };
+    const revealFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.closest(".main-content") || target.closest("dialog, .removal-recovery")) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (target !== document.activeElement) return;
+        const bottom = window.innerHeight - overlayInset();
+        const box = target.getBoundingClientRect();
+        if (box.height > bottom - 12) return;
+        if (box.bottom > bottom) window.scrollBy({ top: box.bottom - bottom, behavior: "instant" });
+        else if (box.top < 12) window.scrollBy({ top: box.top - 12, behavior: "instant" });
+      });
+    };
+    const observer = new ResizeObserver(overlayInset);
+    for (const element of [recoveryRef.current, mobileNavRef.current]) if (element) observer.observe(element);
+    overlayInset();
+    window.addEventListener("resize", overlayInset);
+    document.addEventListener("focusin", revealFocus);
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect();
+      window.removeEventListener("resize", overlayInset);
+      document.removeEventListener("focusin", revealFocus);
+      document.documentElement.style.removeProperty("--kitchen-overlay-inset");
+    };
+  }, [hasRemovals]);
   const [undoNotice, setUndoNotice] = useState("");
 
   const [query, setQuery] = useState("");
@@ -973,7 +1005,7 @@ export default function RagChefApp() {
     <summary>Dinner day and portions <span>{hydrated ? dateLabel(dinnerDate) : "Choose a dinner day"}{showChosenDinner && chosenDinner ? chosenDinner.servings ? ` · ${chosenDinner.servings} servings` : ` · ${mealScale(chosenDinner)} recipe batches` : chefPortions ? ` · ${chefPortions} servings` : " · Source quantities"}</span></summary>
     <section aria-label="Dinner context" className="dinner-context-fields">
       <label>Dinner day<input type="date" aria-label="Dinner day" value={dinnerDate} onChange={event => { if (event.target.value) { cancelChef(); setChefFlow(current => ({ kind: activeUseSoonId ? "discovery" : "dinner", date: event.target.value, origin: current.origin })); setChefResult(null); setChefPortions(""); setMethodDate(null); } }} /></label>
-      <label>{showChosenDinner && !chosenDinner?.baseServings ? "Recipe batches" : "Cook for"}<input type="number" aria-label="Chef portions" min="1" max="100" step="1" placeholder="Source portions" disabled={showChosenDinner && Boolean(chosenDinner?.locked || chosenDinner?.status === "cooked")} value={showChosenDinner && chosenDinner ? chosenDinner.baseServings ? chosenDinner.servings ?? "" : chosenDinner.batches : chefPortions} onChange={event => { const value = event.target.value; if (!value || Number.isInteger(Number(value)) && Number(value) > 0 && Number(value) <= 100) { cancelChef(); if (showChosenDinner && chosenDinner) { if (value) patchDinner(chosenDinner.date, chosenDinner.id, chosenDinner.baseServings ? { servings: Number(value) } : { batches: Number(value) }); } else setChefPortions(value); setChefResult(null); } }} /></label>
+      <label>{showChosenDinner && !chosenDinner?.baseServings ? "Recipe batches" : "Cook for"}<ValidatedInput key={showChosenDinner && chosenDinner ? `${chosenDinner.id}:${Boolean(chosenDinner.baseServings)}` : `preview:${pinnedRecipe?.id ?? "discovery"}`} type="number" aria-label="Chef portions" {...DINNER_AMOUNT_LIMITS[showChosenDinner && !chosenDinner?.baseServings ? "batches" : "servings"]} allowEmpty={!showChosenDinner} placeholder="Source portions" disabled={showChosenDinner && Boolean(chosenDinner?.locked || chosenDinner?.status === "cooked")} value={showChosenDinner && chosenDinner ? chosenDinner.baseServings ? chosenDinner.servings ?? "" : chosenDinner.batches : chefPortions} onCommit={value => { cancelChef(); if (showChosenDinner && chosenDinner) patchDinner(chosenDinner.date, chosenDinner.id, chosenDinner.baseServings ? { servings: Number(value) } : { batches: Number(value) }); else setChefPortions(value); setChefResult(null); }} /></label>
       {pinnedRecipe && !pinnedRecipe.servings && <p className="quantity-note">Yield unknown · use recipe batches in dinner amounts.</p>}
     </section>
   </details>;
@@ -1231,7 +1263,7 @@ export default function RagChefApp() {
         </fieldset>
       </main>
 
-      <nav className="mobile-nav" aria-label="Mobile navigation">
+      <nav ref={mobileNavRef} className="mobile-nav" aria-label="Mobile navigation">
         <NavButton active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
         <NavButton active={view === "chef"} icon="✦" label="Chef" onClick={() => navigate("chef")} />
         <NavButton active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />

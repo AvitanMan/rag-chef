@@ -633,7 +633,12 @@ pnpm recipes:curate -- export recipe-runs/review-worksheet.json
 Preview verifies source hashes and field provenance without writing. Repeated
 imports are idempotent. Reports classify unresolved amounts and retain source
 links; worksheets require explicit review before import. Use a new output path
-for each report/worksheet. Add `--app http://localhost:PORT` for another local
+for each report/worksheet. Worksheets support up to 1,000 entries; preview and
+import split them into requests of at most 100 entries within the API body limit.
+Multi-batch imports preview every batch before writing. Each batch saves
+independently; if a later request fails, the error reports how many entries were
+already imported. Correct the problem and rerun the same worksheet; unchanged
+reviews remain idempotent. Add `--app http://localhost:PORT` for another local
 preview; for `recipes:embed`, set `RECIPES_APP_URL=http://localhost:PORT` instead.
 Embedding refresh updates source and step search vectors without fetching pages.
 The checked-in core annotates existing catalog records. Source recipes

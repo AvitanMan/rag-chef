@@ -141,7 +141,7 @@ export function stepTimerSeconds(text: string): number | null {
   if (matches.length !== 1) return null;
   const match = matches[0];
   const prefix = text.slice(0, match.index);
-  if (/(?:[\d./¼½¾⅓⅔⅛⅜⅝⅞]|\d\s*[-–—]|\d\s+(?:to|or))\s*$/.test(prefix)) return null;
+  if (/(?:[\d./¼½¾⅓⅔⅛⅜⅝⅞]|\d\s*[-–—]|\d\s+(?:to|or|and))\s*$/i.test(prefix)) return null;
   const factor = /^hour/i.test(match[2]) ? 3600 : /^minute/i.test(match[2]) ? 60 : 1;
   const seconds = Number(match[1]) * factor;
   return seconds >= 1 && seconds <= 86_400 ? seconds : null;

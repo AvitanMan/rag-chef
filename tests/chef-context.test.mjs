@@ -126,6 +126,21 @@ test("discussion and dinner context are bounded, typed and backward compatible",
   assert.equal(request.context.stepEvidenceId, "S20");
   for (const extra of [{ history: Array(7).fill({ role: "user", content: "x" }) }, { history: [{ role: "system", content: "x" }] }, { context: { recipeId: "rice", targetDate: "2026-02-30" } }, { context: { servings: 0 } }, { context: { stepEvidenceId: "S1" } }, { context: { recipeId: "rice", unknown: true } }]) assert.throws(() => parseChefRequest({ query: "Rice", ...extra }));
 });
+test("Chef preserves full saved preference lists and rejects oversized exclusions instead of truncating them", () => {
+  const values = Array.from({ length: 100 }, (_, index) => `ingredient ${index}`.padEnd(120, "x"));
+  const profile = { allergies: values, dislikes: values, equipment: values, diet: "x".repeat(120), skillLevel: "x".repeat(120), budget: "x".repeat(120) };
+  const parsed = parseChefRequest({ query: "Dinner", profile }).profile;
+  for (const key of ["allergies", "dislikes", "equipment"]) assert.deepEqual(parsed[key], profile[key]);
+  assert.deepEqual(parsed.diet, [profile.diet]);
+  assert.equal(parsed.skillLevel, profile.skillLevel);
+  assert.equal(parsed.budget, profile.budget);
+  for (const key of ["allergies", "dislikes", "equipment", "diet"]) {
+    for (const value of [[...values, "peanut"], ["x".repeat(121)], [42], "peanut"]) {
+      if (key === "diet" && typeof value === "string") continue;
+      assert.throws(() => parseChefRequest({ query: "Dinner", profile: { [key]: value } }), /profile\./);
+    }
+  }
+});
 test("readiness distinguishes preparation, partial quantities and unknown amounts", () => {
   const meal = { id: "dinner", date: "2026-10-25", recipeId: recipe.id, recipe, baseServings: 2, servings: 2, batches: 1, status: "planned", ingredientOverrides: {} };
   const pantry = [{ id: "raw", name: "rice", measure: "1 kg" }, { id: "cooked", name: "cooked rice", measure: "100 g" }, { id: "tomato", name: "tomatoes", measure: "2" }];

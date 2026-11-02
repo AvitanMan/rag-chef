@@ -1,4 +1,4 @@
-import { DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
+import { COOKING_PROFILE_LIMITS, DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 import { personalAmountInputProblem } from "./quantities";
 
@@ -291,11 +291,11 @@ export function validateCookingProfile(value: unknown): asserts value is Cooking
   fields(profile, ["version", "allergies", "diet", "dislikes", "skillLevel", "budget", "equipment"], [], "cookingProfile");
   if (profile.version !== 1) invalid("cookingProfile.version", "must be 1");
   for (const key of ["allergies", "dislikes", "equipment"] as const) {
-    const values = array(profile[key], `cookingProfile.${key}`, 100);
-    values.forEach(item => string(item, `cookingProfile.${key} item`, 120));
+    const values = array(profile[key], `cookingProfile.${key}`, COOKING_PROFILE_LIMITS.items);
+    values.forEach(item => string(item, `cookingProfile.${key} item`, COOKING_PROFILE_LIMITS.text));
     if (new Set(values).size !== values.length) invalid(`cookingProfile.${key}`, "contains duplicates");
   }
-  for (const key of ["diet", "skillLevel", "budget"] as const) string(profile[key], `cookingProfile.${key}`, 120);
+  for (const key of ["diet", "skillLevel", "budget"] as const) string(profile[key], `cookingProfile.${key}`, COOKING_PROFILE_LIMITS.text);
 }
 
 /** Only migrate recognizable browser preferences; stored kitchen profiles remain authoritative. */

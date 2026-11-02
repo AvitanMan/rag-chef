@@ -456,6 +456,23 @@ test("allergy exclusions apply before top-K selection and generation context", a
   assert.ok(result.warnings.some((warning) => warning.includes("cross-contact")));
 });
 
+test("all 100 persisted allergies reach Chef retrieval and generation without dropping the last exclusion", async () => {
+  await route.POST(req([await draft(0, { title: "Peanut noodles", ingredients: [{ name: "peanuts", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
+  const allergies = [...Array.from({ length: 98 }, (_, index) => `excluded food ${index}`), "x".repeat(120), "peanut"];
+  const cookingProfile = { version: 1, allergies, diet: "No restriction", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"] };
+  const saved = await kitchen.saveKitchenDocument(0, { schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true, cookingProfile });
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: saved.state.cookingProfile, context: { kitchenRevision: saved.revision } }))).json();
+  assert.equal(result.retrieval.allergyExcludedCount, 1);
+  assert.ok(result.recipes.every(recipe => recipe.title !== "Peanut noodles"));
+  assert.deepEqual(contexts[0].profile.allergies, allergies);
+  assert.ok(contexts[0].retrievedRecipes.every(recipe => recipe.title !== "Peanut noodles"));
+  const calls = contexts.length;
+  const rejected = await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { allergies: [...allergies, "milk"] } }));
+  assert.equal(rejected.status, 400);
+  assert.equal(contexts.length, calls, "An oversized exclusion list must not trigger generation with a partial profile");
+});
+
 test("diet constraints filter before generation and fallback, allow labeled unknowns, and retain amount context", async () => {
   await route.POST(req([await draft(0, { title: "Chicken rice", ingredients: [{ name: "chicken stock", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
   const contexts = []; mockChef(contexts);

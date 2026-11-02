@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  scroll-padding-block: 12px var(--kitchen-overlay-inset, 12px);
   --green-solid: #173d2b;
   --on-green: #ffffff;
   --on-accent: #ffffff;
@@ -312,7 +313,7 @@ img {
 .main-content {
   margin-left: 236px;
   min-height: 100vh;
-  padding: 29px clamp(24px, 4vw, 62px) 80px;
+  padding: 29px clamp(24px, 4vw, 62px) max(80px, var(--kitchen-overlay-inset, 12px));
 }
 
 .topbar {
@@ -983,11 +984,21 @@ img {
 .model-field {
   color: var(--ink-soft);
   display: grid;
-  font-size: 9px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 650;
   gap: 7px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.form-grid input:not([type="checkbox"]):not([type="radio"]),
+.form-grid select,
+.model-field input {
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .form-grid .wide {
@@ -995,10 +1006,10 @@ img {
 }
 
 .form-grid label small {
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
-  line-height: 1.4;
+  line-height: 1.5;
   text-transform: none;
 }
 
@@ -1051,12 +1062,13 @@ img {
 }
 
 .provider-card strong {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .provider-card small {
   color: var(--ink-soft);
-  font-size: 8px;
+  font-size: 12px;
+  line-height: 1.5;
   margin-top: 4px;
 }
 
@@ -1067,13 +1079,14 @@ img {
 .connection-row {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 14px;
 }
 
 .connection-row span {
   color: var(--ink-soft);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .source-list {
@@ -1095,6 +1108,8 @@ img {
   margin: 0;
 }
 
+.source-list > div > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
 .source-logo.ready {
   background: var(--paprika);
 }
@@ -1113,12 +1128,13 @@ img {
 }
 
 .source-list strong {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .source-list small {
   color: var(--ink-soft);
-  font-size: 8px;
+  font-size: 12px;
+  line-height: 1.5;
   margin-top: 3px;
 }
 
@@ -1606,7 +1622,7 @@ img {
 
   .main-content {
     margin-left: 0;
-    padding: 20px 18px 92px;
+    padding: 20px 18px max(92px, var(--kitchen-overlay-inset, 12px));
   }
 
   .mobile-nav {
@@ -1943,7 +1959,10 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .day-card { scroll-margin-block: 30px 120px; }
 .secondary-preferences { border-top: 1px solid var(--line); padding-top: 12px; }
 .secondary-preferences summary { min-height: 44px; cursor: pointer; align-content: center; }
-.removal-recovery { margin-bottom: 20px; scroll-margin-top: 12px; background: var(--paper-strong); border: 1px solid var(--line-dark); border-radius: 16px; padding: 12px 16px; font-size: 14px; }
+.removal-recovery { position: fixed; z-index: 60; left: 260px; right: 24px; bottom: 20px; max-width: 760px; max-height: 40dvh; margin: 0 auto; overflow-y: auto; background: var(--paper-strong); border: 1px solid var(--line-dark); border-radius: 16px; padding: 12px 16px; font-size: 14px; box-shadow: var(--shadow); scroll-padding-block: 12px; }
+@media (max-width: 860px) {
+  .removal-recovery { left: 12px; right: 12px; bottom: 84px; }
+}
 .removal-message { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .removal-message > span { flex: 1; min-width: 120px; }
 .removal-message > div { display: flex; gap: 6px; }

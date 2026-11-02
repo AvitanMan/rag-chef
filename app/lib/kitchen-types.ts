@@ -1,5 +1,11 @@
 import type { Recipe, RecipeIngredient } from "./recipe-types";
 
+export const COOKING_PROFILE_LIMITS = { items: 100, text: 120 } as const;
+export const DINNER_AMOUNT_LIMITS = {
+  servings: { min: 1, max: 100, step: 1 },
+  batches: { min: 0.25, max: 20, step: 0.25 },
+} as const;
+
 export interface CookingProfile {
   version: 1;
   allergies: string[];

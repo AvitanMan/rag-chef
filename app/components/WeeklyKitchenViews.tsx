@@ -7,7 +7,7 @@ import { ValidatedInput } from "./ValidatedInput";
 import { measureInputProblem } from "../lib/kitchen-validation";
 import { Modal } from "./Modal";
 import type { KitchenState, PlannedMeal } from "../lib/kitchen-types";
-import { mealScale } from "../lib/kitchen-types";
+import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
@@ -121,7 +121,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
             {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
             {meal && <>
               <div className="meal-amounts">
-                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" min={1} max={100} step={1} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" min={0.25} max={20} step={0.25} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { batches: Number(value) })} /></label>}
+                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.servings} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.batches} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { batches: Number(value) })} /></label>}
               </div>
               {recipe && meal.status === "planned" && <button className="primary-button" onClick={() => cookMeal(date)} aria-label={`Cook ${meal.title} ${dateLabel(date)}`}>Cook</button>}
               {recipe && <details id={`amounts-${date}`} className="meal-review" open={reviewDate === date} onToggle={(event) => { if (event.currentTarget.open) setReviewDate(date); else setReviewDate((current) => current === date ? null : current); }}><summary>Adjust amounts</summary>

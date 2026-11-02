@@ -154,6 +154,7 @@ test("corrupt, oversized and incompatible cooking snapshots are rejected without
 test("source timer shortcuts accept a single point duration and reject ranges, fractions, compound or ambiguous durations", () => {
   for (const [text, seconds] of [["Simmer for about 10 minutes.", 600], ["Rest 30 seconds.", 30], ["Bake 1 hour at 180 C.", 3600], ["Heat for 24 hours.", 86400]]) assert.equal(stepTimerSeconds(text), seconds, text);
   for (const text of ["Cook until tender.", "Cook 5–10 minutes.", "Cook 5-10 minutes.", "Cook 5 to 10 minutes.", "Cook 5 or 10 minutes.", "Cook 1.5 minutes.", "Cook 1/2 hour.", "Cook 1½ hours.", "Cook 1 hour 30 minutes.", "Simmer 5 minutes, then rest 10 minutes.", "Wait 0 seconds.", "Cook 25 hours."]) assert.equal(stepTimerSeconds(text), null, text);
+  for (const text of ["Simmer between 5 and 10 minutes.", "Rest between 20 and 30 seconds.", "Bake between 1 and 2 hours.", "Simmer BETWEEN 5 AND 10 minutes.", "Rest between 5\nand\n10 minutes."]) assert.equal(stepTimerSeconds(text), null, text);
 });
 
 

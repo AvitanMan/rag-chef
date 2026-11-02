@@ -1,4 +1,5 @@
 import type { Recipe, RecipeMetadataMap } from "./recipe-types";
+import { COOKING_PROFILE_LIMITS } from "./kitchen-types";
 
 export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
 export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
@@ -361,18 +362,32 @@ function parseProfile(value: unknown): ChefProfile {
   }
 
   return {
-    allergies: stringArray(value.allergies, "profile.allergies", 30, 100),
-    diet: flexibleStringArray(value.diet, "profile.diet", 20, 100),
-    dislikes: stringArray(value.dislikes, "profile.dislikes", 50, 100),
-    equipment: stringArray(value.equipment, "profile.equipment", 50, 100),
+    allergies: profileStringArray(value.allergies, "profile.allergies"),
+    diet: profileStringArray(typeof value.diet === "string" ? value.diet.split(/\r?\n+/).filter(item => item.trim()) : value.diet, "profile.diet"),
+    dislikes: profileStringArray(value.dislikes, "profile.dislikes"),
+    equipment: profileStringArray(value.equipment, "profile.equipment"),
     equipmentSpecified: Object.hasOwn(value, "equipment"),
-    ...(optionalString(value.skillLevel, 80)
-      ? { skillLevel: optionalString(value.skillLevel, 80) }
+    ...(optionalString(value.skillLevel, COOKING_PROFILE_LIMITS.text)
+      ? { skillLevel: optionalString(value.skillLevel, COOKING_PROFILE_LIMITS.text) }
       : {}),
-    ...(optionalString(value.budget, 80)
-      ? { budget: optionalString(value.budget, 80) }
+    ...(optionalString(value.budget, COOKING_PROFILE_LIMITS.text)
+      ? { budget: optionalString(value.budget, COOKING_PROFILE_LIMITS.text) }
       : {}),
   };
+}
+
+/** Saved exclusions must reach retrieval and generation in full, or fail closed. */
+function profileStringArray(value: unknown, path: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > COOKING_PROFILE_LIMITS.items) {
+    throw new ChefValidationError(`${path} must be an array of at most ${COOKING_PROFILE_LIMITS.items} strings.`);
+  }
+  return value.map((item, index) => {
+    if (typeof item === "string" && item.length > COOKING_PROFILE_LIMITS.text) {
+      throw new ChefValidationError(`${path}[${index}] must be at most ${COOKING_PROFILE_LIMITS.text} characters.`);
+    }
+    return requiredString(item, `${path}[${index}]`, COOKING_PROFILE_LIMITS.text);
+  });
 }
 
 function parseCandidate(value: unknown, index: number): RecipeCandidate {
