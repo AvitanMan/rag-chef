@@ -1,6 +1,7 @@
 import { cp, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,17 +9,20 @@ import { fixtureSql } from "./fixtures.mjs";
 import { startModelStub } from "./model-stub.mjs";
 import { parseJourneyOptions } from "../recipes/journey-grading.mjs";
 import { localOllamaBaseUrl } from "./local-ollama.mjs";
+import { hostedFixtureSql, HOSTED_TEST_SECRET, HOSTED_TEST_ENCRYPTION_KEY } from "./hosted-fixtures.mjs";
 
 const mode = process.argv[2];
-if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys", "planning"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, journeys, or planning.");
+if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys", "planning", "hosted", "hosted-dev"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, journeys, planning, hosted, or hosted-dev.");
+const hostedRun = ["hosted", "hosted-dev"].includes(mode);
+const devRuntime = ["dev", "hosted-dev"].includes(mode);
 const journeyOptions = mode === "journeys" ? parseJourneyOptions(process.argv.slice(3)) : undefined;
 // Other model tracks still read model metadata from the default daemon.
 const realModelURL = ["chef", "journeys", "planning"].includes(mode) ? localOllamaBaseUrl(mode === "planning" ? process.env.OLLAMA_BASE_URL : "") : undefined;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "rag-chef-test-"));
 const project = join(directory, "project");
-const state = mode === "dev" ? join(project, ".wrangler", "state") : join(directory, "d1-state");
-const artifacts = resolve(root, "output", "playwright", `${mode}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`);
+const state = devRuntime ? join(project, ".wrangler", "state") : join(directory, "d1-state");
+const artifacts = resolve(root, "output", "playwright", `${mode}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`);
 await mkdir(artifacts, { recursive: true });
 await mkdir(project);
 const children = new Set();
@@ -41,7 +45,7 @@ const env = {
   SYSTEMROOT: process.env.SYSTEMROOT,
   CI: "1",
   // Exercise Vite's agent-default console forwarding as well as ordinary dev.
-  ...(mode === "dev" ? { AI_AGENT: "codex", RAG_CHEF_TEST_VITE_CACHE_DIR: join(project, ".wrangler", "node_modules", ".vite") } : {}),
+  ...(devRuntime ? { AI_AGENT: "codex", RAG_CHEF_TEST_VITE_CACHE_DIR: join(project, ".wrangler", "node_modules", ".vite") } : {}),
   WRANGLER_SEND_METRICS: "false",
   WRANGLER_WRITE_LOGS: "false",
   WRANGLER_LOG_PATH: join(directory, "wrangler.log"),
@@ -95,7 +99,7 @@ async function waitForServer(baseURL, child) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error("Disposable preview stopped; see preview.log.");
-    try { const response = await fetch(`${baseURL}/api/recipes/catalog`, { signal: AbortSignal.timeout(1000) }); if (response.ok) return; } catch { /* Starting up. */ }
+    try { const response = await fetch(`${baseURL}${hostedRun ? "/api/session" : "/api/recipes/catalog"}`, { signal: AbortSignal.timeout(1000) }); if (response.ok) return; } catch { /* Starting up. */ }
     await new Promise((accept) => setTimeout(accept, 200));
   }
   throw new Error("Disposable preview did not become ready; see preview.log.");
@@ -116,10 +120,20 @@ try {
   const ollamaURL = stub?.url ?? realModelURL;
   env.OLLAMA_BASE_URL = ollamaURL;
   if (stub) env.RAG_CHEF_TEST_MODEL_URL = stub.url;
+  const hostedPort = hostedRun ? await freePort() : undefined;
+  const hostedVars = hostedRun ? {
+    RAG_CHEF_HOSTED: "1", BETTER_AUTH_URL: `http://127.0.0.1:${hostedPort}`, BETTER_AUTH_SECRET: HOSTED_TEST_SECRET,
+    GOOGLE_CLIENT_ID: "isolated-google-client", GOOGLE_CLIENT_SECRET: "isolated-google-secret",
+    HOUSEHOLD_OWNER_EMAILS: "owner-desktop@example.test,other-desktop@example.test,owner-mobile@example.test,other-mobile@example.test",
+    PLATFORM_ADMIN_EMAILS: "admin-desktop@example.test,admin-mobile@example.test",
+    HOSTED_RECIPE_SOURCE_IDS: "test-fixtures", // Original synthetic content, explicitly admitted only in this disposable harness.
+    AI_CREDENTIALS_ENCRYPTION_KEY_V1: HOSTED_TEST_ENCRYPTION_KEY, AI_CREDENTIALS_KEY_VERSION: "v1",
+  } : {};
+  if (hostedRun) Object.assign(env, hostedVars, { RAG_CHEF_HOSTED_TEST: "1", RAG_CHEF_TEST_AUTH_SECRET: HOSTED_TEST_SECRET });
   // Wrangler explicitly injects these test values into the isolated Worker.
-  await writeFile(join(project, ".dev.vars"), `OLLAMA_BASE_URL=${JSON.stringify(ollamaURL)}\n`);
-  console.log(`${mode === "dev" ? "Starting development checks" : "Building disposable project"}; artifacts: ${artifacts}`);
-  if (mode !== "dev") await launch("build", ["node_modules/vinext/dist/cli.js", "build"]);
+  await writeFile(join(project, ".dev.vars"), Object.entries({ OLLAMA_BASE_URL: ollamaURL, ...hostedVars }).map(([key,value]) => `${key}=${JSON.stringify(value)}`).join("\n") + "\n");
+  console.log(`${devRuntime ? "Starting development checks" : "Building disposable project"}; artifacts: ${artifacts}`);
+  if (!devRuntime) await launch("build", ["node_modules/vinext/dist/cli.js", "build"]);
   if (mode === "integration") {
     await launch("rendered-html", ["--test", "tests/rendered-html.test.mjs"]);
     console.log("Isolated built-worker checks passed.");
@@ -128,15 +142,15 @@ try {
     await launch("migrations", [wrangler, "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state]);
     if (mode !== "setup" && journeyOptions?.catalog !== "local") {
       const seedFile = join(directory, "fixtures.sql");
-      await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: ["journeys", "planning"].includes(mode) }));
+      await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: ["journeys", "planning"].includes(mode) }) + (hostedRun ? "\n" + hostedFixtureSql() : ""));
       await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
     }
-    const port = await freePort();
+    const port = hostedPort ?? await freePort();
     const inspectorPort = await freePort([port]);
     env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
-    const previewArgs = mode === "dev"
+    const previewArgs = devRuntime
       ? ["node_modules/vinext/dist/cli.js", "dev", "--hostname", "127.0.0.1", "--port", String(port)]
-      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`];
+      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`, ...Object.entries(hostedVars).flatMap(([key,value]) => ["--var", `${key}:${value}`])];
     const preview = await launch("preview", previewArgs, { wait: false });
     await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
     if (["chef", "journeys", "planning"].includes(mode)) {
@@ -156,7 +170,7 @@ try {
       console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
       if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
       const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...process.argv.slice(3)]);
+      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...(hostedRun ? ["tests/e2e/hosted.spec.ts"] : []), ...process.argv.slice(3)]);
       console.log("Isolated browser checks passed.");
     }
   }

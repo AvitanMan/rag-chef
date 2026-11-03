@@ -3,7 +3,7 @@
 import type { PlannedMeal } from "../lib/kitchen-types";
 import type { consumptionPreview } from "../lib/quantities";
 
-export function DinnerCompletionReview({ meal, preview, valid, deduct, setDeduct, confirm, cancel, pending = false, retry }: {
+export function DinnerCompletionReview({ meal, preview, valid, deduct, setDeduct, confirm, cancel, pending = false, retry, reviewActualUsage }: {
   meal: PlannedMeal;
   preview: ReturnType<typeof consumptionPreview>;
   valid: boolean;
@@ -13,6 +13,7 @@ export function DinnerCompletionReview({ meal, preview, valid, deduct, setDeduct
   cancel: () => void;
   pending?: boolean;
   retry: () => void;
+  reviewActualUsage?: () => void;
 }) {
   return <section className="completion-review" aria-label="Complete dinner">
     <span className="eyebrow">Dinner finished</span><h2>{meal.title}</h2>
@@ -22,6 +23,7 @@ export function DinnerCompletionReview({ meal, preview, valid, deduct, setDeduct
     <ul>{preview.deductions.map((item, index) => <li key={`${item.pantryId}:${index}`}>{item.name}: {item.before} → {item.after}</li>)}</ul>
     {preview.notes.map((note, index) => <p className="quantity-note" key={index}>{note}</p>)}
     {!preview.deductions.length && <p>No compatible, measured pantry stock to deduct.</p>}
+    {reviewActualUsage && <button className="secondary-button" disabled={pending || !valid} onClick={reviewActualUsage}>Review actual pantry amounts</button>}
     {pending && <p role="status">Keeping your completion safe. If saving is unavailable, keep this session open and retry.</p>}
     <div className="modal-actions"><button className="secondary-button" disabled={pending} onClick={cancel}>Back to directions</button>
       {pending ? <button className="primary-button" onClick={retry}>Retry save</button> : <button className="primary-button" disabled={!valid} onClick={confirm}>Mark dinner cooked</button>}

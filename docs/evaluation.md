@@ -16,15 +16,21 @@ them. The default chat model is `qwen3.5:9b`; reports record its installed diges
 | `pnpm test:e2e` | Desktop/mobile Chromium with synthetic recipes and a model stub | Browser journeys and failure/recovery behavior pass |
 | `pnpm test:setup` | Empty disposable databases on desktop/mobile | Starter setup, retry, and dinner selection need no AI |
 | `pnpm test:smoke` | Chromium and WebKit with actual service workers | Offline reload/timer recovery and shopping copy/print behavior |
+| `pnpm test:hosted` / `pnpm test:hosted-dev` | Disposable signed sessions and shared D1 kitchens, in built and development runtimes | Household isolation, private storage, shared-edit recovery, and reviewed AI actions pass |
+| `pnpm test:dev` | Development server with disconnected HMR | Theme and navigation remain usable during development |
 | `pnpm recipes:test` | Python recipe collector | Parsing and import contracts pass |
+| `pnpm recipes:planning-eval` | Forty real-model requests through the planning API | Planning revisions, constraints, calculated shopping, and HTTP latency meet the fixed gates |
 | `pnpm recipes:grounding-eval` | Eight fixed real-model/source checks | All expected answer, uncertainty, and guard contracts pass; useful answers and withholding are reported separately |
 | `pnpm recipes:rag-eval` | Forty synthetic retrieval/claim cases | Complete development and held-out splits independently meet retrieval and verification thresholds |
 | `pnpm recipes:journey-eval` | Nine fixed API journeys, 24 Chef turns | Full journey expectations, latency budget, and unchanged-data checks pass |
 | `pnpm recipes:relevance-eval` | Frozen 166-recipe corpus; 40 calibration and 40 held-out queries, plus 20 retrieval regressions | Deployed ranking and abstention behavior meet the fixed labels in both semantic and forced-lexical modes |
 
-GitHub Actions runs the first three categories, type checking, and lint. It uses
-no downloaded model or personal database. Run the real-model checks against the
-release candidate separately and attach their reports to release evidence.
+GitHub Actions runs the source, build, browser, hosted, development, setup, smoke,
+and Python collector checks, plus type checking and lint. It uses no downloaded
+model or personal database. Run the real-model checks against the release
+candidate separately and attach their reports to release evidence. The shared
+assistant's pantry/planning evaluation and remaining deployment gates are
+recorded in the [shared kitchen validation report](shared-kitchen-validation.md).
 
 ## Source answering and safe withholding
 

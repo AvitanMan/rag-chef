@@ -14,13 +14,15 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+await writeFile(join(dir, "auth.mjs"), "export async function getAuth() { return { api: { getSession: async () => globalThis.recipeImportSession ?? null } }; }");
+const modules = ["household", "ai-inference", "ai-connections", "demo-recipes", "recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
 files.push(["chef-route", "../app/api/chef/route.ts"]);
 files.push(["health-route", "../app/api/health/route.ts"]);
 files.push(["admin-route", "../app/api/admin/catalog/route.ts"]);
+files.push(["demo-route", "../app/api/admin/catalog/demo/route.ts"]);
 files.push(["metadata-route", "../app/api/admin/recipes/metadata/route.ts"]);
 files.push(["search-route", "../app/api/recipes/route.ts"]);
 files.push(["recipe-source", "../app/lib/recipe-source.ts"]);
@@ -62,6 +64,7 @@ const catalogRoute = await load("catalog-route");
 const chefRoute = await load("chef-route");
 const healthRoute = await load("health-route");
 const adminRoute = await load("admin-route");
+const demoRoute = await load("demo-route");
 const chefSchema = await load("chef-schema");
 const constraintRules = await load("recipe-constraints");
 const metadataRoute = await load("metadata-route");
@@ -71,6 +74,10 @@ let modelCalls = 0;
 beforeEach(() => {
   db.exec("DELETE FROM recipe_embeddings; DELETE FROM recipes; DELETE FROM recipe_sync_runs; DELETE FROM recipe_sources; DELETE FROM kitchen_state;");
   delete process.env.CATALOG_ADMIN_TOKEN;
+  delete env.RAG_CHEF_HOSTED;
+  delete env.HOSTED_RECIPE_SOURCE_IDS;
+  delete env.PLATFORM_ADMIN_EMAILS;
+  delete globalThis.recipeImportSession;
   modelCalls = 0;
   globalThis.fetch = async () => { modelCalls++; return Response.json({ embeddings: [[1, 2, 3]] }); };
 });
@@ -282,6 +289,106 @@ test("suspended/restricted sources cannot be reactivated by the importer", async
   assert.equal((await route.POST(req([await draft(1)]))).status, 403);
   db.exec("UPDATE recipe_sources SET approval_status='approved', allow_embed=0");
   assert.equal((await route.POST(req([await draft(1)]))).status, 403);
+});
+
+test("hosted source distribution defaults to originals and gates text, facts, vectors and counts before limiting", async () => {
+  const imported = await importOne(await draft());
+  await store.reviewRecipeMetadata([await metadataReview()]);
+  const sync = await store.startCatalogSync("wikibooks");
+  await store.finishCatalogSync(sync, "succeeded", { recordsSeen: 1, recordsUpserted: 1 });
+  assert.equal((await demoRoute.POST(new Request("http://localhost:3000/api/admin/catalog/demo", { method: "POST" }))).status, 200);
+  db.exec("UPDATE recipes SET updated_at=9999999999999 WHERE source_id='wikibooks'");
+  assert.equal((await store.listCatalogRecipes(1))[0].sourceId, "wikibooks", "The local catalog remains unchanged");
+  env.RAG_CHEF_HOSTED = "1";
+  env.HOSTED_RECIPE_SOURCE_IDS = "*,WIKIBOOKS,wikibooks-copy,wiki";
+  assert.equal(await store.isRecipeSourceEnabled("wikibooks"), false);
+  for (const sourceId of ["wikibooks", "unimported-source"]) {
+    const policy = await store.getRecipeSourcePolicy(sourceId);
+    assert.equal(policy.approval_status, "hosted_disabled");
+    assert.equal(policy.allow_display, 0);
+  }
+  const hosted = await store.listCatalogRecipes();
+  assert.equal(hosted.length, 3);
+  assert.ok(hosted.every(row => row.sourceId === "rag-chef-starters"));
+  assert.equal((await store.listCatalogRecipes(1)).length, 1, "Permission filtering happens before LIMIT");
+  assert.deepEqual(await store.listRecipeMetadata(), {});
+  assert.deepEqual(await store.listStoredRecipeEmbeddings(), []);
+  const status = await store.getCatalogStatus(embeddings.DEFAULT_RECIPE_EMBED_MODEL);
+  assert.equal(status.activeRecipeCount, 3); assert.equal(status.approvedSourceCount, 1); assert.equal(status.embeddingCount, 0); assert.equal(status.lastSync, null);
+  const callsBefore = modelCalls;
+  const found = await search.searchRecipeCatalog({ query: "Test rice" }, embeddings.DEFAULT_RECIPE_EMBED_MODEL);
+  assert.ok(found.recipes.every(recipe => recipe.id !== imported.catalogId));
+  assert.equal(modelCalls, callsBefore, "Hosted search does not request server embeddings");
+  await assert.rejects(store.upsertApprovedRecipeSource(importer.WIKIBOOKS_SOURCE), /not been enabled for hosted/);
+  env.HOSTED_RECIPE_SOURCE_IDS = " wikibooks ";
+  assert.equal((await store.getRecipeSourcePolicy("wikibooks")).approval_status, "approved");
+  assert.equal((await store.listCatalogRecipes()).length, 4);
+  assert.equal(Object.keys(await store.listRecipeMetadata()).length, 1);
+  assert.equal((await store.listStoredRecipeEmbeddings()).length, 1);
+  assert.equal((await store.getCatalogStatus(embeddings.DEFAULT_RECIPE_EMBED_MODEL)).activeRecipeCount, 4);
+  db.exec("UPDATE recipe_sources SET approval_status='suspended' WHERE id='wikibooks'");
+  assert.equal((await store.listCatalogRecipes()).length, 3, "Allowlisting does not override source revocation");
+  assert.deepEqual(await store.listRecipeMetadata(), {});
+  assert.deepEqual(await store.listStoredRecipeEmbeddings(), []);
+});
+
+test("hosted administrators cannot promote local prototype sync and approved imports never call embeddings", async () => {
+  env.RAG_CHEF_HOSTED = "1";
+  env.PLATFORM_ADMIN_EMAILS = "catalog@example.test";
+  globalThis.recipeImportSession = { user: { id: "catalog-admin", email: "catalog@example.test", emailVerified: true }, session: { id: "test-session" } };
+  const headers = { origin: "http://localhost:3000" };
+  const value = await draft();
+  assert.equal((await route.POST(req([value], { headers }))).status, 403);
+  for (const body of [undefined, JSON.stringify({ embeddingsOnly: true })]) {
+    const response = await adminRoute.POST(new Request("http://localhost:3000/api/admin/catalog", { method: "POST", headers, body }));
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error.code, "HOSTED_CATALOG_SYNC_DISABLED");
+  }
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM recipe_sources").get().n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM recipes").get().n, 0);
+  assert.equal(modelCalls, 0);
+  env.HOSTED_RECIPE_SOURCE_IDS = "wikibooks";
+  const imported = await route.POST(req([value], { headers }));
+  assert.equal(imported.status, 200);
+  const result = await imported.json();
+  assert.equal(result.results[0].status, "saved"); assert.equal(result.results[0].embedding, "not_required");
+  assert.equal((await route.POST(req([value], { headers, retry: true }))).status, 403);
+  assert.equal((await demoRoute.POST(new Request("http://localhost:3000/api/admin/catalog/demo", { method: "POST", headers }))).status, 200);
+  assert.equal(modelCalls, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM recipe_embeddings").get().n, 0);
+});
+
+test("hosted search never falls back to an unapproved live source when the catalog is empty or unavailable", async () => {
+  env.RAG_CHEF_HOSTED = "1";
+  const at = new Date().toISOString();
+  db.prepare("INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,?,?,?)").run("hosted-reader", "Reader", "reader@example.test", 1, at, at);
+  db.prepare("INSERT INTO organization(id,name,slug,createdAt) VALUES(?,?,?,?)").run("hosted-search", "Search", "hosted-search", at);
+  db.prepare("INSERT INTO household_settings(organizationId) VALUES(?)").run("hosted-search");
+  db.prepare("INSERT INTO member(id,organizationId,userId,role,createdAt) VALUES(?,?,?,?,?)").run("hosted-reader-member", "hosted-search", "hosted-reader", "owner", at);
+  globalThis.recipeImportSession = { user: { id: "hosted-reader", email: "reader@example.test", emailVerified: true }, session: { id: "reader-session" } };
+  const calls = [];
+  globalThis.fetch = async url => { calls.push(String(url)); return Response.json({ meals: [] }); };
+  try {
+    const response = await searchRoute.GET(new Request("http://localhost/api/recipes?q=rice&pantry=tomato"));
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(calls, [], "Empty hosted catalogs must not send household search terms to an unapproved source");
+    assert.deepEqual(result.recipes, []);
+    assert.notEqual(result.meta.retrieval.method, "live_source_fallback");
+    const prepare = env.DB.prepare;
+    env.DB.prepare = sql => {
+      if (/sqlite_master|recipe_sources|FROM recipes/.test(sql)) throw new Error("Catalog storage unavailable");
+      return prepare(sql);
+    };
+    try {
+      const unavailable = await searchRoute.GET(new Request("http://localhost/api/recipes?q=rice"));
+      assert.equal(unavailable.status, 503);
+      assert.deepEqual(calls, []);
+    } finally { env.DB.prepare = prepare; }
+  } finally {
+    db.prepare("DELETE FROM organization WHERE id=?").run("hosted-search");
+    db.prepare("DELETE FROM user WHERE id=?").run("hosted-reader");
+  }
 });
 
 test("cross-origin writes, remote unconfigured admin and oversized batches are rejected", async () => {
@@ -1352,20 +1459,18 @@ test("an explicitly named source question gets the same verified context as a pi
   assert.equal(result.verification.status, "checked"); assert.equal(contexts[0].dinnerContext.recipeId, saved.catalogId);
 });
 
-test("OpenAI fails closed if its verifier becomes unavailable after a successful preflight", async () => {
+test("OpenAI fails closed if verification through the same connection is unavailable", async () => {
   const saved = await importOne(await draft());
   const previousKey = process.env.OPENAI_API_KEY; process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
   let generationCalls = 0, verificationCalls = 0;
   try {
     globalThis.fetch = async (url, options) => {
-      if (String(url).endsWith("/api/tags")) return Response.json({ models: [{ name: process.env.OLLAMA_CHAT_MODEL || chefSchema.DEFAULT_OLLAMA_CHAT_MODEL }] });
-      if (String(url).endsWith("/responses")) {
-        generationCalls++;
-        return Response.json({ status: "completed", output_text: JSON.stringify({ answer: "Cook rice until tender.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }], recommendations: [], chefChanges: [], warnings: [] }) });
-      }
-      assert.match(String(url), /^http:\/\/(?:127\.0\.0\.1|localhost):\d+\/api\/chat$/);
-      assert.equal(options.headers.authorization, undefined);
-      verificationCalls++; return Response.json({}, { status: 503 });
+      assert.ok(String(url).endsWith("/responses"), "OpenAI verification must not probe Ollama");
+      assert.equal(options.headers.authorization, "Bearer test-only-not-a-real-key");
+      const body = JSON.parse(options.body);
+      if (body.text.format.schema.properties.sentences) { verificationCalls++; return Response.json({}, { status: 503 }); }
+      generationCalls++;
+      return Response.json({ status: "completed", output_text: JSON.stringify({ answer: "Cook rice until tender.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }], recommendations: [], chefChanges: [], warnings: [] }) });
     };
     const result = await (await chefRoute.POST(chefRequest({ provider: "openai", query: "Explain this source step.", context: { recipeId: saved.catalogId } }))).json();
     assert.equal(result.answerStatus, "unverified"); assert.equal(result.verification.status, "unavailable");
@@ -1481,7 +1586,7 @@ test("timing corrections quote the selected original step instead of repeating m
 });
 
 
-test("cloud factual and adaptation requests skip generation when the local verifier cannot run", async () => {
+test("OpenAI factual and adaptation requests verify without any local Ollama dependency", async () => {
   const imported = await importOne(await draft());
   const oldKey = process.env.OPENAI_API_KEY, oldBase = process.env.OLLAMA_BASE_URL;
   process.env.OPENAI_API_KEY = "test-only-not-a-real-key";
@@ -1492,19 +1597,24 @@ test("cloud factual and adaptation requests skip generation when the local verif
         const calls = [];
         globalThis.fetch = async (url, options) => {
           calls.push(String(url));
-          assert.equal(options.headers.authorization, undefined, "Verifier probe must not forward the OpenAI key");
-          assert.ok(String(url).endsWith("/api/tags"), "Only a local capability probe may run");
-          return Response.json(state === "model_missing" ? { models: [{ name: "different-model:latest" }] } : {}, { status: state === "offline" ? 503 : 200 });
+          assert.ok(String(url).endsWith("/responses"), "Only the selected OpenAI connection may run");
+          assert.equal(options.headers.authorization, "Bearer test-only-not-a-real-key");
+          const body = JSON.parse(options.body);
+          let answer;
+          if (body.text.format.schema.properties.sentences) {
+            const verification = JSON.parse(body.input[1].content);
+            const ref = verification.evidence.find(item => item.evidenceId === "S2").ref;
+            answer = { sentences: verification.sentences.map(sentence => ({ id: sentence.id, verdict: "supported", supportRefs: [ref] })) };
+          } else answer = { answer: "Cook rice until tender.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }], recommendations: [], chefChanges: [], warnings: [] };
+          return Response.json({ status: "completed", output: [{ content: [{ type: "output_text", text: JSON.stringify(answer) }] }] });
         };
         const response = await chefRoute.POST(chefRequest({ provider: "openai", query, context: { recipeId: imported.catalogId } }));
         const result = await response.json();
         assert.equal(response.status, 200);
-        assert.equal(result.generation, "catalog_fallback");
-        assert.equal(result.answerStatus, "unverified");
-        assert.equal(result.verification.reason, "preflight_unavailable");
-        assert.match(result.answer, /did not request an AI answer/);
-        assert.equal(result.timings.generationMs, 0);
-        assert.equal(calls.length, state === "remote" ? 0 : 1);
+        assert.equal(result.generation, "ai");
+        assert.equal(result.verification.status, "checked");
+        assert.equal(result.verification.method, "openai_model");
+        assert.equal(calls.length, 2);
       }
     }
   } finally {
@@ -1513,7 +1623,7 @@ test("cloud factual and adaptation requests skip generation when the local verif
   }
 });
 
-test("cloud generation readiness reports its verifier dependency while missing embeddings remain optional", async () => {
+test("OpenAI readiness uses the selected connection while missing local embeddings remain optional", async () => {
   const old = Object.fromEntries(["OPENAI_API_KEY", "OLLAMA_CHAT_MODEL", "OLLAMA_EMBED_MODEL", "OLLAMA_BASE_URL"].map(key => [key, process.env[key]]));
   Object.assign(process.env, { OPENAI_API_KEY: "test-only-not-a-real-key", OLLAMA_CHAT_MODEL: "verify-model", OLLAMA_EMBED_MODEL: "embed-model", OLLAMA_BASE_URL: "http://127.0.0.1:11434" });
   try {
@@ -1523,14 +1633,13 @@ test("cloud generation readiness reports its verifier dependency while missing e
         : Response.json({ id: "test-cloud-model" });
       const response = await healthRoute.GET(new Request("http://localhost/api/health?provider=openai&model=test-cloud-model"));
       const result = await response.json();
-      const verificationReady = Boolean(installed?.includes("verify-model:latest"));
-      assert.equal(response.status, verificationReady ? 200 : 503);
-      assert.equal(result.ok, verificationReady);
+      assert.equal(response.status, 200);
+      assert.equal(result.ok, true);
       assert.equal(result.capabilities.generation.ready, true);
-      assert.equal(result.capabilities.verification.ready, verificationReady);
-      assert.equal(result.capabilities.verification.model, "verify-model");
+      assert.equal(result.capabilities.verification.ready, true);
+      assert.equal(result.capabilities.verification.model, "test-cloud-model");
       assert.equal(result.capabilities.embeddings.ready, Boolean(installed?.includes("embed-model:latest")));
-      if (!verificationReady) assert.match(result.message, /verification is unavailable/);
+      assert.doesNotMatch(result.message, /verification is unavailable/);
     }
   } finally { for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
 });

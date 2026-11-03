@@ -469,9 +469,7 @@ material and correct recipe. Generic nonfactual discovery prose may have no
 support refs; factual questions still require positive source support. The
 verifier cannot rewrite an answer or turn kitchen facts into original quotes.
 
-Verification uses the selected Ollama generation model, or `OLLAMA_CHAT_MODEL`
-when generation uses OpenAI. It always uses a loopback Ollama endpoint and never
-adds a paid verification call. The check has a 30-second timeout for multi-recipe
+Verification uses the same selected provider as generation. Ollama checks run locally; OpenAI checks use the same personal or standalone server key and add a separate billed API request. Hosted browser checks are labeled **Checked on this device**; the server still independently validates source identities and calculations. See [hosted beta setup](hosted-beta.md) for account and connection configuration. The check has a 30-second timeout for multi-recipe
 answers and no automatic repair attempt. Rejected or unavailable checks withhold
 the answer, retain source access and offer **Retry answer** or **Retry step
 answer**. **Answer evidence checked** describes a model-assisted review, not a

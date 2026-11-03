@@ -16,6 +16,12 @@ const { chefMealPreview, chefRecipeHash, recipeEvidence, selectQuestionEvidence,
 const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
+test("Chef batch previews accept the same quarter-batch bounds as saved dinners", () => {
+  for (const batches of [0.25, 0.75, 1, 2.5, 20]) assert.equal(parseChefRequest({ query: "How much rice?", context: { batches } }).context.batches, batches);
+  for (const batches of [0, 0.1, 1.1, 20.25, 100, Infinity, NaN, "2.5"]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { batches } }), /context.batches/);
+  for (const servings of [0.25, 1.5, 101]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { servings } }), /context.servings/);
+  for (const kitchenRevision of [-1, 0.25, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { kitchenRevision } }), /context.kitchenRevision/);
+});
 test("recipe version includes source quantities, directions and yield while ignoring display-only images", async () => {
   assert.equal(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, image: "new" }));
   assert.notEqual(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, servings: 4 }));

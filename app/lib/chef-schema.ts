@@ -1,5 +1,5 @@
 import type { Recipe, RecipeMetadataMap } from "./recipe-types";
-import { COOKING_PROFILE_LIMITS } from "./kitchen-types";
+import { COOKING_PROFILE_LIMITS, DINNER_AMOUNT_LIMITS } from "./kitchen-types";
 
 export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
 export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
@@ -298,7 +298,8 @@ export function parseChefRequest(value: unknown): ChefRequest {
     }
     for (const key of ["kitchenRevision", "servings", "batches"] as const) if (row[key] !== undefined) {
       const number = row[key];
-      if (typeof number !== "number" || !Number.isSafeInteger(number) || number < (key === "kitchenRevision" ? 0 : 1) || number > (key === "kitchenRevision" ? Number.MAX_SAFE_INTEGER : 100)) throw new ChefValidationError(`Invalid context.${key}.`);
+      const limits = key === "kitchenRevision" ? { min: 0, max: Number.MAX_SAFE_INTEGER, step: 1 } : DINNER_AMOUNT_LIMITS[key];
+      if (typeof number !== "number" || !Number.isFinite(number) || number < limits.min || number > limits.max || !Number.isSafeInteger(number / limits.step)) throw new ChefValidationError(`Invalid context.${key}.`);
       context[key] = number;
     }
     if (row.previousRecipeIds !== undefined) context.previousRecipeIds = stringArray(row.previousRecipeIds, "previous recipes", 3, 200);

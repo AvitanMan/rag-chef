@@ -2292,3 +2292,46 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .chef-plan-day-options input[type="number"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 9px; font-size: 12px; }
 .accessible-modal.chef-plan-backdrop { padding: 16px; }
 @media (max-width: 650px) { .accessible-modal.chef-plan-backdrop { padding: 8px; } }
+
+/* Shared kitchen and reviewed assistant workspace. */
+.account-gate { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.account-panel { width: min(100%, 540px); padding: 32px; }
+.account-panel h1 { font-size: clamp(28px, 5vw, 40px); }
+.account-panel label, .assistant-workspace form > label, .settings-panel > label, .settings-panel form > label { display: grid; gap: 8px; margin: 16px 0; }
+.account-panel input, .assistant-workspace input:not([type=checkbox]), .assistant-workspace select, .assistant-workspace textarea, .settings-panel > label > input, .settings-panel form input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 10px; font: inherit; }
+.assistant-workspace textarea { resize: vertical; }
+.assistant-entry { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 20px; margin: 0 0 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
+.assistant-entry p { margin: 4px 0 0; color: var(--ink-soft); font-size: 13px; }
+.assistant-workspace { width: min(100%, 980px); max-height: calc(100dvh - 32px); overflow: auto; }
+.assistant-workspace .section-heading { align-items: start; }
+.assistant-workspace > header.section-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.assistant-workspace > header h2 { font-size: clamp(26px, 4vw, 36px); line-height: 1.12; }
+.assistant-interpretation { margin: 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.assistant-pantry-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.assistant-pantry-row label, .assistant-dates label { display: grid; gap: 6px; font-size: 13px; }
+.assistant-dates { display: grid; gap: 12px; margin: 16px 0; }
+.assistant-dates > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.assistant-dates label:has(input[type=checkbox]) { display: flex; align-items: center; }
+.household-members { list-style: none; padding: 0; }
+.household-members li { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.taste-feedback { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.taste-feedback p { flex-basis: 100%; margin: 4px 0; }
+.session-notice { padding: 14px 24px; background: var(--warning); display: flex; gap: 16px; justify-content: center; }
+.conflict-review { padding: 20px; margin-bottom: 20px; }
+.table-scroll { max-height: 350px; overflow: auto; }
+.conflict-review table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.conflict-review th, .conflict-review td { padding: 10px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; vertical-align: top; max-width: 300px; }
+fieldset.form-grid { border: 0; padding: 0; margin: 0; }
+@media (max-width: 650px) {
+  .assistant-entry { gap: 12px; padding: 12px; margin-bottom: 16px; }
+  .assistant-entry strong { font-size: 13px; }
+  .assistant-entry p { display: none; }
+  .assistant-entry > button { flex-shrink: 0; font-size: 12px; padding: 12px; }
+  .assistant-pantry-row { grid-template-columns: 1fr; }
+  .account-panel { padding: 22px; }
+  .assistant-workspace { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 16px; }
+}
+
+.household-activity { padding: 16px 20px; margin-bottom: 20px; }
+.household-activity article { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.household-activity time { margin-left: 12px; color: var(--ink-soft); font-size: 12px; }

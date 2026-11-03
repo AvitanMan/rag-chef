@@ -12,7 +12,7 @@ for (const file of await readdir(new URL('../app/lib/', import.meta.url))) {
   const source = await readFile(new URL(`../app/lib/${file}`, import.meta.url), "utf8");
   await writeFile(join(dir, file.replace(/\.ts$/, '.mjs')), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { defaultPlanIntent, resolveChefPlanIntent, requestChefPlanIntent } = await import(pathToFileURL(join(dir, "chef-plan-intent.mjs")));
+const { defaultPlanIntent, resolveChefPlanIntent, requestChefPlanIntent, positiveRecipeQuery } = await import(pathToFileURL(join(dir, "chef-plan-intent.mjs")));
 const base = () => defaultPlanIntent("2026-11-02", "2026-11-03");
 const resolve = (query, intent = base(), generated) => resolveChefPlanIntent(query, intent, generated);
 const modelInterpretation = () => ({ count: null, servings: null, batches: null, dates: [], excludedIngredients: [], diets: [], excludedEquipment: [], maxTotalMinutes: null, priority: null, allowRepeats: null, evidence: Object.fromEntries(["count", "servings", "batches", "excludedIngredients", "diets", "excludedEquipment", "maxTotalMinutes", "priority", "allowRepeats"].map(field => [field, ""])) });
@@ -111,9 +111,21 @@ test("an exact but irrelevant quote cannot authorize a semantic diet or priority
   assert.deepEqual(result.diets, []); assert.equal(result.priority, "use_soon");
 });
 
-test("unsupported positive cuisine requests remain visible alongside supported exclusions", async () => {
-  const response = await requestChefPlanIntent({ query: "Plan Mexican dinners without peanuts", week: base().week, today: base().today });
-  assert.match(response.clarification, /dish or cuisine/); assert.equal(response.intent, undefined);
+test("positive cuisine requests become retrieval queries alongside supported exclusions", async () => {
+  const response = await requestChefPlanIntent({ query: "Plan Mexican dinners without peanuts", week: base().week, today: base().today, infer: async () => modelInterpretation() });
+  assert.equal(response.intent.recipeQuery, "mexican"); assert.deepEqual(response.intent.excludedIngredients, ["peanuts"]);
+});
+
+test("planning counts and priorities never become recipe topics, while actual ingredients remain", () => {
+  const controls = ["with variety", "with varied meals", "with something different each night", "and mix it up", "with a novel mix", "using perishable food", "using food that expires soon", "using up food", "using food going off soon", "with less food waste", "with less waste", "with fewer groceries", "with fewer additional groceries", "with less grocery shopping", "with minimal shopping", "with ingredients to buy minimized"];
+  for (const count of ["two", "a couple of", "a pair of"]) for (const control of controls) {
+    assert.equal(positiveRecipeQuery(`Plan ${count} dinners ${control}.`), undefined, `${count} / ${control}`);
+  }
+  assert.equal(positiveRecipeQuery("Plan a pair of Mexican dinners with variety."), "mexican");
+  assert.equal(positiveRecipeQuery("Plan two dinners using brown rice with fewer groceries."), "brown rice");
+  assert.equal(positiveRecipeQuery("Plan two dinners using up brown rice with less waste."), "brown rice");
+  assert.equal(positiveRecipeQuery("Plan two dinners using pancake mix with less waste."), "pancake mix");
+  assert.equal(positiveRecipeQuery("Plan a couple of Martian dinners with variety."), "martian");
 });
 
 test("diet adjectives between the count and dinner noun retain the explicit meal count", () => {

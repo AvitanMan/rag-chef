@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   index,
+  check,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -262,10 +264,56 @@ export const recipeMetadata = sqliteTable("recipe_metadata", {
   index("recipe_metadata_hash_idx").on(table.recipeId, table.sourceContentSha256),
 ]);
 
-/** One durable document for this local, personal kitchen (not a multi-user store). */
+/** One revisioned document per authenticated household; local mode has its own ID. */
 export const kitchenState = sqliteTable("kitchen_state", {
   id: text("id").primaryKey(),
   stateJson: text("state_json").notNull(),
   revision: integer("revision").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+/** Incremented by canonical catalog mutation triggers, and checked at Apply's CAS. */
+export const recipeCatalogRevision = sqliteTable("recipe_catalog_revision", {
+  id: integer("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+}, (table) => [check("recipe_catalog_revision_singleton", sql`${table.id}=1`)]);
+
+/** Better Auth's native D1 adapter uses these exact table/column names. */
+export const authUser = sqliteTable("user", {
+  id: text("id").primaryKey(), name: text("name").notNull(), email: text("email").notNull().unique(),
+  emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false), image: text("image"),
+  createdAt: text("createdAt").notNull(), updatedAt: text("updatedAt").notNull(),
+});
+export const authSession = sqliteTable("session", {
+  id: text("id").primaryKey(), expiresAt: text("expiresAt").notNull(), token: text("token").notNull().unique(),
+  createdAt: text("createdAt").notNull(), updatedAt: text("updatedAt").notNull(), ipAddress: text("ipAddress"), userAgent: text("userAgent"),
+  userId: text("userId").notNull().references(() => authUser.id, { onDelete: "cascade" }), activeOrganizationId: text("activeOrganizationId"),
+}, (table) => [index("session_user_idx").on(table.userId)]);
+export const authAccount = sqliteTable("account", {
+  id: text("id").primaryKey(), accountId: text("accountId").notNull(), providerId: text("providerId").notNull(),
+  userId: text("userId").notNull().references(() => authUser.id, { onDelete: "cascade" }), accessToken: text("accessToken"), refreshToken: text("refreshToken"), idToken: text("idToken"),
+  accessTokenExpiresAt: text("accessTokenExpiresAt"), refreshTokenExpiresAt: text("refreshTokenExpiresAt"), scope: text("scope"), password: text("password"), createdAt: text("createdAt").notNull(), updatedAt: text("updatedAt").notNull(),
+}, (table) => [index("account_user_idx").on(table.userId), uniqueIndex("account_provider_uidx").on(table.providerId, table.accountId)]);
+export const authVerification = sqliteTable("verification", {
+  id: text("id").primaryKey(), identifier: text("identifier").notNull(), value: text("value").notNull(), expiresAt: text("expiresAt").notNull(), createdAt: text("createdAt").notNull(), updatedAt: text("updatedAt").notNull(),
+}, (table) => [index("verification_identifier_idx").on(table.identifier)]);
+export const organization = sqliteTable("organization", {
+  id: text("id").primaryKey(), name: text("name").notNull(), slug: text("slug").notNull().unique(), logo: text("logo"), metadata: text("metadata"), createdAt: text("createdAt").notNull(),
+});
+export const member = sqliteTable("member", {
+  id: text("id").primaryKey(), organizationId: text("organizationId").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  userId: text("userId").notNull().references(() => authUser.id, { onDelete: "cascade" }), role: text("role").$type<"owner" | "member">().notNull(), createdAt: text("createdAt").notNull(),
+}, (table) => [check("member_role_check", sql`${table.role} IN ('owner','member')`), uniqueIndex("member_one_household_uidx").on(table.userId), index("member_org_idx").on(table.organizationId), uniqueIndex("household_one_owner_uidx").on(table.organizationId).where(sql`${table.role}='owner'`)]);
+export const invitation = sqliteTable("invitation", {
+  id: text("id").primaryKey(), organizationId: text("organizationId").notNull().references(() => organization.id, { onDelete: "cascade" }), email: text("email").notNull(), role: text("role"), status: text("status").notNull().default("pending"), expiresAt: text("expiresAt").notNull(), createdAt: text("createdAt").notNull(), inviterId: text("inviterId").notNull().references(() => authUser.id, { onDelete: "cascade" }),
+}, (table) => [index("invitation_org_idx").on(table.organizationId), index("invitation_email_idx").on(table.email)]);
+export const householdSettings = sqliteTable("household_settings", {
+  organizationId: text("organizationId").primaryKey().references(() => organization.id, { onDelete: "cascade" }), timezone: text("timezone").notNull().default("UTC"), assistantEnabled: integer("assistantEnabled", { mode: "boolean" }).notNull().default(false),
+});
+
+export const aiConnections = sqliteTable("ai_connections", {
+  userId: text("user_id").notNull(), provider: text("provider").notNull(), cipherText: text("cipher_text").notNull(), iv: text("iv").notNull(), keyVersion: text("key_version").notNull(), lastFour: text("last_four").notNull(), model: text("model").notNull(), updatedAt: text("updated_at").notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.provider] }), check("ai_connections_provider_check", sql`${table.provider}='openai'`)]);
+export const aiModelTasks = sqliteTable("ai_model_tasks", {
+  id: text("id").primaryKey(), workflowId: text("workflow_id").notNull(), actorId: text("actor_id").notNull(), householdId: text("household_id").notNull(), operation: text("operation").notNull(), tokenHash: text("token_hash").notNull(), requestHash: text("request_hash").notNull(), kitchenRevision: integer("kitchen_revision").notNull(), inputJson: text("input_json").notNull(), transcriptJson: text("transcript_json").notNull(), status: text("status").notNull(), expiresAt: text("expires_at").notNull(), createdAt: text("created_at").notNull(), outputHash: text("output_hash"), responseJson: text("response_json"), responseStatus: integer("response_status"),
+}, (table) => [check("ai_model_tasks_status_check", sql`${table.status} IN ('pending','processing','completed','cancelled')`), index("ai_model_tasks_actor").on(table.actorId, table.householdId, table.workflowId), index("ai_model_tasks_expiry").on(table.expiresAt)]);

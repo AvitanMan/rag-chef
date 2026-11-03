@@ -310,7 +310,7 @@ export function parseLegacyCookingProfile(value: unknown): CookingProfile | null
 
 export function validateKitchenState(value: unknown): asserts value is KitchenState {
   const state = record(value, "state");
-  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles", "favoriteRecipeIds", "cookingProfile", "personalRecipeAmounts"], "state");
+  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles", "favoriteRecipeIds", "cookingProfile", "personalRecipeAmounts", "tastePreferences", "recentActionReceipts"], "state");
   if (state.schemaVersion !== 2) invalid("state.schemaVersion", "must be 2");
   boolean(state.migratedLegacy, "state.migratedLegacy");
   if (Object.hasOwn(state, "personalRecipeAmounts")) {
@@ -343,6 +343,31 @@ export function validateKitchenState(value: unknown): asserts value is KitchenSt
     const favorites = array(state.favoriteRecipeIds, "state.favoriteRecipeIds", 1000);
     favorites.forEach(id => string(id, "state.favoriteRecipeIds item", 200));
     if (new Set(favorites).size !== favorites.length) invalid("state.favoriteRecipeIds", "contains duplicate recipes");
+  }
+  if (Object.hasOwn(state, "tastePreferences")) {
+    const seen = new Set<string>();
+    array(state.tastePreferences, "state.tastePreferences", 2000).forEach((value, index) => {
+      const path = `state.tastePreferences[${index}]`, item = record(value, path);
+      fields(item, ["memberId", "recipeId", "preference", "updatedAt"], [], path);
+      string(item.memberId, `${path}.memberId`, 200); string(item.recipeId, `${path}.recipeId`, 200);
+      timestamp(item.updatedAt, `${path}.updatedAt`);
+      if (item.preference !== "cook_again" && item.preference !== "less_often") invalid(path, "has an invalid preference");
+      const identity = JSON.stringify([item.memberId, item.recipeId]);
+      if (seen.has(identity)) invalid(path, "duplicates a member recipe preference"); seen.add(identity);
+    });
+  }
+  if (Object.hasOwn(state, "recentActionReceipts")) {
+    const seen = new Set<string>();
+    array(state.recentActionReceipts, "state.recentActionReceipts", 100).forEach((value, index) => {
+      const path = `state.recentActionReceipts[${index}]`, item = record(value, path);
+      fields(item, ["id", "reviewHash", "memberId", "appliedRevision", "appliedAt", "summary"], [], path);
+      string(item.id, `${path}.id`, 200); string(item.memberId, `${path}.memberId`, 200);
+      timestamp(item.appliedAt, `${path}.appliedAt`);
+      if (typeof item.reviewHash !== "string" || !/^[a-f0-9]{64}$/.test(item.reviewHash)) invalid(path, "has an invalid review hash");
+      if (typeof item.appliedRevision !== "number" || !Number.isSafeInteger(item.appliedRevision) || item.appliedRevision < 1) invalid(path, "has an invalid applied revision");
+      array(item.summary, `${path}.summary`, 60).forEach(text => string(text, `${path}.summary item`, 1000));
+      if (seen.has(item.id)) invalid(path, "duplicates an applied action"); seen.add(item.id);
+    });
   }
   const pantryIds = new Set<string>();
   array(state.pantry, "state.pantry", MAX_PANTRY_ITEMS).forEach((stock, index) => {

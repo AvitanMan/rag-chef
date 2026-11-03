@@ -24,6 +24,49 @@ test.beforeEach(async ({ page, request }) => {
   await save(request, empty());
 });
 
+test("main timer setup follows other tabs without replacing an unfinished duration draft", async ({ page, context, request }) => {
+  const recipe = (await recipes(request)).find(item => item.id === "fixture-tomato-rice")!;
+  await save(request, { ...empty(), meals: { [TODAY]: meal(recipe, TODAY) } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  const remaining = cooking.getByRole("timer", { name: "Time remaining", exact: true });
+  await expect(remaining).toHaveText("05:00");
+  await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
+  const other = await context.newPage();
+  await other.goto("/");
+  const changeFromOtherTab = async (seconds: number) => {
+    await other.evaluate(seconds => {
+      const session = JSON.parse(localStorage.getItem("rag-chef-cooking-v1")!);
+      session.timer = { durationMs: seconds * 1000, remainingMs: seconds * 1000, endAt: null, status: "idle" };
+      localStorage.setItem("rag-chef-cooking-v1", JSON.stringify(session));
+    }, seconds);
+  };
+  await changeFromOtherTab(600);
+  await expect(remaining).toHaveText("10:00");
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  const minutes = cooking.getByRole("spinbutton", { name: "Minutes", exact: true });
+  const seconds = cooking.getByRole("spinbutton", { name: "Seconds", exact: true });
+  await expect(minutes).toHaveValue("10");
+  await changeFromOtherTab(1230);
+  await expect(minutes).toHaveValue("20");
+  await expect(seconds).toHaveValue("30");
+  await minutes.fill("7"); await seconds.fill("15");
+  await changeFromOtherTab(720);
+  await expect(remaining).toHaveText("12:00");
+  await expect(minutes).toHaveValue("7");
+  await expect(seconds).toHaveValue("15");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(remaining).toHaveText("07:15");
+  await expect.poll(() => other.evaluate(() => JSON.parse(localStorage.getItem("rag-chef-cooking-v1")!).timer.durationMs)).toBe(435000);
+  await changeFromOtherTab(585);
+  await expect(remaining).toHaveText("09:45");
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  await expect(minutes).toHaveValue("9");
+  await expect(seconds).toHaveValue("45");
+  await other.close();
+});
+
 test("favorites persist across reloads, export with backups and remain subject to saved exclusions", async ({ page, request }) => {
   const catalogBefore = await recipes(request);
   await page.goto("/"); await navigate(page, "Recipes");

@@ -294,6 +294,75 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await page.reload(); await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
   await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toHaveCount(0);
 });
+test("unknown-yield Chef previews keep batches separate from servings and save the calculated amounts", async ({ page, request }) => {
+  await page.goto("/");
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  await page.locator(".dinner-context > summary").click();
+  const portions = page.getByLabel("Chef portions", { exact: true });
+  await portions.fill("4");
+  const discuss = async (title: string) => {
+    await navigate(page, "Recipes");
+    await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill(title);
+    await page.getByRole("button", { name: `View ${title}`, exact: true }).click();
+    await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+    if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+  };
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("");
+  await expect(portions).toHaveAttribute("placeholder", "1 recipe batch");
+  await expect(page.locator(".dinner-context > summary")).not.toContainText("4 servings");
+  await portions.fill("0.1");
+  await expect(portions).toHaveAttribute("aria-invalid", "true");
+  await portions.fill("2.5");
+  await expect(page.locator(".dinner-context > summary")).toContainText("2.5 recipe batches");
+  const answer = await submit(page, "How much vegetable stock do I need?", true);
+  expect(answer.resolvedContext).toMatchObject({ recipeId: "fixture-unknown-soup", batches: 2.5 });
+  expect(answer.resolvedContext.servings).toBeUndefined();
+  expect(answer.planningFacts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "vegetable stock", measure: "1250 ml" })]));
+  expect((await (await request.get("/api/kitchen")).json()).state.meals).toEqual({});
+  await discuss("Tomato Rice");
+  await expect(portions).toHaveValue("4");
+  await expect(page.locator(".dinner-context > summary")).toContainText("4 servings");
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("2.5");
+  await page.getByRole("button", { name: "Choose for tonight: Garden Soup", exact: true }).click();
+  await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals[TODAY]?.batches).toBe(2.5);
+  expect((await (await request.get("/api/kitchen")).json()).state.meals[TODAY].servings).toBeNull();
+  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Bought vegetable stock 1250 ml", exact: true })).toBeVisible();
+  await navigate(page, "Chef");
+  await page.getByRole("button", { name: "Recipe details", exact: true }).click();
+  await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+  if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+  await expect(portions).toHaveValue("2.5");
+  await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("");
+});
+
+for (const usesBatches of [true, false]) {
+  test(`Chef discussion uses a saved dinner's edited yield for ${usesBatches ? "batches" : "servings"}`, async ({ page, request }) => {
+    const catalog = await (await request.get("/api/recipes/catalog")).json();
+    const recipe = catalog.recipes.find((item: { id: string }) => item.id === (usesBatches ? "fixture-tomato-rice" : "fixture-unknown-soup"));
+    const current = await (await request.get("/api/kitchen")).json();
+    const meal: PlannedMeal = { id: "edited-yield", date: TODAY, recipeId: recipe.id, recipe, title: recipe.title,
+      baseServings: usesBatches ? null : 4, servings: usesBatches ? null : 8, batches: usesBatches ? 0.75 : 1,
+      locked: false, status: "planned", ingredientOverrides: {} };
+    expect((await request.put("/api/kitchen", { data: { revision: current.revision, state: { ...current.state, meals: { [TODAY]: meal } } } })).ok()).toBeTruthy();
+    await page.goto("/");
+    await page.getByRole("button", { name: "Recipe details", exact: true }).click();
+    await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+    const portions = page.getByLabel("Chef portions", { exact: true });
+    if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+    await expect(portions).toHaveValue(usesBatches ? "0.75" : "8");
+    await expect(portions).toHaveAttribute("step", usesBatches ? "0.25" : "1");
+    await portions.fill(usesBatches ? "1.25" : "12");
+    const answer = await submit(page, usesBatches ? "How much rice do I need?" : "How much vegetable stock do I need?", true);
+    expect(answer.planningFacts).toEqual(expect.arrayContaining([expect.objectContaining({ measure: usesBatches ? "250 g" : "1500 ml" })]));
+    expect((await (await request.get("/api/kitchen")).json()).state.meals[TODAY]).toEqual(meal);
+  });
+}
+
 test("cooking step help preserves timers, progress and saved kitchen", async ({ page, request }) => {
   await page.goto("/"); await submit(page, "Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();

@@ -1,4 +1,5 @@
 import type { Recipe, RecipeMetadata } from "./recipe-types";
+import { hostedMode, householdSetting, initializeHouseholdRuntime } from "./household";
 import { cookingStepText, isCookingMethodHeading } from "./recipe-instructions";
 import { RECIPE_EMBEDDING_KIND, RECIPE_STEP_EMBEDDING_KIND, isValidEmbeddingVector } from "./recipe-embeddings";
 import type {
@@ -8,6 +9,26 @@ import type {
 
 const DEFAULT_CATALOG_LIMIT = 250;
 const MAX_CATALOG_LIMIT = 1_000;
+
+/** Hosted distribution is a separate operator approval from local source review. */
+async function hostedRecipeSourceIds(): Promise<string[] | null> {
+  await initializeHouseholdRuntime();
+  if (!hostedMode()) return null;
+  const reviewed = householdSetting("HOSTED_RECIPE_SOURCE_IDS").split(",").map(id => id.trim())
+    .filter(id => /^[a-z0-9][a-z0-9_-]{0,99}$/.test(id));
+  return [...new Set(["rag-chef-starters", ...reviewed])];
+}
+
+export async function isRecipeSourceEnabled(sourceId: string): Promise<boolean> {
+  const ids = await hostedRecipeSourceIds();
+  return ids === null || ids.includes(sourceId);
+}
+
+async function sourceReadScope(alias = "s") {
+  const ids = await hostedRecipeSourceIds();
+  return ids === null ? { clause: "", values: [] as string[] }
+    : { clause: `AND ${alias}.id IN (SELECT value FROM json_each(?))`, values: [JSON.stringify(ids)] };
+}
 
 export interface ApprovedRecipeSourceInput {
   id: string;
@@ -172,6 +193,7 @@ export async function upsertApprovedRecipeSource(
   source: ApprovedRecipeSourceInput,
 ): Promise<void> {
   assertApprovedSource(source);
+  if (!await isRecipeSourceEnabled(source.id)) throw new Error("This source has not been enabled for hosted distribution.");
   await ensureRecipeCatalogSchema();
   const now = Date.now();
   await (await catalogDb())
@@ -244,6 +266,9 @@ export async function startCatalogSync(sourceId: string): Promise<string> {
 }
 
 export async function getRecipeSourcePolicy(sourceId: string) {
+  // A missing local approval row used to permit reviewed built-in references.
+  // Hosted distribution must deny explicitly before that fallback is considered.
+  if (!await isRecipeSourceEnabled(sourceId)) return { approval_status: "hosted_disabled", allow_display: 0, allow_cache: 0, allow_index_text: 0, allow_embed: 0 };
   return (await catalogDb()).prepare(
     `SELECT approval_status, allow_display, allow_cache, allow_index_text, allow_embed
      FROM recipe_sources WHERE id = ?`,
@@ -282,6 +307,7 @@ export async function upsertCatalogRecipe(input: {
   searchText: string;
   syncRunId?: string | null;
 }): Promise<CatalogRecipeUpsertResult> {
+  if (!await isRecipeSourceEnabled(input.sourceId)) throw new Error("This source has not been enabled for hosted distribution.");
   await ensureRecipeCatalogSchema();
   const { sourceId, recipe, contentHash, searchText } = input;
   const catalogId = catalogRecipeId(sourceId, recipe.id);
@@ -415,6 +441,7 @@ export async function listCatalogRecipes(
     MAX_CATALOG_LIMIT,
   );
   const db = await catalogDb();
+  const scope = await sourceReadScope();
   const recipeRows = await allRows<RecipeRow>(
     db
       .prepare(
@@ -428,11 +455,12 @@ export async function listCatalogRecipes(
            AND s.approval_status = 'approved'
            AND s.allow_display = 1
            AND s.allow_index_text = 1
+           ${scope.clause}
            ${options.forEmbedding ? "AND s.allow_embed = 1 AND s.allow_cache = 1" : ""}
          ORDER BY r.updated_at DESC, r.id ASC
          LIMIT ?`,
       )
-      .bind(boundedLimit),
+      .bind(...scope.values, boundedLimit),
   );
   if (recipeRows.length === 0) return [];
 
@@ -498,6 +526,7 @@ export async function listCatalogRecipes(
 
 export async function listRecipeMetadata(): Promise<Record<string, RecipeMetadata>> {
   const db = await catalogDb();
+  const scope = await sourceReadScope();
   let rows: { recipe_id: string; payload_json: string; source_content_sha256: string; revision: number }[];
   try {
     rows = await allRows(db.prepare(
@@ -506,9 +535,10 @@ export async function listRecipeMetadata(): Promise<Record<string, RecipeMetadat
        JOIN recipe_sources s ON s.id = r.source_id
        WHERE r.status = 'active' AND s.approval_status = 'approved'
          AND s.allow_display = 1 AND s.allow_index_text = 1
+         ${scope.clause}
          AND m.source_content_sha256 = r.normalized_content_sha256
          AND m.revision = (SELECT MAX(m2.revision) FROM recipe_metadata m2 WHERE m2.recipe_id = m.recipe_id)`,
-    ));
+    ).bind(...scope.values));
   } catch (error) {
     // A pre-migration local installation remains usable with explicit unknowns.
     if (error instanceof Error && /no such table.*recipe_metadata/i.test(error.message)) return {};
@@ -607,6 +637,7 @@ export async function listStoredRecipeEmbeddings(
 ): Promise<StoredRecipeEmbedding[]> {
   await ensureRecipeCatalogSchema();
   const db = await catalogDb();
+  const scope = await sourceReadScope();
   const condition = model ? "AND e.model = ?" : "";
   const statement = db.prepare(
     `SELECT e.recipe_id, e.content_sha256, e.model, e.dimensions, e.vector_json, e.kind, e.chunk_index
@@ -617,13 +648,14 @@ export async function listStoredRecipeEmbeddings(
        AND s.approval_status = 'approved'
        AND s.allow_embed = 1
        AND s.allow_display = 1 AND s.allow_cache = 1 AND s.allow_index_text = 1
+       ${scope.clause}
        AND e.kind = ?
        AND e.recipe_version = r.version
        AND e.content_sha256 = r.normalized_content_sha256
        ${condition} ${recipeId ? "AND e.recipe_id = ?" : ""}
      ORDER BY e.recipe_id, e.chunk_index`,
   );
-  const rows = await allRows<EmbeddingRow>(statement.bind(kind, ...(model ? [model] : []), ...(recipeId ? [recipeId] : [])));
+  const rows = await allRows<EmbeddingRow>(statement.bind(...scope.values, kind, ...(model ? [model] : []), ...(recipeId ? [recipeId] : [])));
   return rows.map((row) => ({
     recipeId: row.recipe_id,
     chunkIndex: row.chunk_index,
@@ -647,6 +679,7 @@ export async function saveRecipeEmbeddings(
   await ensureRecipeCatalogSchema();
   const db = await catalogDb();
   const ids = [...new Set(records.map((record) => record.recipeId))];
+  const scope = await sourceReadScope();
   const placeholders = ids.map(() => "?").join(", ");
   const versions = await allRows<{ id: string; version: number; content_hash: string; permitted: number; step_count: number }>(
     db
@@ -655,8 +688,8 @@ export async function saveRecipeEmbeddings(
           ((SELECT COUNT(*) FROM recipe_instruction_steps st WHERE st.recipe_id = r.id) +
             CASE WHEN (SELECT COUNT(*) FROM recipe_instruction_sections se WHERE se.recipe_id = r.id) > 1
               THEN (SELECT COUNT(*) FROM recipe_instruction_sections se WHERE se.recipe_id = r.id AND se.title IS NOT NULL AND se.title <> '') ELSE 0 END) AS step_count
-          FROM recipes r JOIN recipe_sources s ON s.id = r.source_id WHERE r.id IN (${placeholders})`)
-      .bind(...ids),
+          FROM recipes r JOIN recipe_sources s ON s.id = r.source_id WHERE r.id IN (${placeholders}) ${scope.clause}`)
+      .bind(...ids, ...scope.values),
   );
   const versionById = new Map(versions.map((row) => [row.id, row]));
   const statements = records.map((record) => {
@@ -704,18 +737,20 @@ export async function saveRecipeEmbeddings(
 export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
   await ensureRecipeCatalogSchema();
   const db = await catalogDb();
+  const scope = await sourceReadScope();
   const [counts, lastSync] = await Promise.all([
     db
       .prepare(
         `SELECT
-          (SELECT COUNT(*) FROM recipe_sources
-            WHERE approval_status = 'approved') AS approved_source_count,
+          (SELECT COUNT(*) FROM recipe_sources s
+            WHERE approval_status = 'approved' ${scope.clause}) AS approved_source_count,
           (SELECT COUNT(*) FROM recipes r JOIN recipe_sources s ON s.id = r.source_id
-            WHERE r.status = 'active' AND s.approval_status = 'approved') AS active_recipe_count,
+            WHERE r.status = 'active' AND s.approval_status = 'approved' ${scope.clause}) AS active_recipe_count,
           (SELECT COUNT(*) FROM recipe_embeddings e
             JOIN recipes r ON r.id = e.recipe_id
             JOIN recipe_sources s ON s.id = r.source_id
             WHERE r.status = 'active' AND s.approval_status = 'approved'
+              ${scope.clause}
               AND s.allow_embed = 1 AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
               AND e.recipe_version = r.version AND e.content_sha256 = r.normalized_content_sha256
               AND e.model = ?) AS embedding_count,
@@ -724,11 +759,12 @@ export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
             LEFT JOIN recipe_embeddings e ON e.recipe_id = r.id
               AND e.model = ? AND e.kind = '${RECIPE_EMBEDDING_KIND}' AND e.chunk_index = 0
             WHERE r.status = 'active' AND s.approval_status = 'approved'
+              ${scope.clause}
               AND s.allow_embed = 1
               AND (e.recipe_id IS NULL OR e.content_sha256 <> r.normalized_content_sha256 OR e.recipe_version <> r.version)
           ) AS stale_embedding_count`,
       )
-      .bind(model, model)
+      .bind(...scope.values, ...scope.values, ...scope.values, model, model, ...scope.values)
       .first<{
         approved_source_count: number;
         active_recipe_count: number;
@@ -737,10 +773,12 @@ export async function getCatalogStatus(model: string): Promise<CatalogStatus> {
       }>(),
     db
       .prepare(
-        `SELECT id, source_id, status, records_seen, records_upserted,
-          started_at, finished_at, error_message
-         FROM recipe_sync_runs ORDER BY started_at DESC LIMIT 1`,
+        `SELECT sync.id, sync.source_id, sync.status, sync.records_seen, sync.records_upserted,
+          sync.started_at, sync.finished_at, sync.error_message
+         FROM recipe_sync_runs sync JOIN recipe_sources s ON s.id = sync.source_id
+         WHERE 1 = 1 ${scope.clause} ORDER BY sync.started_at DESC LIMIT 1`,
       )
+      .bind(...scope.values)
       .first<{
         id: string;
         source_id: string;

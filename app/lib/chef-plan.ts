@@ -8,6 +8,7 @@ import { allocateMealStock, allocateStockForMeals, mealReadiness } from "./quant
 import { shoppingForWeek } from "./shopping-purchases";
 import { chefRecipeHash } from "./chef-context";
 import { validateKitchenState } from "./kitchen-validation";
+import { bm25Scores, retrievalTerms } from "./retrieval-ranking";
 
 export class ChefPlanError extends Error {
   constructor(message: string, public code = "invalid_plan", public status = 400) { super(message); this.name = "ChefPlanError"; }
@@ -29,10 +30,11 @@ function amount(value: unknown, kind: "servings" | "batches"): number | null {
   return value;
 }
 export function validatePlanIntent(value: unknown): ChefPlanIntent {
-  const keys = ["week", "today", "count", "dates", "servings", "batches", "excludedIngredients", "diets", "excludedEquipment", "maxTotalMinutes", "priority", "allowRepeats", "replaceDates", "authorizedReplacementDates", "keepDates", "perDate"];
+  const keys = ["week", "today", "count", "recipeQuery", "dates", "servings", "batches", "excludedIngredients", "diets", "excludedEquipment", "maxTotalMinutes", "priority", "allowRepeats", "replaceDates", "authorizedReplacementDates", "keepDates", "perDate"];
   if (!record(value) || Object.keys(value).some(key => !keys.includes(key)) || !date(value.week) || weekStart(value.week) !== value.week || !date(value.today)) throw new ChefPlanError("Choose a valid planning week and today's date.");
   if (!Number.isInteger(value.count) || Number(value.count) < 1 || Number(value.count) > 7) throw new ChefPlanError("Plan between one and seven dinners.");
   const week = value.week, today = value.today;
+  if (value.recipeQuery !== undefined && (typeof value.recipeQuery !== "string" || !value.recipeQuery.trim() || value.recipeQuery.length > 200)) throw new ChefPlanError("Choose a dish, cuisine or ingredient query of 1–200 characters.");
   const dates = (input: unknown) => stringList(input, 7).map(item => {
     if (!date(item) || item < week || item >= addDateDays(week, 7) || item < today) throw new ChefPlanError("Choose upcoming dates within the selected week.");
     return item;
@@ -54,7 +56,7 @@ export function validatePlanIntent(value: unknown): ChefPlanIntent {
   if (value.maxTotalMinutes !== undefined && (!Number.isInteger(value.maxTotalMinutes) || Number(value.maxTotalMinutes) < 1 || Number(value.maxTotalMinutes) > 1440)) throw new ChefPlanError("Choose a verified time limit between 1 and 1440 minutes.");
   const servings = amount(value.servings, "servings"), batches = amount(value.batches, "batches");
   if (servings !== null && batches !== null) throw new ChefPlanError("Choose servings or recipe batches.");
-  return { week, today, count: Number(value.count), dates: selected, servings, batches, excludedIngredients: stringList(value.excludedIngredients), diets: diets as Diet[], excludedEquipment: stringList(value.excludedEquipment), ...(value.maxTotalMinutes !== undefined ? { maxTotalMinutes: Number(value.maxTotalMinutes) } : {}), priority: value.priority as ChefPlanIntent["priority"], allowRepeats: value.allowRepeats, replaceDates, ...(value.authorizedReplacementDates !== undefined ? { authorizedReplacementDates } : {}), keepDates, perDate };
+  return { week, today, count: Number(value.count), ...(value.recipeQuery ? { recipeQuery: String(value.recipeQuery).trim() } : {}), dates: selected, servings, batches, excludedIngredients: stringList(value.excludedIngredients), diets: diets as Diet[], excludedEquipment: stringList(value.excludedEquipment), ...(value.maxTotalMinutes !== undefined ? { maxTotalMinutes: Number(value.maxTotalMinutes) } : {}), priority: value.priority as ChefPlanIntent["priority"], allowRepeats: value.allowRepeats, replaceDates, ...(value.authorizedReplacementDates !== undefined ? { authorizedReplacementDates } : {}), keepDates, perDate };
 }
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
@@ -98,6 +100,17 @@ function preservesReservations(meals: PlannedMeal[], preserved: PlannedMeal[], i
     const after = next.find(item => item.mealId === allocation.mealId);
     return after && [...allocation.coveredByGroup].every(([key, covered]) => (after.coveredByGroup.get(key) ?? 0) + 1e-8 >= covered);
   });
+}
+function matchingRecipeIds(catalog: ChefPlanCatalog, intent: ChefPlanIntent, constraints: ReturnType<typeof normalizeConstraints>): Set<string> | null {
+  if (!intent.recipeQuery) return null;
+  const query = intent.recipeQuery, terms = retrievalTerms(query);
+  const documents = catalog.recipes.map(recipe => ({ id: recipe.id, title: recipe.title, ingredients: recipe.ingredients.map(row => row.name).join(" "), other: [recipe.cuisine, recipe.category, ...recipe.tags].join(" ") }));
+  const scores = bm25Scores(documents, query);
+  return new Set(documents.filter(document => {
+    const recipe = catalog.recipes.find(row => row.id === document.id)!;
+    const words = new Set(retrievalTerms([document.title, document.ingredients, document.other].join(" ")));
+    return evaluateRecipeConstraints(recipe, catalog.metadata[recipe.id], constraints).eligible && (scores.get(document.id) ?? 0) > 0 && terms.every(term => words.has(term));
+  }).map(document => document.id));
 }
 function reasons(readiness: ChefPlanChange["readiness"]): string {
   return `${readiness.useSoonCoverage > 0 ? "Uses measured stock before its entered use-by date. " : ""}Pantry fully covers ${readiness.coveredCount} ingredients; ${readiness.partialCount + readiness.missingCount} need shopping${readiness.reviewCount ? `; ${readiness.reviewCount} amounts need review` : ""}.`;
@@ -147,15 +160,17 @@ export async function buildChefPlanDraft(raw: ChefPlanInput): Promise<ChefPlanDr
     }
     let selectedId = intent.perDate[day]?.recipeId ?? preservedDraftIds.get(day);
     const constraints = constraintsForDay(input, day);
+    const matching = matchingRecipeIds(catalog, intent, constraints);
     if (selectedId && !intent.perDate[day]?.recipeId && !intent.keepDates.includes(day)) {
       const pinned = recipes.find(recipe => recipe.id === selectedId);
-      if (pinned && (!evaluateRecipeConstraints(pinned, catalog.metadata[pinned.id], constraints).eligible || !planMeal(pinned, day, input))) {
+      if (pinned && (!evaluateRecipeConstraints(pinned, catalog.metadata[pinned.id], constraints).eligible || !planMeal(pinned, day, input) || matching && !matching.has(pinned.id))) {
         selectedId = undefined;
         preservedDraftIds.delete(day);
       }
     }
     const existingMeals = weekMeals({ ...kitchen, meals }, intent);
     const candidates = recipes.flatMap(recipe => {
+      if (matching && !matching.has(recipe.id)) return [];
       if (selectedId && recipe.id !== selectedId || !intent.allowRepeats && (used.has(recipe.id) || [...preservedDraftIds].some(([otherDay, id]) => otherDay !== day && id === recipe.id))) return [];
       if (!selectedId && swappedDates.has(day) && recipe.id === (prior?.meal.recipeId ?? saved?.recipeId)) return [];
       const eligibility = evaluateRecipeConstraints(recipe, catalog.metadata[recipe.id], constraints);
@@ -170,7 +185,7 @@ export async function buildChefPlanDraft(raw: ChefPlanInput): Promise<ChefPlanDr
       const readiness = mealReadiness(meal, remaining, intent.today);
       const shopping = shoppingForWeek({ ...kitchen, meals: { ...meals, [day]: meal } }, intent.week, intent.today);
       const role = catalog.metadata[recipe.id]?.dinnerRole;
-      return [{ recipe, meal, readiness, eligibility, shoppingRows: shopping.length, reviewedMain: catalog.metadata[recipe.id]?.coreDinner || role === "main", nonDinner: Boolean(role && role !== "main" && role !== "unknown"), favorite: kitchen.favoriteRecipeIds?.includes(recipe.id) ?? false }];
+      return [{ recipe, meal, readiness, eligibility, shoppingRows: shopping.length, reviewedMain: catalog.metadata[recipe.id]?.coreDinner || role === "main", nonDinner: Boolean(role && role !== "main" && role !== "unknown"), taste: (kitchen.tastePreferences ?? []).filter(item => item.recipeId === recipe.id).reduce((score, item) => score + (item.preference === "cook_again" ? 1 : -1), 0), favorite: kitchen.favoriteRecipeIds?.includes(recipe.id) ?? false }];
     });
     const dinnerPool = selectedId ? candidates : candidates.some(item => item.reviewedMain) ? candidates.filter(item => item.reviewedMain) : candidates.filter(item => !item.nonDinner);
     dinnerPool.sort((a, b) => {
@@ -178,12 +193,12 @@ export async function buildChefPlanDraft(raw: ChefPlanInput): Promise<ChefPlanDr
       const shopping = a.shoppingRows - b.shoppingRows;
       const variety = Number(used.has(a.recipe.id)) - Number(used.has(b.recipe.id));
       const priority = intent.priority === "fewer_groceries" ? shopping || waste || variety : intent.priority === "variety" ? variety || waste || shopping : waste || shopping || variety;
-      return priority || a.eligibility.dislikedIngredients.length - b.eligibility.dislikedIngredients.length || Number(b.favorite) - Number(a.favorite) || a.recipe.id.localeCompare(b.recipe.id);
+      return priority || b.taste - a.taste || a.eligibility.dislikedIngredients.length - b.eligibility.dislikedIngredients.length || Number(b.favorite) - Number(a.favorite) || a.recipe.id.localeCompare(b.recipe.id);
     });
     const selected = dinnerPool[0];
     if (!selected) {
       const considered = recipes.filter(recipe => !selectedId || recipe.id === selectedId);
-      const blockedReasons = [...new Set(considered.flatMap(recipe => evaluateRecipeConstraints(recipe, catalog.metadata[recipe.id], constraints).reasons))].sort().slice(0, 3);
+      const blockedReasons = [...(intent.recipeQuery ? [`Requested dish, cuisine or ingredient: ${intent.recipeQuery}.`] : []), ...new Set(considered.flatMap(recipe => evaluateRecipeConstraints(recipe, catalog.metadata[recipe.id], constraints).reasons))].sort().slice(0, 3);
       const needsYield = considered.some(recipe => !recipe.servings && !planMeal(recipe, day, input));
       unresolved.push(`${day}: no eligible ${selectedId ? "selected" : "different"} dinner fits the requirements and saved stock reservations.${needsYield ? " Recipes with unknown yield need an explicit batch amount." : ""}${blockedReasons.length ? ` Catalog checks: ${blockedReasons.join(" ")}` : ""}`);
       // A failed replacement never deletes its saved dinner.
@@ -228,6 +243,8 @@ export async function applyChefPlanDraft({ kitchen, revision, catalog, draft }: 
     const recipe = catalog.recipes.find(item => item.id === change.meal.recipeId);
     if (!recipe || await chefRecipeHash(recipe) !== change.recipeHash || !evaluateRecipeConstraints(recipe, catalog.metadata[recipe.id], constraintsForDay({ kitchen, revision, catalog, intent }, change.date)).eligible) changed("A recipe or its requirements changed. Review a fresh plan.");
     if (intent.perDate[change.date]?.recipeId && intent.perDate[change.date].recipeId !== recipe.id) changed("A selected or kept dinner differs from the reviewed request. Review a fresh plan.");
+    const matching = matchingRecipeIds(catalog, intent, constraintsForDay({ kitchen, revision, catalog, intent }, change.date));
+    if (matching && !matching.has(recipe.id)) changed("The recipe no longer matches the requested dish, cuisine or ingredient.");
     if (!intent.allowRepeats && used.has(recipe.id)) changed("This plan repeats a recipe. Review its repeat preference.");
     const canonical = planMeal(recipe, change.date, { kitchen, revision, catalog, intent });
     if (!canonical || stable(canonical) !== stable(change.meal)) changed("Dinner quantities differ from the reviewed plan. Review a fresh preview.");

@@ -17,6 +17,8 @@
     "test:e2e": "node tools/testing/run-isolated.mjs e2e",
     "test:setup": "node tools/testing/run-isolated.mjs setup --project=desktop && node tools/testing/run-isolated.mjs setup --project=mobile",
     "test:smoke": "node tools/testing/run-isolated.mjs smoke",
+    "test:hosted": "node tools/testing/run-isolated.mjs hosted",
+    "test:hosted-dev": "node tools/testing/run-isolated.mjs hosted-dev",
     "test:dev": "node tools/testing/run-isolated.mjs dev",
     "typecheck": "tsc --noEmit",
     "db:migrate": "WRANGLER_LOG_PATH=.wrangler/wrangler.log wrangler d1 migrations apply DB --local --config wrangler.jsonc --persist-to .wrangler/state",
@@ -35,6 +37,7 @@
     "recipes:journey-eval": "node tools/testing/run-isolated.mjs journeys"
   },
   "dependencies": {
+    "better-auth": "^1.7.15",
     "drizzle-orm": "0.45.4",
     "next": "16.4.3",
     "react": "19.3.1",

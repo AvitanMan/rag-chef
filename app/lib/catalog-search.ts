@@ -182,7 +182,7 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
 
   let vectors = new Map<string, number[]>();
   let queryVector: number[] | null = null;
-  if (searchQuery.trim()) {
+  if (searchQuery.trim() && !(await import("./household")).hostedMode()) {
     try {
       vectors = await loadPrecomputedRecipeEmbeddingMap(embedModel);
       result.embeddingCount = vectors.size;

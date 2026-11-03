@@ -8,8 +8,7 @@ RAG Chef is a local-first cooking app with a pantry, weekly plan, shopping list,
 and step-by-step cooking workspace. Optional AI answers use an approved recipe
 catalog, preserve source attribution, and withhold prose that cannot be verified.
 
-Built for one household on one Mac. Browsing, planning, shopping, starter recipes,
-and calculated dinner amounts work without an AI model.
+Standalone mode runs one household on your computer. An opt-in **hosted family beta** adds Google sign-in, shared kitchens, personal OpenAI keys, and browser-connected Ollama. Browsing, planning, shopping, and calculated dinner amounts work without an AI model. See [hosted beta setup and release gates](docs/hosted-beta.md).
 
 ## Try it
 
@@ -29,6 +28,10 @@ account, model, or recipe download. Your pantry starts empty; adding starters
 changes only the catalog. The larger third-party evaluation corpus is never
 loaded as application data.
 
+After pulling updates, run `pnpm db:migrate` before restarting the app. Reviewed
+assistant saves require the latest catalog consistency migration; ordinary
+manual controls remain available if the database still needs that update.
+
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
 2. Choose a dinner. Review portions and missing ingredients in its dinner panel.
 3. Open **Weekly shopping** to review, copy, or print the ingredients still needed.
@@ -46,6 +49,7 @@ kitchen, not personal data.
 
 ## What it does
 
+- **Kitchen assistant:** reviewed pantry additions and corrections, cuisine-aware dinner plans, shopping previews, explicit taste feedback, and actual pantry usage after cooking. Every assistant change requires **Apply**.
 - **Pantry to dinner:** ingredient search, measured stock coverage, due-soon food,
   favorites, and recently cooked meals.
 - **Weekly planning:** dated dinners, portions and amount overrides, copied or
@@ -74,8 +78,7 @@ ollama pull nomic-embed-text
 
 Use **Settings → Test connection** to check generation, search, and answer
 verification separately. Missing embeddings keep lexical/pantry search usable.
-OpenAI generation is optional, but verified source answers still require the
-local Ollama verifier. The app checks that dependency before paid generation.
+OpenAI generation is optional. Source-answer verification uses the same selected provider, so OpenAI does not require Ollama. Its separate verification request is also billed to your key. Hosted accounts configure their personal connection in Settings; the server never falls back to a platform key.
 
 [Configuration and model setup](docs/guide.md#enable-local-ai) explains local
 environment files, optional server-side keys, and production-style local preview.
@@ -85,15 +88,15 @@ environment files, optional server-side keys, and production-style local preview
 ```mermaid
 flowchart LR
   UI[Pantry / Plan / Recipes / Cook] --> Kitchen[Revision-checked kitchen state]
-  Kitchen --> DB[(Local D1 database)]
+  Kitchen --> DB[(Local or household D1 database)]
   Sources[Approved recipe sources] --> Catalog[Recipes + source evidence]
   Catalog --> DB
   Query[Chef request] --> Filter[Deterministic constraints]
   DB --> Filter
-  Filter --> Search[Lexical + semantic retrieval]
+  Filter --> Search[Lexical retrieval / standalone semantic search]
   Search --> Amounts[Calculated dinner amounts]
   Search --> Model[Optional generation]
-  Model --> Verify[Local evidence verification]
+  Model --> Verify[Source and selected-provider verification]
   Verify --> Answer[Verified answer or source fallback]
 ```
 
@@ -148,7 +151,6 @@ Wikibooks content retains its attribution and CC BY-SA terms; TheMealDB content
 has separate terms. Neither the recipe corpus nor your local database becomes
 MIT-licensed merely by being used with this application.
 
-Keep the application bound to loopback. This prototype has no application-wide
-multi-user authentication; publishing the code does not deploy a public kitchen.
+Keep standalone mode bound to loopback. Public hosting requires the explicit hosted configuration, Google credentials, an approved recipe catalog, and the release checks in the [hosted beta guide](docs/hosted-beta.md). Publishing this repository does not deploy a kitchen.
 Never commit `.env.local`, `.dev.vars`, `.wrangler/`, kitchen backups, or other
 personal local state. See the guide for exact offline and backup limits.

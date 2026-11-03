@@ -26,6 +26,33 @@ test.beforeEach(async ({ page, request }) => {
   await saveFixture(request, emptyState());
 });
 
+test("navigation waits for client hydration before opening a planned dinner", async ({ page, request }) => {
+  const recipe = await recipeFixture(request);
+  await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
+  let release!: () => void;
+  let arrived!: () => void;
+  const scriptsHeld = new Promise<void>(resolve => { release = resolve; });
+  const scriptRequested = new Promise<void>(resolve => { arrived = resolve; });
+  await page.route(/\/assets\/[^/]+\.js(?:\?|$)/, async route => {
+    arrived(); await scriptsHeld; await route.continue();
+  });
+  try {
+    await page.goto("/", { waitUntil: "commit" });
+    await scriptRequested;
+    const plan = page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Plan/ }).filter({ visible: true }).first();
+    await expect(plan).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Kitchen assistant", exact: true })).toBeDisabled();
+    // A single interaction waits for usable controls instead of being lost
+    // against server-rendered markup before React's handlers are attached.
+    const clicked = plan.click();
+    release(); await clicked;
+    await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
+    await expect(page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true })).toBeVisible();
+  } finally { release(); }
+});
+
 test("use-by edits persist and shared stock covers only dinners on eligible dates", async ({ page, request }) => {
   const recipe = await recipeFixture(request);
   const tomorrow = "2026-10-23";

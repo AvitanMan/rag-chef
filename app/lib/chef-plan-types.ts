@@ -7,6 +7,8 @@ export interface ChefPlanIntent {
   week: string;
   today: string;
   count: number;
+  /** Positive dish, cuisine or ingredient query, distinct from exclusions. */
+  recipeQuery?: string;
   dates: string[];
   servings: number | null;
   batches: number | null;
@@ -40,7 +42,7 @@ export interface ChefPlanDraft {
   unresolved: string[];
   warnings: string[];
   reviewHash: string;
-  interpretation: "ollama" | "manual" | "rules";
+  interpretation: "ollama" | "openai" | "manual" | "rules";
   timings?: { totalMs: number };
 }
 export interface ChefPlanCatalog {

@@ -230,3 +230,25 @@ test('count expansion retains later draft dates and scoped controls while fillin
     assert.deepEqual(next.meals[saved.date], saved);
   }
 });
+
+test('changing the whole draft cuisine reselects incompatible automatic choices and preserves explicit Keep', async () => {
+  const rows = [
+    { ...recipe('mexican-a', 'beans'), cuisine: 'Mexican' },
+    { ...recipe('mexican-b', 'corn'), cuisine: 'Mexican' },
+    { ...recipe('italian-a', 'rice'), cuisine: 'Italian' },
+    { ...recipe('italian-b', 'tomato'), cuisine: 'Italian' },
+  ];
+  const data = input(rows, { intent: intent({ recipeQuery: 'Mexican' }) });
+  const previousDraft = await buildChefPlanDraft(data);
+  assert.equal(previousDraft.changes.length, 2);
+  const revisedIntent = resolveChefPlanIntent('Make all dinners Italian', previousDraft.intent, {}, data.catalog).intent;
+  const revised = await buildChefPlanDraft({ ...data, intent: revisedIntent, previousDraft });
+  assert.equal(revised.changes.length, 2);
+  assert.ok(revised.changes.every(change => change.meal.recipe.cuisine === 'Italian'));
+  assert.deepEqual(revised.intent.dates, previousDraft.intent.dates);
+  assert.deepEqual(shoppingForWeek(await applyChefPlanDraft({ ...data, draft: revised }), revised.intent.week, revised.intent.today), revised.shopping);
+  const keepDate = previousDraft.changes[0].date;
+  const kept = await buildChefPlanDraft({ ...data, intent: { ...revisedIntent, keepDates: [keepDate] }, previousDraft });
+  assert.equal(kept.changes.some(change => change.date === keepDate), false);
+  assert.ok(kept.unresolved.some(reason => reason.includes(keepDate)));
+});

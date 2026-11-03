@@ -1,5 +1,8 @@
 import { partialRecipeAnswer } from "@/app/lib/chef-question-plan";
-import { checkLocalVerifier } from "@/app/lib/provider-readiness";
+import { requireHousehold, HouseholdAuthError, householdError } from "@/app/lib/household";
+import { AiTaskRequired, AiError, createAiWorkflow, aiWorkflowResponse, type AiResume, type StructuredInference } from "@/app/lib/ai-inference";
+import { runOpenAIInference } from "@/app/lib/ai-connections";
+import { DEFAULT_COOKING_PROFILE } from "@/app/lib/kitchen-types";
 import { isPlanningQuantityQuestion, planningQuantityAnswer, originalIngredientAnswer, planningIngredientStepAnswer } from "@/app/lib/chef-planning-answer";
 import { verifyChefAnswer, type AnswerVerification } from "@/app/lib/chef-verification";
 import {
@@ -100,20 +103,38 @@ class ProviderError extends Error {
   }
 }
 
-export async function POST(request: Request): Promise<Response> {
+export const POST = (request: Request) => executeChef(request);
+export async function executeChef(request: Request, resume?: AiResume): Promise<Response> {
+  try { return await executeChefRequest(request, resume); }
+  catch (error) { return aiWorkflowResponse(error) ?? (error instanceof HouseholdAuthError ? householdError(error) : jsonError(503, "ai_unavailable", "Chef is unavailable. Use the saved recipe directions or retry.")); }
+}
+async function executeChefRequest(request: Request, resume?: AiResume): Promise<Response> {
   const started = performance.now();
+  const householdContext = await requireHousehold(request);
   if (Number(request.headers.get("content-length") ?? 0) > MAX_REQUEST_BYTES) return jsonError(413, "request_too_large", "Request body is too large.");
   let input: ChefRequest;
+  let rawInput: Record<string, unknown>;
   try {
     const text = await request.text();
     if (new TextEncoder().encode(text).length > MAX_REQUEST_BYTES) return jsonError(413, "request_too_large", "Request body is too large.");
-    input = parseChefRequest(JSON.parse(text));
+    rawInput = JSON.parse(text);
+    input = parseChefRequest(rawInput);
   } catch (error) {
     return error instanceof ChefValidationError ? jsonError(400, "invalid_request", error.message) : jsonError(400, "invalid_json", "Request body must be valid JSON.");
   }
+  const authoritativeKitchen = householdContext.mode === "hosted" || rawInput.ai !== undefined ? await getKitchenDocument(householdContext) : undefined;
+  if (householdContext.mode === "hosted") {
+    const savedProfile = authoritativeKitchen?.state?.cookingProfile ?? DEFAULT_COOKING_PROFILE;
+    input.pantry = (authoritativeKitchen?.state?.pantry ?? []).map(item => ({ name: item.name, quantity: item.measure }));
+    input.profile = { ...input.profile, allergies: unique([...savedProfile.allergies, ...input.profile.allergies]), diet: unique([...(savedProfile.diet === "No restriction" ? [] : [savedProfile.diet]), ...input.profile.diet]), dislikes: unique([...savedProfile.dislikes, ...input.profile.dislikes]), equipment: savedProfile.equipment, equipmentSpecified: true };
+    input.context = { ...input.context, kitchenRevision: authoritativeKitchen!.revision };
+  }
+  const workflow = authoritativeKitchen ? await createAiWorkflow(request, householdContext, { operation: "chef", input: rawInput, kitchenRevision: authoritativeKitchen.revision }, resume) : undefined;
+  if (workflow) input.provider = workflow.provider === "openai" ? "openai" : "ollama";
   // Discovery chips belong to dinner search, not help for an already chosen meal.
   if (input.context?.recipeId || input.context?.purpose === "cooking") input.refinements = [];
-  const model = resolveChatModel(input.provider, input.model);
+  const model = workflow?.model ?? resolveChatModel(input.provider, input.model);
+  const cloudVerifier: StructuredInference | undefined = !workflow && input.provider === "openai" ? inference => runOpenAIInference({ apiKey: env("OPENAI_API_KEY"), model }, model, inference, request.signal) : undefined;
   const embedModel = env("OLLAMA_EMBED_MODEL", DEFAULT_OLLAMA_EMBED_MODEL);
   let retrieval: RetrievalResult;
   const preWarnings: string[] = [];
@@ -123,7 +144,7 @@ export async function POST(request: Request): Promise<Response> {
   let dinner = input.context;
   if (dinner?.kitchenRevision !== undefined || dinner?.mealDate) {
     try {
-      const document = await getKitchenDocument();
+      const document = await getKitchenDocument(householdContext);
       if (dinner.kitchenRevision !== undefined && document.revision !== dinner.kitchenRevision) return jsonError(409, "kitchen_changed", "Your kitchen changed in another tab. Refresh the saved kitchen and retry.");
       savedMeal = dinner.mealDate ? document.state?.meals[dinner.mealDate] : undefined;
       if (dinner.mealDate && (!savedMeal || savedMeal.id !== dinner.mealId || savedMeal.recipeId !== dinner.recipeId)) return jsonError(409, "context_changed", "This saved dinner changed. Open the current dinner and ask again.");
@@ -219,7 +240,7 @@ export async function POST(request: Request): Promise<Response> {
   const selections = new Map<string, EvidenceSelection>();
   for (const item of ranked) {
     let vectors = new Map<number, number[]>(), queryVector: number[] | null = null;
-    if (question && !planningAnswer && !originalAnswer && !partialAnswer && !missingTotalTime && !missingNutrition && recipeEvidence(item.recipe).length > 12) try {
+    if (householdContext.mode !== "hosted" && question && !planningAnswer && !originalAnswer && !partialAnswer && !missingTotalTime && !missingNutrition && recipeEvidence(item.recipe).length > 12) try {
       const chunks = await listStoredRecipeEmbeddings(embedModel, RECIPE_STEP_EMBEDDING_KIND, item.recipe.id);
       if (chunks.length) {
         queryVector = (await embedTextsWithOllama([buildRecipeQueryText(input.query, [])], { model: embedModel, timeoutMs: 8000, signal: request.signal })).vectors[0] ?? null;
@@ -277,16 +298,6 @@ export async function POST(request: Request): Promise<Response> {
     generated = { answerStatus: "unsupported", answer: "The approved recipe record does not establish a total recipe time. Durations in individual steps are not a complete start-to-finish time.", sourceFacts: [], chefChanges: [], citations: [], warnings: [], recommendations: [] };
   } else {
     try {
-      // Cloud factual/adaptation prose must be verified locally. Detect a
-      // missing verifier before spending a generation request; deterministic
-      // answers above and app-owned discovery summaries need no such probe.
-      if (input.provider === "openai" && (factualQuestion || allowChanges)) {
-        const readiness = await checkLocalVerifier(request.signal);
-        if (!readiness.ready) {
-          verification = { status: "unavailable", checkedSentenceCount: 0, reason: "preflight_unavailable" };
-          throw new ProviderError(readiness.message, 503, "verification_preflight_unavailable");
-        }
-      }
       const buildPrompt = (rejectedAnswer?: string) => buildUserPrompt(partialAnswer?.remainingQuery ? { ...input, query: partialAnswer.remainingQuery } : input, ranked, allowChanges, retrieval.metadataByRecipeId, planningAmounts, selectedEvidence, factualQuestion, recommendationLimit, techniqueGuides, rejectedAnswer);
       let prompt = buildPrompt();
       promptBytes = new TextEncoder().encode(prompt).length;
@@ -297,7 +308,7 @@ export async function POST(request: Request): Promise<Response> {
         try {
           const generationStarted = performance.now();
           try {
-            generated = input.provider === "openai" ? await generateWithOpenAI(model, prompt, references, generationSchema, request.signal) : await generateWithOllama(model, prompt, references, generationSchema, request.signal);
+            generated = workflow ? validateStructuredAnswer(await workflow.infer({ operation: "chef_answer", schema: generationSchema, messages: [{ role: "system", content: `${CHEF_SYSTEM_PROMPT}\n\n${COOKING_STEP_RULES}` }, { role: "user", content: prompt }], maxOutputTokens: 2500 }), references) : input.provider === "openai" ? await generateWithOpenAI(model, prompt, references, generationSchema, request.signal) : await generateWithOllama(model, prompt, references, generationSchema, request.signal);
           } finally { generationMs += Math.round(performance.now() - generationStarted); }
           draftAnswer = generated.answer;
           if (!allowChanges && generated.chefChanges.length) invalidGeneratedOutput();
@@ -358,9 +369,9 @@ export async function POST(request: Request): Promise<Response> {
               sourceFocus: dinner?.recipeId ? { recipeId: dinner.recipeId, stepEvidenceId: stepFocus?.evidenceId ?? dinner.stepEvidenceId, ...(stepFocus ? { stepText: stepFocus.text, question: input.query } : {}), quantityBasis: planningAmounts ? "final_dinner" : "original_recipe" } : undefined,
               techniqueGuidance: cookingRecipe ? techniqueGuides.map(guide => ({ recipeId: cookingRecipe.id, term: guide.term, explanation: guide.explanation })) : [],
               kitchenByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients, requirements: { diet: input.profile.diet, equipment: input.profile.equipment }, eligibility: { eligible: item.eligibility.eligible, dietUnknowns: item.eligibility.dietUnknowns, dietConflicts: item.eligibility.dietConflicts, equipmentMissing: item.eligibility.equipmentMissing }, ...(item.readiness ? { readiness: item.readiness } : {}) }])),
-              planningAmounts, signal: request.signal,
+              planningAmounts, signal: request.signal, infer: workflow?.infer ?? cloudVerifier,
             });
-            verification = checked.verification; verificationMs += checked.milliseconds;
+            verification = { ...checked.verification, method: workflow?.provider === "browser_ollama" ? "device_model" : input.provider === "openai" ? "openai_model" : "local_model" }; verificationMs += checked.milliseconds;
             if (verification.status !== "checked") throw new ProviderError("The answer could not be checked against its evidence.", 502, verification.status === "rejected" ? "unsupported_claim" : "verification_unavailable");
             if (checked.sourceFacts.length) generated.sourceFacts = checked.sourceFacts;
           }
@@ -383,6 +394,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       }
     } catch (error) {
+      if (error instanceof AiTaskRequired || error instanceof AiError) throw error;
       generation = "catalog_fallback";
       const preflightUnavailable = error instanceof ProviderError && error.code === "verification_preflight_unavailable";
       const unverified = preflightUnavailable || error instanceof ProviderError && ["unsupported_detail", "unsupported_total_time", "unlabeled_time_estimate", "unsupported_claim", "verification_unavailable", "adaptation_conflict"].includes(error.code);
@@ -422,7 +434,7 @@ export async function POST(request: Request): Promise<Response> {
         const allowed = new Set((await listCatalogRecipes(1000, { forEmbedding: true })).map((record) => record.recipe.id));
         if (ranked.some((item) => !allowed.has(item.recipe.id))) return jsonError(409, "context_changed", "Source permissions changed while Chef was answering. Open the current recipe and ask again.");
       }
-      if (dinner?.kitchenRevision !== undefined && (await getKitchenDocument()).revision !== dinner.kitchenRevision) return jsonError(409, "context_changed", "Your kitchen changed while Chef was answering. Wait for saving, then ask again.");
+      if (dinner?.kitchenRevision !== undefined && (await getKitchenDocument(householdContext)).revision !== dinner.kitchenRevision) return jsonError(409, "context_changed", "Your kitchen changed while Chef was answering. Wait for saving, then ask again.");
       if (techniqueGuides.length) {
         const policy = await getRecipeSourcePolicy("wikibooks");
         if (policy && (policy.approval_status !== "approved" || !policy.allow_display || !policy.allow_cache || !policy.allow_index_text)) return jsonError(409, "context_changed", "The cooking reference permissions changed. Ask again to use the current sources.");

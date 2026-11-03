@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { assistantFetch, type AISelection } from "../lib/browser-ai";
+import { useAppSession } from "../lib/app-session";
 import { Modal } from "./Modal";
 import { dateLabel } from "./WeeklyKitchenViews";
 import { addDateDays } from "../lib/kitchen-state";
@@ -20,10 +22,11 @@ function editableDraftIntent(draft: ChefPlanDraft): ChefPlanIntent {
   ])].sort() };
 }
 
-export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revision, saveState, model, refreshKitchen, applied }: {
+export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revision, saveState, model, aiSettings, refreshKitchen, applied }: {
   visible: boolean; close: () => void; week: string; today: string; kitchen: KitchenState; revision: number;
-  saveState: string; model: string; refreshKitchen: () => Promise<boolean>; applied: (document: KitchenDocument) => Promise<boolean>;
+  saveState: string; model: string; aiSettings?: AISelection; refreshKitchen: () => Promise<boolean>; applied: (document: KitchenDocument) => Promise<boolean>;
 }) {
+  const { session, local: storage, fetch: kitchenFetch } = useAppSession();
   const [intent, setIntent] = useState(() => initialIntent(week, today));
   const [excluded, setExcluded] = useState("");
   const [equipment, setEquipment] = useState("");
@@ -42,6 +45,11 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
     if (draft) { draftHeading.current?.focus({ preventScroll: true }); draftHeading.current?.scrollIntoView({ block: "start" }); }
   }, [draft]);
   useEffect(() => () => { request.current.controller?.abort(); }, []);
+  useEffect(() => {
+    request.current.id++; request.current.controller?.abort(); request.current.controller = undefined;
+    const timer = window.setTimeout(() => setBusy(current => current === "apply" ? current : ""), 0);
+    return () => clearTimeout(timer);
+  }, [aiSettings?.provider, aiSettings?.ollamaModel, aiSettings?.openaiModel]);
   const editableIntent: ChefPlanIntent = { ...intent, excludedIngredients: names(excluded), excludedEquipment: names(equipment) };
   const edited = JSON.stringify(editableIntent) !== JSON.stringify(draft ? editableDraftIntent(draft) : initialIntent(week, today));
   const stale = invalidated || Boolean(draft && (draft.kitchenRevision !== revision || draft.intent.today !== today));
@@ -69,9 +77,9 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
     const controller = new AbortController(); request.current.controller = controller;
     setBusy("preview"); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/chef/plan", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ query: manual ? "" : query.trim(), week, today, kitchenRevision: revision, model,
-          ...(!stale && draft ? { previousDraft: draft } : {}), ...(manual ? { intent: { ...manualIntent, authorizedReplacementDates: manualIntent.authorizedReplacementDates ?? [] } } : {}) }) });
+      const response = await assistantFetch("/api/chef/plan", { query: manual ? "" : query.trim(), week, today, kitchenRevision: revision, model,
+          ...(!stale && draft ? { previousDraft: draft } : {}), ...(manual ? { intent: { ...manualIntent, authorizedReplacementDates: manualIntent.authorizedReplacementDates ?? [] } } : {}) },
+          { selection: aiSettings ?? { provider: "ollama", ollamaModel: model, openaiModel: "" }, hosted: session.mode === "hosted", storage, signal: controller.signal, fetcher: kitchenFetch });
       const result = await response.json() as ChefPlanResponse;
       if (id !== request.current.id || controller.signal.aborted) return;
       if (!response.ok) {
@@ -95,7 +103,7 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
     applying.current = true; setBusy("apply"); setError(""); setMessage("");
     try {
       // Do not abort a save after dispatch: its result must be reconciled with the saved kitchen.
-      const response = await fetch("/api/chef/plan/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft }) });
+      const response = await kitchenFetch("/api/chef/plan/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft }) });
       const result = await response.json() as KitchenDocument & ChefPlanResponse;
       if (!response.ok) {
         setInvalidated(true);

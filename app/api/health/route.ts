@@ -5,6 +5,8 @@ import {
 } from "@/app/lib/chef-schema";
 
 import { checkOllamaReadiness, verificationCapability } from "@/app/lib/provider-readiness";
+import { hostedMode, requireHousehold, householdError, initializeHouseholdRuntime, requireLocalRequest } from "@/app/lib/household";
+import { redactedAiConnections } from "@/app/lib/ai-connections";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const HEALTH_TIMEOUT_MS = 5_000;
 
@@ -17,6 +19,14 @@ type ProviderHealth = {
 };
 
 export async function GET(request: Request): Promise<Response> {
+  await initializeHouseholdRuntime();
+  try { requireLocalRequest(request); } catch (error) { return householdError(error); }
+  if (hostedMode()) {
+    try {
+      const context = await requireHousehold(request), connections = await redactedAiConnections(context);
+      return Response.json({ ok: true, status: "ok", mode: "hosted", assistantEnabled: context.assistantEnabled, connections, message: "Recipe search is ready. Generation and verification use your personal AI connection.", capabilities: { embeddings: { ready: false, model: "", message: "Hosted recipe search uses keywords and pantry matches." } } }, { headers: { "cache-control": "no-store" } });
+    } catch (error) { return householdError(error); }
+  }
   const searchParams = new URL(request.url).searchParams;
   const requestedProvider = searchParams.get("provider");
   const requestedModel = searchParams.get("model")?.trim() ?? "";
@@ -55,7 +65,7 @@ export async function GET(request: Request): Promise<Response> {
   const requested = requestedProvider as ChefProvider | null;
   const selected = requested ?? DEFAULT_CHEF_PROVIDER;
   const selectedGeneration = selected === "ollama" ? ollama : openai;
-  const verification = verificationCapability(ollama);
+  const verification = selected === "openai" ? { ready: openai.ok, model: openai.model, message: "Answer verification uses your OpenAI connection." } : verificationCapability(ollama);
   const capabilities = {
     generation: { ready: selectedGeneration.ok, model: selectedGeneration.model, message: selectedGeneration.message },
     embeddings: { ready: ollama.embedModelInstalled, model: ollama.embedModel, message: ollama.embedModelInstalled
@@ -65,7 +75,7 @@ export async function GET(request: Request): Promise<Response> {
   const requestedOk = (requested ? selectedGeneration.ok : ollama.ok || openai.ok) && verification.ready;
   const message = !selectedGeneration.ok ? selectedGeneration.message
     : !verification.ready ? `${selected === "openai" ? "OpenAI generation" : "Generation"} is available. ${verification.message} Browsing and calculated dinner amounts still work.`
-    : "Chef generation and local answer verification are ready.";
+    : selected === "openai" ? "Chef generation and answer verification are ready through OpenAI." : "Chef generation and local answer verification are ready.";
 
   return Response.json(
     {

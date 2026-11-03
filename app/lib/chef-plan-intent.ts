@@ -1,9 +1,11 @@
-import type { ChefPlanDraft, ChefPlanIntent, ChefPlanPriority } from "./chef-plan-types";
+import type { ChefPlanDraft, ChefPlanIntent, ChefPlanPriority, ChefPlanCatalog } from "./chef-plan-types";
 import type { Diet } from "./recipe-types";
 import { addDateDays, weekStart } from "./kitchen-state";
 import { recipeQueryIntent } from "./recipe-query";
 import { normalizeEquipmentName } from "./recipe-constraints";
 import { validatePlanIntent } from "./chef-plan";
+import type { StructuredInference, StructuredInferenceRequest } from "./ai-inference";
+import { retrievalTerms } from "./retrieval-ranking";
 import { DEFAULT_OLLAMA_CHAT_MODEL } from "./chef-schema";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -47,7 +49,7 @@ export const CHEF_PLAN_INTENT_SCHEMA = {
 
 /** The model boundary requires the complete schema; the deterministic resolver
  * deliberately also accepts partial inputs for preflight and manual parsing. */
-function validateGeneratedPlanIntent(value: unknown): asserts value is Record<string, unknown> {
+export function validateGeneratedPlanIntent(value: unknown): asserts value is Record<string, unknown> {
   const fail = () => { throw new ChefPlanIntentError("The local model returned an invalid interpretation. Use the planning controls or retry.", "invalid_interpretation", 502); };
   if (!record(value) || CHEF_PLAN_INTENT_SCHEMA.required.some(field => !Object.hasOwn(value, field)) || Object.keys(value).some(field => !Object.hasOwn(CHEF_PLAN_INTENT_SCHEMA.properties, field))) fail();
   const result = value as Record<string, unknown>;
@@ -67,7 +69,7 @@ function validateGeneratedPlanIntent(value: unknown): asserts value is Record<st
 }
 
 /** Explicit English values and saved draft requirements are authoritative over model slots. */
-export function resolveChefPlanIntent(query: string, base: ChefPlanIntent, generated: unknown = {}): { intent?: ChefPlanIntent; clarification?: string } {
+export function resolveChefPlanIntent(query: string, base: ChefPlanIntent, generated: unknown = {}, catalog?: ChefPlanCatalog): { intent?: ChefPlanIntent; clarification?: string } {
   if (!record(generated) || Object.keys(generated).some(key => !(key in CHEF_PLAN_INTENT_SCHEMA.properties))) throw new ChefPlanIntentError("The local model returned an invalid interpretation. Use the planning controls or retry.", "invalid_interpretation", 502);
   for (const field of ["count", "servings", "batches", "maxTotalMinutes"] as const) if (generated[field] !== undefined && generated[field] !== null && (typeof generated[field] !== "number" || !Number.isFinite(generated[field]))) throw new ChefPlanIntentError("Invalid numeric interpretation. Use the planning controls or retry.", "invalid_interpretation", 502);
   for (const field of ["dates", "excludedIngredients", "diets", "excludedEquipment"] as const) if (generated[field] !== undefined && (!Array.isArray(generated[field]) || (generated[field] as unknown[]).length > 30 || !(generated[field] as unknown[]).every(item => typeof item === "string" && item.length <= 120))) throw new ChefPlanIntentError("Invalid planning interpretation. Use the planning controls or retry.", "invalid_interpretation", 502);
@@ -108,8 +110,8 @@ export function resolveChefPlanIntent(query: string, base: ChefPlanIntent, gener
   if (/\bnext week\b/.test(text) && base.week !== addDateDays(weekStart(base.today), 7)) return { clarification: "Select next week in the planning controls, then ask again." };
   if (/\b(?:two|2|three|3|several|multiple)\s+weeks\b/.test(text) || mentioned.some(date => !dates.includes(date) || date < base.today)) return { clarification: "Choose future dinner dates within the selected week." };
   if (/\b(?:it|that|this one|the other one)\b/.test(text) && /\b(?:replace|swap|change|keep)\b/.test(text) && !mentioned.length) return { clarification: "Which dinner date do you want to change or keep?" };
-  const count = text.match(new RegExp(`\\b(${NUMBER})\\s+(?:(?:different|varied|vegetarian|vegan|meatless|gluten[ -]free|dairy[ -]free|low[ -]carb)\\s+)*(?:dinners?|meals?|nights?)\\b`));
-  const serves = portionMatch(text);
+  const count = text.match(new RegExp(`\\b(${NUMBER})\\s+(?:(?!(?:and|for|people|persons?|servings?|portions?|${NUMBER})\\b)[a-z][a-z-]*\\s+){0,4}(?:dinners?|meals?|nights?)\\b`));
+  const serves = portionMatch(count ? text.replace(count[0], "dinners") : text);
   const batches = text.match(new RegExp(`\\b(${NUMBER})\\s+(?:recipe\\s+)?batches?\\b`));
   if (count) intent.count = number(count[1]);
   else if (citedNumber("count", generated.count) && /\b(?:dinners?|meals?|nights?|evenings?)\b/.test(sourceSpan("count"))) intent.count = generated.count as number;
@@ -202,18 +204,26 @@ export function resolveChefPlanIntent(query: string, base: ChefPlanIntent, gener
   if (/\b(?:allow|okay with|ok with|fine with|don't mind)\s+(?:recipe\s+)?repeat/.test(text)) intent.allowRepeats = true;
   if (sourceSpan("allowRepeats") && !negatedDirective(sourceSpan("allowRepeats")) && typeof generated.allowRepeats === "boolean" && /\b(?:same|again|repeat|unique|different)\b/.test(sourceSpan("allowRepeats"))) intent.allowRepeats = generated.allowRepeats;
   if (/\b(?:no|without|avoid|don't want|do not allow|don't allow)\s+repeat/.test(text)) intent.allowRepeats = false;
+  const topic = positiveRecipeQuery(text, catalog);
+  if (mentioned.length && base.dates.some(date => !mentioned.includes(date)) && (topic || positiveRecipeQuery(text.replace(/\b(?:not|non)\b/gi, ""), catalog))) return { clarification: "Cuisine, dish and ingredient filters currently apply to the complete draft. Choose a recipe for that date in the dinner controls, or request a filter for the whole plan." };
+  if (topic) intent.recipeQuery = topic;
+  if (/\b(?:any|all)\s+(?:cuisines?|dishes|ingredients)|\bclear\s+(?:the\s+)?(?:dish|cuisine|recipe)\s+filter\b/i.test(query)) delete intent.recipeQuery;
   return { intent: validatePlanIntent(intent) };
 }
 
-export async function requestChefPlanIntent(options: { query: string; week: string; today: string; previousDraft?: ChefPlanDraft; model?: string; signal?: AbortSignal }): Promise<{ intent?: ChefPlanIntent; clarification?: string }> {
+export async function requestChefPlanIntent(options: { query: string; week: string; today: string; previousDraft?: ChefPlanDraft; model?: string; signal?: AbortSignal; infer?: StructuredInference; catalog?: ChefPlanCatalog }): Promise<{ intent?: ChefPlanIntent; clarification?: string }> {
   const base = options.previousDraft ? validatePlanIntent({ ...options.previousDraft.intent, dates: unique([...options.previousDraft.intent.dates, ...options.previousDraft.changes.map(change => change.date)]), authorizedReplacementDates: unique([...(options.previousDraft.intent.authorizedReplacementDates ?? []), ...options.previousDraft.changes.filter(change => change.expectedMealId !== null).map(change => change.date)]) }) : defaultPlanIntent(options.week, options.today);
   if (base.week !== options.week || base.today !== options.today) throw new ChefPlanIntentError("The draft belongs to a different week or date. Start a new plan.", "plan_changed", 409);
   const query = options.query.trim();
   if (!query || query.length > 2000) throw new ChefPlanIntentError("Enter a planning request of 1–2000 characters.");
-  if (/\b(?:italian|mexican|indian|thai|chinese|japanese|mediterranean|greek|french|korean|lentil|lentils|pasta|pizza|soup|salad|chicken|beef|fish|rice)\b/i.test(recipeQueryIntent(query).topic)) return { clarification: "For a particular dish or cuisine, choose recipes in the dinner controls or use recipe search. This planner currently understands dates, portions, dietary requirements, exclusions, and shopping priorities." };
   // Resolve obvious ambiguity before spending model work.
-  const checked = resolveChefPlanIntent(query, base);
+  const checked = resolveChefPlanIntent(query, base, {}, options.catalog);
   if (checked.clarification) return checked;
+  if (options.infer) {
+    const generated = await options.infer(buildChefPlanInferenceRequest({ query, week: options.week, today: options.today, previousIntent: options.previousDraft?.intent }));
+    validateGeneratedPlanIntent(generated);
+    return resolveChefPlanIntent(query, base, generated, options.catalog);
+  }
   const baseUrl = (typeof process !== "undefined" ? process.env.OLLAMA_BASE_URL?.trim() : "") || "http://127.0.0.1:11434";
   const url = new URL(baseUrl);
   if (!["http:", "https:"].includes(url.protocol) || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.username || url.password) throw new ChefPlanIntentError("Planning requires local Ollama. Use the manual planning controls.", "planner_unavailable", 503);
@@ -233,9 +243,40 @@ export async function requestChefPlanIntent(options: { query: string; week: stri
     if (result.done_reason === "length" || typeof result.message?.content !== "string") throw new Error("Incomplete interpretation.");
     const generated: unknown = JSON.parse(result.message.content);
     validateGeneratedPlanIntent(generated);
-    return resolveChefPlanIntent(query, base, generated);
+    return resolveChefPlanIntent(query, base, generated, options.catalog);
   } catch (error) {
     if (error instanceof ChefPlanIntentError) throw error;
     throw new ChefPlanIntentError(options.signal?.aborted ? "Planning request cancelled." : "Local planning is unavailable or its answer was invalid. Use the manual planning controls or retry.", options.signal?.aborted ? "cancelled" : "planner_unavailable", options.signal?.aborted ? 499 : 503);
   } finally { clearTimeout(timeout); }
+}
+
+
+const TOPIC_STOP = new Set("plan dinner dinners meal meals recipe recipes day days night nights week this next today tomorrow tonight people person serving servings portions portion use using food stock pantry have expires expiring soon due before ingredients ingredient new different simple easy quick fast fewer groceries shopping time minutes make cook want please only with without for the and from my our a an of to in on four three two one five six seven eight nine ten what can i we us by no any all vegetarian vegan gluten free low carb original quantities batches batch source keep replace change set monday tuesday wednesday thursday friday saturday sunday".split(" "));
+/** Keep explicit requested topics even when the approved catalog has no match.
+ * Dropping an unknown cuisine or ingredient would silently relax the request. */
+export function positiveRecipeQuery(query: string, catalog?: ChefPlanCatalog): string | undefined {
+  // These phrases describe the plan, not food. Remove complete control phrases
+  // before preserving unknown explicit topics (for example an absent cuisine).
+  query = query.replace(/\ba (?:couple|pair)(?: of)?\b/gi, " ")
+    .replace(/\b(?:use|using)\s+up\b/gi, "using")
+    .replace(/\b(?:different each|mix it up|(?:novel|varied|different)\s+(?:mix|selection)|variety|varied|novelty|novel|perishables?|(?:goes|going) off)\b/gi, " ")
+    .replace(/\b(?:(?:fewer|less|minimi[sz]e|minimal|reduce)\s+(?:(?:additional|extra)\s+)?)?(?:(?:food\s+)?waste|groceries|grocery shopping|shopping|ingredients to buy)(?:\s+minimi[sz]ed)?\b/gi, " ");
+  const words = retrievalTerms(recipeQueryIntent(query).topic).filter(word => !TOPIC_STOP.has(word) && !/^\d/.test(word));
+  const available = new Set(catalog ? catalog.recipes.flatMap(recipe => retrievalTerms([recipe.title, recipe.cuisine, recipe.category, ...recipe.tags, ...recipe.ingredients.map(row => row.name)].join(" ")))
+    : retrievalTerms("italian mexican indian thai chinese japanese mediterranean greek french korean lentils pasta pizza soup salad chicken beef fish rice beans curry stew"));
+  const frames = [
+    new RegExp(`\\b(?:plan|prepare|suggest|choose|make|want)\\s+(?:(?:a|an|for|all|${NUMBER})\\s+)*((?:[a-z][a-z-]*\\s+){1,4})(?:dinners?|meals?|recipes?)\\b`, "gi"),
+    /\b(?:with|using|featuring|containing)\s+([^.;!?]+?)(?=\b(?:for|under|within|before|on)\b|[.;!?]|$)/gi,
+    new RegExp(`\\b(?:make|change|set)\\s+(?:(?:all|the)\\s+)*(?:dinners?|meals?|${DAYS.join("|")})\\s+(?:to\\s+)?([^.;!?]+)`, "gi"),
+    /\b(?:plan|prepare|make)\s+(?:(?:a|an|some)\s+)?([a-z][a-z-]*)(?=\s+(?:for|on)\b|[.;!?]|$)/gi,
+  ];
+  const explicit = new Set(frames.flatMap(pattern => [...query.matchAll(pattern)].flatMap(match => retrievalTerms(recipeQueryIntent(match[1]).topic))));
+  const terms = [...new Set(words.filter(word => available.has(word) || explicit.has(word)))];
+  return terms.length ? terms.join(" ") : undefined;
+}
+export function buildChefPlanInferenceRequest(input: { query: string; week: string; today: string; previousIntent?: ChefPlanIntent }): StructuredInferenceRequest {
+  return { operation: "plan_intent", schema: CHEF_PLAN_INTENT_SCHEMA, maxOutputTokens: 700, messages: [
+    { role: "system", content: "Extract a dinner-planning request as the supplied JSON schema. This only interprets a request; it never authorizes changes. Use null or [] for unspecified fields. For every non-null proposed value, evidence must quote an exact short substring of the user query supporting that field; use an empty string for unspecified fields. Evidence must come from the query, never previousIntent. Examples: a household of five supports servings=5; a pair of meals supports count=2; do not buy much supports priority=fewer_groceries; plant based supports diets=[vegan]. Dates must be explicit requested dates within the selected week, not guessed from a meal count. Do not include an ingredient when the user says not to exclude it. Preserve negations. For constraints scoped to a weekday, leave global diets and servings unspecified; the application resolves those day-specific clauses. Priority values mean use expiring food, fewer additional groceries, or variety. Do not invent nutrition, prices, ingredients, recipes, dates or quantities. Never ask clarification: the application validates and supplies defaults. The previous draft is context, not a new instruction." },
+    { role: "user", content: JSON.stringify(input) },
+  ] };
 }

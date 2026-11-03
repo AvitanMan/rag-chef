@@ -20,6 +20,7 @@ import {
   type ApprovedRecipeSourceInput,
 } from "@/app/lib/recipe-store";
 import { authorizeCatalogRequest } from "@/app/lib/catalog-auth";
+import { hostedMode } from "@/app/lib/household";
 
 const SOURCE_ID = "themealdb";
 const RUNNING_SYNC_TTL_MS = 10 * 60 * 1_000;
@@ -47,7 +48,7 @@ const PROTOTYPE_SOURCE_APPROVAL: ApprovedRecipeSourceInput = {
 };
 
 export async function GET(request: Request): Promise<Response> {
-  const authorizationError = authorizeCatalogRequest(request);
+  const authorizationError = await authorizeCatalogRequest(request);
   if (authorizationError) return authorizationError;
 
   try {
@@ -60,8 +61,9 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const authorizationError = authorizeCatalogRequest(request);
+  const authorizationError = await authorizeCatalogRequest(request);
   if (authorizationError) return authorizationError;
+  if (hostedMode()) return json({ ok: false, error: { code: "HOSTED_CATALOG_SYNC_DISABLED", message: "Hosted catalogs do not use local prototype source sync or server embeddings. Load original starter recipes or import sources explicitly enabled after hosted rights review." } }, 403);
 
   const model = embeddingModel();
   let embeddingsOnly = false;

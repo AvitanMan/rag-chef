@@ -2,15 +2,18 @@ import { authorizeCatalogRequest } from "@/app/lib/catalog-auth";
 import { validateRecipeSnapshot } from "@/app/lib/kitchen-store";
 import { WIKIBOOKS_SOURCE, draftRecipe, validateImportDraft } from "@/app/lib/recipe-import";
 import { buildRecipeSearchText, DEFAULT_RECIPE_EMBED_MODEL, precomputeRecipeEmbeddings, sha256Hex } from "@/app/lib/recipe-embeddings";
-import { catalogRecipeId, getRecipeSourcePolicy, listCatalogRecipes, listStoredRecipeEmbeddings, saveRecipeEmbeddings, upsertApprovedRecipeSource, upsertCatalogRecipe } from "@/app/lib/recipe-store";
+import { catalogRecipeId, getRecipeSourcePolicy, isRecipeSourceEnabled, listCatalogRecipes, listStoredRecipeEmbeddings, saveRecipeEmbeddings, upsertApprovedRecipeSource, upsertCatalogRecipe } from "@/app/lib/recipe-store";
+import { hostedMode } from "@/app/lib/household";
 
 export const dynamic = "force-dynamic";
 const MAX_BYTES = 1_000_000;
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 
 export async function POST(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request);
+  const denied = await authorizeCatalogRequest(request);
   if (denied) return denied;
+  const hosted = hostedMode();
+  if (!await isRecipeSourceEnabled(WIKIBOOKS_SOURCE.id)) return json({ error: "Wikibooks is not enabled for hosted distribution. An operator must review source rights and add its exact source ID to HOSTED_RECIPE_SOURCE_IDS." }, 403);
   if (request.headers.get("content-type")?.split(";", 1)[0].trim() !== "application/json") return json({ error: "Send application/json." }, 415);
   let input;
   try {
@@ -34,6 +37,7 @@ export async function POST(request: Request): Promise<Response> {
         !Array.isArray(input.recipes) || input.recipes.length < 1 || input.recipes.length > 20 ||
         (input.retryEmbeddingsOnly !== undefined && typeof input.retryEmbeddingsOnly !== "boolean")) throw new Error();
   } catch { return json({ error: "Send 1–20 reviewed recipes as valid JSON." }, 400); }
+  if (hosted && input.retryEmbeddingsOnly) return json({ error: "Hosted catalogs use text retrieval and do not request server embeddings." }, 403);
 
   try {
     const policy = await getRecipeSourcePolicy("wikibooks");
@@ -45,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
     const results: { sourceUrl: string; status: string; catalogId?: string; version?: number; contentChanged?: boolean; embedding?: string; error?: string }[] = [];
     const seen = new Set<string>();
     const model = process.env.OLLAMA_EMBED_MODEL?.trim() || DEFAULT_RECIPE_EMBED_MODEL;
-    const existingEmbeddings = await listStoredRecipeEmbeddings(model);
+    const existingEmbeddings = hosted ? [] : await listStoredRecipeEmbeddings(model);
     const savedRecipes = input.retryEmbeddingsOnly ? await listCatalogRecipes(1000) : [];
     for (const raw of input.recipes) {
       let sourceUrl = typeof raw?.sourceUrl === "string" ? raw.sourceUrl : "";
@@ -68,8 +72,8 @@ export async function POST(request: Request): Promise<Response> {
           stored = await upsertCatalogRecipe({ sourceId: "wikibooks", recipe, searchText, contentHash });
         }
         // Recipe saving is independent of model availability. No placeholder vectors.
-        let embedding = "pending";
-        try {
+        let embedding = hosted ? "not_required" : "pending";
+        if (!hosted) try {
           const embedded = await precomputeRecipeEmbeddings([{ ...recipe, id }], existingEmbeddings, { model, timeoutMs: 5000 });
           await saveRecipeEmbeddings(embedded.embeddings);
           embedding = embedded.failures.length ? "pending" : "ready";

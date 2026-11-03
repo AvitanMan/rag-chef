@@ -18,6 +18,8 @@ export const runtime = {
   commit() { const jobs = pending; pending = []; for (const job of jobs) job(); },
 };
 const same = (a,b) => a && b && a.length === b.length && a.every((v,i) => Object.is(v,b[i]));
+export const createContext = value => ({ value });
+export const useContext = context => context.value;
 export function useState(initial) {
   const index = cursor++;
   slots[index] ??= { value: typeof initial === 'function' ? initial() : initial };
@@ -30,24 +32,27 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
+for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-merge", "private-storage", "app-session"]) {
+  const source = await readFile(new URL(`../app/lib/${name}.${name === "app-session" ? "tsx" : "ts"}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(dir, `${name}.mjs`), compiled);
 }
 const { runtime } = await import(pathToFileURL(join(dir, "react.mjs")).href);
 const { useKitchen } = await import(pathToFileURL(join(dir, "use-kitchen.mjs")).href);
+const { AppSessionContext } = await import(pathToFileURL(join(dir, "app-session.mjs")).href);
+const localSessionContext = AppSessionContext.value;
 const { KITCHEN_CACHE_KEY } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
-const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage };
+const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage, document: globalThis.document };
 after(async () => { runtime.reset(); Object.assign(globalThis, old); await rm(dir, { recursive: true, force: true }); });
 
 const state = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 const document = (revision = 1, value = state()) => ({ revision, state: value, updatedAt: "2026-10-20T00:00:00.000Z" });
 const cookingProfile = (allergies = ["milk"]) => ({ version: 1, allergies, diet: "Vegan", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Stovetop"] });
 
-async function setup({ cached, blocked = false, fetch, existingLocal, existingSession } = {}) {
+async function setup({ cached, blocked = false, fetch, existingLocal, existingSession, hosted = false } = {}) {
   runtime.reset();
+  AppSessionContext.value = hosted ? { ...localSessionContext, session: { mode: "hosted", authenticated: true, household: { id: "test-home", timezone: "UTC", role: "owner" } } } : localSessionContext;
   const timers = new Map();
   let nextTimer = 0;
   const storage = () => ({ values: new Map(), blocked: false, get length() { return this.values.size; }, key(index) { return [...this.values.keys()][index] ?? null; }, getItem(key) { return this.values.get(key) ?? null; }, setItem(key, value) { if (this.blocked) throw new Error("storage full"); this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } });
@@ -56,7 +61,9 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   local.blocked = blocked;
   const events = new EventTarget();
   globalThis.localStorage = local; globalThis.sessionStorage = session;
-  globalThis.window = { localStorage: local, setTimeout: (fn) => { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.document = { visibilityState: "visible", addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.window = { localStorage: local, sessionStorage: session, dispatchEvent: events.dispatchEvent.bind(events), setTimeout: (fn) => { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.window.setInterval = () => ++nextTimer;
   let handler = fetch ?? (() => Response.json(document()));
   const calls = [];
   globalThis.fetch = (url, options = {}) => { calls.push({ url, options }); return handler(url, options); };
@@ -71,6 +78,26 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   await pump();
   return { get result() { return runtime.result; }, pump, tick, calls, local, session, dispatch: event => events.dispatchEvent(event), respond: (fn) => { handler = fn; } };
 }
+
+test("recovering an old family draft merges against its original base and retains newer independent stock", async () => {
+  const base = state(), pending = state(), saved = state();
+  pending.pantry[0].measure = "500 g";
+  saved.pantry.push({ id: "beans", name: "beans", measure: "2 kg" });
+  const h = await setup({ hosted: true, fetch: () => Response.json(document(3, saved)) });
+  const id = `${KITCHEN_CACHE_KEY}:draft:old-family-tab`;
+  h.local.setItem(id, JSON.stringify({ revision: 1, state: pending, base, dirty: true, updatedAt: "2026-10-19T00:00:00.000Z" }));
+  h.dispatch(new Event("storage")); await h.pump();
+  assert.ok(h.result.recoveryCandidates.some(row => row.id === id));
+  assert.equal(h.result.recoverDraft(id), true); await h.pump();
+  assert.equal(h.result.saveState, "conflict");
+  h.result.resolveConflict(false); await h.pump();
+  assert.deepEqual(h.result.state.pantry.map(row => `${row.name}:${row.measure}`).sort(), ["beans:2 kg", "rice:500 g"]);
+  h.respond((_url, options) => {
+    const input = JSON.parse(options.body); assert.equal(input.revision, 3);
+    return Response.json(document(4, input.state));
+  });
+  await h.tick(); assert.equal(h.result.saveState, "saved");
+});
 
 test("a fresh kitchen becomes ready without any recipe discovery request", async () => {
   const h = await setup({ fetch: url => {

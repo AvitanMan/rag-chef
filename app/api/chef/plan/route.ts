@@ -4,14 +4,21 @@ import { loadPlanCatalog, planFailure, planJson, PlanHttpError, readPlanRequest 
 import { getKitchenDocument } from "@/app/lib/kitchen-store";
 import { EMPTY_KITCHEN } from "@/app/lib/kitchen-types";
 import type { ChefPlanDraft } from "@/app/lib/chef-plan-types";
+import { requireHousehold, HouseholdAuthError, householdError } from "@/app/lib/household";
+import { createAiWorkflow, aiWorkflowResponse, type AiResume } from "@/app/lib/ai-inference";
+import { assistantToday } from "@/app/lib/assistant-engine";
 
-export async function POST(request: Request): Promise<Response> {
+export const POST = (request: Request) => executePlan(request);
+export async function executePlan(request: Request, resume?: AiResume): Promise<Response> {
   const started = performance.now();
   try {
+    const context = await requireHousehold(request);
+    if (context.mode === "hosted" && !context.assistantEnabled) throw new PlanHttpError("The household assistant has not been enabled for this beta.", "assistant_disabled", 403);
     const input = await readPlanRequest(request);
-    if (Object.keys(input).some(key => !["query", "week", "today", "kitchenRevision", "previousDraft", "intent", "model"].includes(key)) || typeof input.week !== "string" || typeof input.today !== "string" || !Number.isSafeInteger(input.kitchenRevision) || Number(input.kitchenRevision) < 0 || (input.model !== undefined && typeof input.model !== "string")) throw new PlanHttpError("Check the selected week and saved kitchen revision.", "invalid_request", 400);
+    if (Object.keys(input).some(key => !["query", "week", "today", "kitchenRevision", "previousDraft", "intent", "model", "ai"].includes(key)) || typeof input.week !== "string" || typeof input.today !== "string" || !Number.isSafeInteger(input.kitchenRevision) || Number(input.kitchenRevision) < 0 || (input.model !== undefined && typeof input.model !== "string")) throw new PlanHttpError("Check the selected week and saved kitchen revision.", "invalid_request", 400);
     validatePlanIntent(defaultPlanIntent(input.week, input.today));
-    const kitchen = await getKitchenDocument();
+    if (context.mode === "hosted" && input.today !== assistantToday(context.timezone)) throw new PlanHttpError("The household date changed. Refresh before preparing another plan.", "plan_changed", 409);
+    const kitchen = await getKitchenDocument(context);
     if (kitchen.revision !== input.kitchenRevision) throw new PlanHttpError("Your saved kitchen changed. Refresh it before preparing another draft.", "plan_changed", 409);
     const previousDraft = input.previousDraft as ChefPlanDraft | undefined;
     if (previousDraft && (previousDraft.version !== 1 || previousDraft.kitchenRevision !== kitchen.revision || !Array.isArray(previousDraft.changes) || previousDraft.changes.length > 7 || !previousDraft.intent)) throw new PlanHttpError("The previous draft changed. Start a new plan.", "plan_changed", 409);
@@ -19,13 +26,14 @@ export async function POST(request: Request): Promise<Response> {
       validatePlanIntent(previousDraft.intent);
       if (previousDraft.changes.some(change => !change || typeof change !== "object" || typeof change.date !== "string" || !change.meal || typeof change.meal.recipeId !== "string" || typeof change.recipeHash !== "string" || change.expectedMealId !== null && typeof change.expectedMealId !== "string")) throw new PlanHttpError("The previous draft is malformed. Start a new plan.", "invalid_request", 400);
     }
-    const interpreted = input.intent !== undefined ? { intent: validatePlanIntent(input.intent) } : await requestChefPlanIntent({ query: typeof input.query === "string" ? input.query : "", week: input.week, today: input.today, previousDraft, model: input.model as string | undefined, signal: request.signal });
+    const catalog = await loadPlanCatalog();
+    const workflow = input.intent === undefined && (context.mode === "hosted" || input.ai !== undefined) ? await createAiWorkflow(request, context, { operation: "plan", input, kitchenRevision: kitchen.revision }, resume) : undefined;
+    const interpreted = input.intent !== undefined ? { intent: validatePlanIntent(input.intent) } : await requestChefPlanIntent({ query: typeof input.query === "string" ? input.query : "", week: input.week, today: input.today, previousDraft, model: input.model as string | undefined, signal: request.signal, infer: workflow?.infer, catalog });
     if (interpreted.clarification) return planJson({ clarification: interpreted.clarification });
     if (!interpreted.intent || interpreted.intent.week !== input.week || interpreted.intent.today !== input.today) throw new PlanHttpError("The interpretation belongs to another week. Review the planning controls.", "invalid_request", 400);
-    const catalog = await loadPlanCatalog();
     const draft = await buildChefPlanDraft({ kitchen: kitchen.state ?? structuredClone(EMPTY_KITCHEN), revision: kitchen.revision, catalog, intent: interpreted.intent, previousDraft });
-    if ((await getKitchenDocument()).revision !== kitchen.revision) throw new PlanHttpError("Your kitchen changed while planning. Refresh it and prepare a new draft.", "plan_changed", 409);
+    if ((await getKitchenDocument(context)).revision !== kitchen.revision) throw new PlanHttpError("Your kitchen changed while planning. Refresh it and prepare a new draft.", "plan_changed", 409);
     if (request.signal.aborted) throw new PlanHttpError("Planning request cancelled.", "cancelled", 499);
-    return planJson({ draft: { ...draft, interpretation: input.intent !== undefined ? "manual" : "ollama", timings: { totalMs: Math.round(performance.now() - started) } } });
-  } catch (error) { return planFailure(error); }
+    return planJson({ draft: { ...draft, interpretation: input.intent !== undefined ? "manual" : workflow?.provider === "openai" ? "openai" : "ollama", timings: { totalMs: Math.round(performance.now() - started) } } });
+  } catch (error) { return aiWorkflowResponse(error) ?? (error instanceof HouseholdAuthError ? householdError(error) : planFailure(error)); }
 }
