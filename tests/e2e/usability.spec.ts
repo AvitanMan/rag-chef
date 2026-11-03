@@ -73,6 +73,7 @@ test("Chef servings keep an editable draft while saved quantities change only af
   const source = await recipe(request);
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
   await page.goto("/");
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toBeVisible();
   await page.locator(".dinner-context > summary").click();
   const portions = page.getByRole("spinbutton", { name: "Chef portions", exact: true });
   await portions.fill(""); await expect(portions).toHaveValue("");
@@ -85,7 +86,9 @@ test("Chef servings keep an editable draft while saved quantities change only af
   await portions.fill("6");
   await expect(portions).toHaveAttribute("aria-invalid", "false");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(6);
-  await page.reload(); await page.locator(".dinner-context > summary").click();
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toBeVisible();
+  await page.locator(".dinner-context > summary").click();
   await expect(portions).toHaveValue("6");
 });
 
@@ -226,7 +229,10 @@ for (const withRemoval of [false, true]) {
       await page.getByRole("button", { name: "Remove rice", exact: true }).click();
     }
     await navigate(page, "Settings");
-    await page.getByRole("textbox", { name: "Allergies", exact: true }).focus();
+    const allergies = page.getByRole("textbox", { name: "Allergies", exact: true });
+    await expect(allergies).toBeEnabled();
+    await allergies.focus();
+    await expect(allergies).toBeFocused();
     for (let index = 0; index < 12; index++) {
       await page.keyboard.press("Tab");
       await expect.poll(() => page.evaluate(() => {
