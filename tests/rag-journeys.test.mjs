@@ -119,3 +119,63 @@ test("calculated journey facts require exact saved amounts, source IDs and zero 
   const generated = structuredClone(answer); generated.timings.generationMs = 1;
   assert.ok(failed(grade(generated, expectation)).includes("no_model_calls"));
 });
+
+
+test("ingredient discovery accepts distinct canonical lentil dishes without requiring one catalog identity", () => {
+  const expectation = journeyCases.find(journey => journey.id === "natural-discovery").steps.find(step => step.id === "ingredient-question").expect;
+  const catalog = ["red lentils", "green lentils", "cooked lentil"].map((name, index) => ({
+    ...structuredClone(source), id: `independent-dish-${index}`, title: `Different dinner ${index}`, ingredients: [{ name, measure: "200 g" }],
+  }));
+  const response = recipes => ({ ...data(), recipes: structuredClone(recipes), sourceFacts: [], recommendations: recipes.map(recipe => ({ recipeId: recipe.id, reason: "A dinner idea." })),
+    citations: recipes.map(recipe => ({ recipeId: recipe.id, title: recipe.title, sourceName: recipe.source.name, sourceUrl: recipe.sourceUrl })), selectedEvidenceByRecipeId: {} });
+  const check = answer => gradeJourneyAnswer({ status: 200, data: answer, expected: expectation, catalog, aliases: {}, unchanged: true });
+  for (const count of [1, 2, 3]) assert.deepEqual(failed(check(response(catalog.slice(0, count)))), []);
+  assert.ok(failed(check(response([]))).includes("useful_suggestions"));
+  const duplicate = response([catalog[0], catalog[0]]);
+  assert.ok(failed(check(duplicate)).includes("distinct_suggestions"));
+  assert.ok(failed(check(response([...catalog, catalog[0]]))).includes("recommendation_limit"));
+  // Neither a matching title nor model claims can replace canonical ingredients.
+  catalog[0].title = "Lentil soup"; catalog[0].ingredients = [{ name: "rice", measure: "200 g" }];
+  const irrelevant = response([catalog[0]]); irrelevant.answer = "This uses lentils.";
+  assert.ok(failed(check(irrelevant)).includes("ingredient_relevance:" + expectation.ingredientPatterns[0]));
+  irrelevant.recipes[0].ingredients[0].name = "lentils";
+  assert.ok(failed(check(irrelevant)).includes("canonical_recipes"));
+  assert.ok(failed(check(irrelevant)).includes("ingredient_relevance:" + expectation.ingredientPatterns[0]));
+});
+
+test("natural discovery explicitly selects its factual source and leaves ambiguous follow-up coverage intact", () => {
+  const natural = journeyCases.find(journey => journey.id === "natural-discovery");
+  const discovery = natural.steps.find(step => step.id === "ingredient-question");
+  assert.equal(discovery.expect.only, undefined); assert.equal(discovery.expect.first, undefined);
+  const factual = natural.steps.find(step => step.id === "source-follow-up");
+  assert.equal(factual.focus, "soup"); assert.equal(factual.previous, undefined);
+  assert.equal(factual.expect.only, "soup"); assert.equal(factual.expect.factual, true);
+  assert.deepEqual(factual.expect.evidence, ["S3"]);
+  assert.ok(factual.expect.answerPatterns.length >= 2);
+  const ambiguous = journeyCases.find(journey => journey.id === "choose-and-switch").steps.find(step => step.id === "ambiguous-it");
+  assert.equal(ambiguous.previous, true); assert.equal(ambiguous.requiresMultipleChoices, true);
+  assert.equal(ambiguous.focus, undefined); assert.equal(ambiguous.expect.status, "needs_clarification");
+});
+
+test("source note citations require canonical exact selected N evidence just like ingredients and directions", () => {
+  const recipe = { ...structuredClone(source), sourceNotes: ["Total time: 45 minutes."] };
+  const answer = { ...data(), recipes: [structuredClone(recipe)], sourceFacts: [{ recipeId: recipe.id, evidenceId: "N1", fact: recipe.sourceNotes[0] }],
+    selectedEvidenceByRecipeId: { [recipe.id]: ["N1"] }, answer: "The source gives a total time of 45 minutes." };
+  const expectation = { only: "bake", factual: true, evidence: ["N1"], answerPatterns: ["45 minutes"] };
+  const check = value => gradeJourneyAnswer({ status: 200, data: value, expected: expectation, catalog: [recipe], aliases: { bake: recipe }, unchanged: true });
+  assert.deepEqual(failed(check(answer)), []);
+  for (const mutate of [
+    row => { row.sourceFacts[0].fact = "Total time: 5 minutes."; },
+    row => { row.sourceFacts[0].evidenceId = "N2"; row.selectedEvidenceByRecipeId.bake = ["N2"]; },
+    row => { row.sourceFacts[0].evidenceId = "N0"; row.selectedEvidenceByRecipeId.bake = ["N0"]; },
+    row => { row.selectedEvidenceByRecipeId.bake = []; },
+    row => { row.sourceFacts[0].fact = recipe.instructions[0]; },
+  ]) {
+    const wrong = structuredClone(answer); mutate(wrong);
+    assert.ok(failed(check(wrong)).includes("exact_selected_quotes"));
+  }
+  const changed = structuredClone(answer); changed.recipes[0].sourceNotes[0] = "Changed note.";
+  assert.ok(failed(check(changed)).includes("canonical_recipes"));
+  const missing = structuredClone(answer); missing.citations = [];
+  assert.ok(failed(check(missing)).includes("source_links_present"));
+});

@@ -16,6 +16,7 @@ export interface KitchenDifferences {
   shoppingChanged: number;
   favoritesChanged: number;
   cookingProfileChanged: boolean;
+  personalAmountsChanged: number;
 }
 export interface RecoveryCandidate {
   id: string;
@@ -50,11 +51,13 @@ export function compareKitchens(current: KitchenState, candidate: KitchenState):
   const pantry = changes(Object.fromEntries(current.pantry.map((stock) => [stock.id, stock])), Object.fromEntries(candidate.pantry.map((stock) => [stock.id, stock])));
   const meals = changes(current.meals, candidate.meals);
   const shopping = new Set([...Object.keys(current.shoppingChecked), ...Object.keys(candidate.shoppingChecked)]);
+  const personal = changes(current.personalRecipeAmounts ?? {}, candidate.personalRecipeAmounts ?? {});
   const favorites = new Set([...(current.favoriteRecipeIds ?? []), ...(candidate.favoriteRecipeIds ?? [])]);
   return { pantryAdded: pantry.added, pantryRemoved: pantry.removed, pantryChanged: pantry.changed,
     mealsAdded: meals.added, mealsRemoved: meals.removed, mealsChanged: meals.changed,
     shoppingChanged: [...shopping].filter((key) => Boolean(current.shoppingChecked[key]) !== Boolean(candidate.shoppingChecked[key])).length,
     favoritesChanged: [...favorites].filter(id => (current.favoriteRecipeIds ?? []).includes(id) !== (candidate.favoriteRecipeIds ?? []).includes(id)).length,
+    personalAmountsChanged: personal.added + personal.removed + personal.changed,
     cookingProfileChanged: JSON.stringify(current.cookingProfile ?? null) !== JSON.stringify(candidate.cookingProfile ?? null) };
 }
 

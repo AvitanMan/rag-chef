@@ -35,10 +35,18 @@ export function selectRecipeEvidence(recipe: Recipe, query: string, options: { s
   if (options.stepId) neighbors(options.stepId);
   const explicit = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
   if (explicit) neighbors(`S${Number(explicit[1])}`);
+  const noteScores = bm25Scores((recipe.sourceNotes ?? []).map((text, index) => ({ id: `N${index + 1}`, title: "", ingredients: "", other: text })), query);
+  const timingQuestion = /\b(?:how long|time|duration|minutes?|hours?|seconds?)\b/i.test(query);
+  const nutritionQuestion = /\b(?:nutrition(?:al)?|nutrients?|macros?|calories?|kcal|protein|carbohydrates?|carbs?|fat|fibre|fiber|sodium|sugar)\b/i.test(query);
+  const rankedNotes = (recipe.sourceNotes ?? []).map((text, index) => ({ id: `N${index + 1}`, score: (noteScores.get(`N${index + 1}`) ?? 0)
+    + (timingQuestion && /\b(?:time|duration|seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/i.test(text) ? 1 : 0)
+    + (nutritionQuestion && /\b(?:nutrition(?:al)?|nutrients?|calories?|kcal|protein|carbohydrates?|carbs?|fat|fibre|fiber|sodium|sugar)\b/i.test(text) ? 1 : 0) }));
+  priority.push(...rankedNotes.filter(item => item.score > 0).sort((a, b) => b.score - a.score).map(item => item.id));
   const ingredientScores = bm25Scores(recipe.ingredients.map((item, index) => ({ id: `I${index + 1}`, title: item.name, ingredients: "", other: "" })), query);
   priority.push(...[...ingredientScores].filter(([, score]) => score > 0).sort((a, b) => b[1] - a[1]).map(([id]) => id));
   for (const id of core) neighbors(id);
   if (!core.length && !options.stepId && totalSize <= budget) return { items: all, coreStepIds: [], method: "full_recipe", complete: true, indexedSteps: vectors.size, totalSteps: recipe.instructions.length };
+  priority.push(...all.map((item) => item.evidenceId).filter((id) => id.startsWith("N")));
   priority.push(...all.map((item) => item.evidenceId).filter((id) => id.startsWith("I")));
   if (full || !core.length) priority.push(...all.map((item) => item.evidenceId));
   const byId = new Map(all.map((item) => [item.evidenceId, item]));

@@ -60,7 +60,7 @@ export interface RecipeConstraints {
 export interface RecipeSearchOptions {
   signal?: AbortSignal;
   recipeId?: string;
-  stockContext?: { pantry: import("./kitchen-types").PantryStock[]; meals: import("./kitchen-types").PlannedMeal[]; targetDate: string; today: string; servings?: number; batches?: number };
+  stockContext?: { pantry: import("./kitchen-types").PantryStock[]; meals: import("./kitchen-types").PlannedMeal[]; targetDate: string; today: string; servings?: number; batches?: number; personalRecipeAmounts?: import("./kitchen-types").KitchenState["personalRecipeAmounts"]; contentHashesByRecipeId?: Record<string, string> };
   allergies?: string[];
   pantry?: string[];
   query?: string;

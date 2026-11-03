@@ -1,6 +1,8 @@
 "use client";
 
 import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
+import { PersonalRecipeAmountsEditor } from "./PersonalRecipeAmountsEditor";
+import { compareKitchens } from "../lib/kitchen-recovery";
 import { CatalogSetup } from "./CatalogSetup";
 
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
@@ -30,14 +32,16 @@ import { ChefGrounding, recipeEvidenceExcerpt } from "./ChefGrounding";
 import { chefMealHash, chefMealPreview, chefRecipeHash, cookingSourceStep } from "../lib/chef-context";
 import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
 import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
-import { COOKING_SESSION_KEY, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
+import { COOKING_SESSION_KEY, writeCookingSession, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
 import { useKitchen } from "../lib/use-kitchen";
-import { DEFAULT_COOKING_PROFILE, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal } from "../lib/kitchen-types";
+import { DEFAULT_COOKING_PROFILE, DINNER_AMOUNT_LIMITS, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, localDate, placePlannedDinner, weekStart } from "../lib/kitchen-state";
 import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
-import { canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, allocateStockForMeals, mealReadiness } from "../lib/quantities";
+import { mealAmountLabel, canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, undoMealProblem, allocateStockForMeals, mealReadiness } from "../lib/quantities";
 import { dateLabel, DinnerAmounts, DurablePlanView, DurableShoppingView } from "./WeeklyKitchenViews";
 import { browseRecipes, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
+import { metricMeasure } from "../lib/recipe-presentation";
+import { cookingStepText, isCookingMethodHeading } from "../lib/recipe-instructions";
 import { browsePantry, type PantrySort } from "../lib/pantry-browser";
 
 type View = "chef" | "recipes" | "pantry" | "plan" | "shop" | "settings";
@@ -182,28 +186,6 @@ function tidyIngredient(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function metricMeasure(measure: string, metric: boolean) {
-  if (!metric) return measure;
-  const normalized = measure.toLowerCase().trim();
-  const mixed = normalized.match(/^(\d+(?:\.\d+)?)\s+(\d+)\/(\d+)/);
-  const fraction = normalized.match(/^(\d+)\/(\d+)/);
-  const decimal = normalized.match(/^(\d+(?:\.\d+)?)/);
-  const amount = mixed
-    ? Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
-    : fraction
-      ? Number(fraction[1]) / Number(fraction[2])
-      : decimal
-        ? Number(decimal[1])
-        : Number.NaN;
-  if (!Number.isFinite(amount)) return measure;
-  if (normalized.includes("tbsp")) return `${Math.round(amount * 15)} ml`;
-  if (normalized.includes("tsp")) return `${Math.round(amount * 5)} ml`;
-  if (/\bcups?\b/.test(normalized)) return `${Math.round(amount * 240)} ml`;
-  if (/\boz\b/.test(normalized)) return `${Math.round(amount * 28.35)} g`;
-  if (/\blb\b|pound/.test(normalized)) return `${Math.round(amount * 454)} g`;
-  return measure;
-}
-
 function sourceLabel(recipe: Recipe) {
   return recipe.source?.name || "Recipe source";
 }
@@ -219,17 +201,6 @@ function defaultInstructionTitle(recipe: Recipe) {
   if (/slow cooker|crockpot/.test(title)) return "Slow cooker";
   if (/air fryer/.test(title)) return "Air fryer";
   return "Main method";
-}
-
-function isInstructionHeading(value: string) {
-  const heading = value.trim().replace(/:$/, "");
-  return (
-    heading.length <= 80 &&
-    (/(?:instructions?|directions?|method)$/i.test(heading) ||
-      /^(?:instant pot|pressure cooker|stove ?top|oven|slow cooker|air fryer|grill|hob)$/i.test(
-        heading,
-      ))
-  );
 }
 
 function instructionHeading(value: string) {
@@ -249,7 +220,7 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
   };
 
   for (const rawStep of recipe.instructions) {
-    const step = rawStep.trim();
+    const step = cookingStepText(rawStep);
     if (
       !step ||
       /^(?:step\s*#?\s*\d+|instructions?|directions?)\s*[:.)-]?$/i.test(
@@ -258,12 +229,12 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
     ) {
       continue;
     }
-    if (isInstructionHeading(step)) {
+    if (isCookingMethodHeading(step)) {
       if (current.steps.length) sections.push(current);
       current = { title: instructionHeading(step), steps: [] };
       continue;
     }
-    current.steps.push(step.replace(/^(?:step\s+)?\d+[.)]\s+/i, "").trim());
+    current.steps.push(step);
   }
 
   if (current.steps.length) sections.push(current);
@@ -323,12 +294,44 @@ export default function RagChefApp() {
   const [pantryError, setPantryError] = useState("");
   const [removals, setRemovals] = useState<{ id: string; label: string; pantry: PantryStock[]; meals: PlannedMeal[] }[]>([]);
   const recoveryRef = useRef<HTMLElement>(null);
-  const latestRemovalId = removals.at(-1)?.id;
+  const mobileNavRef = useRef<HTMLElement>(null);
+  const hasRemovals = removals.length > 0;
+  // Fixed controls reserve scroll space; only obscured focus should move the page.
   useEffect(() => {
-    if (!latestRemovalId) return;
-    const frame = requestAnimationFrame(() => recoveryRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" }));
-    return () => cancelAnimationFrame(frame);
-  }, [latestRemovalId]);
+    let frame = 0;
+    const overlayInset = () => {
+      const tops = [recoveryRef.current, mobileNavRef.current]
+        .filter((element): element is HTMLElement => Boolean(element?.getClientRects().length))
+        .map(element => element.getBoundingClientRect().top);
+      const inset = tops.length ? Math.max(12, window.innerHeight - Math.min(...tops) + 12) : 12;
+      document.documentElement.style.setProperty("--kitchen-overlay-inset", `${inset}px`);
+      return inset;
+    };
+    const revealFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.closest(".main-content") || target.closest("dialog, .removal-recovery")) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (target !== document.activeElement) return;
+        const bottom = window.innerHeight - overlayInset();
+        const box = target.getBoundingClientRect();
+        if (box.height > bottom - 12) return;
+        if (box.bottom > bottom) window.scrollBy({ top: box.bottom - bottom, behavior: "instant" });
+        else if (box.top < 12) window.scrollBy({ top: box.top - 12, behavior: "instant" });
+      });
+    };
+    const observer = new ResizeObserver(overlayInset);
+    for (const element of [recoveryRef.current, mobileNavRef.current]) if (element) observer.observe(element);
+    overlayInset();
+    window.addEventListener("resize", overlayInset);
+    document.addEventListener("focusin", revealFocus);
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect();
+      window.removeEventListener("resize", overlayInset);
+      document.removeEventListener("focusin", revealFocus);
+      document.documentElement.style.removeProperty("--kitchen-overlay-inset");
+    };
+  }, [hasRemovals]);
   const [undoNotice, setUndoNotice] = useState("");
 
   const [query, setQuery] = useState("");
@@ -341,13 +344,14 @@ export default function RagChefApp() {
   const setProfile = (cookingProfile: Profile) => kitchen.update(state => ({ ...state, cookingProfile }));
   const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
   const [catalogRecipes, setCatalogRecipes] = useState<Recipe[]>([]);
+  const [contentHashesByRecipeId, setContentHashesByRecipeId] = useState<Record<string, string>>({});
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [planningNotice, setPlanningNotice] = useState("");
   const [preferReviewedMains, setPreferReviewedMains] = useState(true);
   const [focusDate, setFocusDate] = useState<string | null>(null);
   const [planningReasons, setPlanningReasons] = useState<Record<string, string>>({});
-  const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, meals: kitchen.state.meals, settings, today });
+  const chefContext = JSON.stringify({ profile, pantry: kitchen.state.pantry, meals: kitchen.state.meals, personalRecipeAmounts: kitchen.state.personalRecipeAmounts ?? {}, settings, today });
   const [chefBusyContext, setChefBusyContext] = useState<string | null>(null);
   const askingChef = chefBusyContext === chefContext;
   const [storedChefError, setChefError] = useState<{ contextKey: string; message: string; prompt: string } | null>(null);
@@ -376,6 +380,12 @@ export default function RagChefApp() {
   const [hydrated, setHydrated] = useState(false);
   const [cooking, setCooking] = useState(false);
   const [cookingSession, setCookingSession] = useState<CookingSession | null>(null);
+  const cookingSnapshot = useRef<string | null>(null);
+  const cookingUnsaved = useRef(false);
+  const cookingResolution = useRef(false);
+  const [cookingResolving, setCookingResolving] = useState(false);
+  const [cookingConflict, setCookingConflict] = useState<{ stored: string | null } | null>(null);
+  const [renderedCookingSnapshot, setRenderedCookingSnapshot] = useState<string | null>(null);
   const [cookingStorageNotice, setCookingStorageNotice] = useState("");
   const [pendingCookingStart, setPendingCookingStart] = useState<CookingSession | null>(null);
   const [backupExportError, setBackupExportError] = useState("");
@@ -399,7 +409,11 @@ export default function RagChefApp() {
       } catch {
         // A corrupt local draft should never prevent the app from opening.
       }
-      try { setCookingSession(parseCookingSession(window.localStorage.getItem(COOKING_SESSION_KEY))); }
+      try {
+        cookingSnapshot.current = window.localStorage.getItem(COOKING_SESSION_KEY);
+        setCookingSession(parseCookingSession(cookingSnapshot.current));
+        setRenderedCookingSnapshot(cookingSnapshot.current);
+      }
       catch { /* Cooking recovery never prevents the kitchen from opening. */ }
       setHydrated(true);
     }, 0);
@@ -415,6 +429,56 @@ export default function RagChefApp() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...(legacyProfile ? { profile: legacyProfile } : {}), settings }));
     } catch { /* Kitchen recovery is managed separately from preferences. */ }
   }, [hydrated, settings, kitchen.state.cookingProfile, kitchen.saveState]);
+
+  const adoptCookingSnapshot = useCallback((text: string | null) => {
+    if (cookingUnsaved.current) {
+      setCookingConflict({ stored: text });
+      setCookingStorageNotice("Another tab saved different cooking progress. Your unsaved progress is kept in this tab; choose which session to keep.");
+      return;
+    }
+    const previous = parseCookingSession(cookingSnapshot.current);
+    const next = parseCookingSession(text);
+    cookingSnapshot.current = text;
+    setRenderedCookingSnapshot(text); setCookingSession(next);
+    if (previous?.id !== next?.id) {
+      setCooking(false); setCompletionDate(null); setPendingCompletion(null);
+    }
+    setCookingStorageNotice("Cooking progress changed in another tab. The latest saved session is available here.");
+  }, []);
+
+  useEffect(() => {
+    const sync = (event?: StorageEvent) => {
+      if (event && event.key !== COOKING_SESSION_KEY && event.key !== null) return;
+      try {
+        const text = window.localStorage.getItem(COOKING_SESSION_KEY);
+        if (text !== cookingSnapshot.current) adoptCookingSnapshot(text);
+      } catch { /* A failed read must not discard the session in this tab. */ }
+    };
+    window.addEventListener("storage", sync);
+    const focus = () => sync();
+    window.addEventListener("focus", focus);
+    return () => { window.removeEventListener("storage", sync); window.removeEventListener("focus", focus); };
+  }, [adoptCookingSnapshot]);
+
+  const persistCookingSession = useCallback(async (next: CookingSession | null, expected = renderedCookingSnapshot): Promise<boolean> => {
+    const save = () => {
+      const result = writeCookingSession(window.localStorage, expected, next);
+      if (!result.saved) { adoptCookingSnapshot(result.stored); return false; }
+      cookingUnsaved.current = false; setCookingConflict(null);
+      cookingSnapshot.current = result.stored;
+      setRenderedCookingSnapshot(result.stored); setCookingSession(next); setCookingStorageNotice("");
+      return true;
+    };
+    try {
+      // Serialize writes from cooperating tabs, then check their exact snapshot.
+      return await (navigator.locks ? navigator.locks.request(COOKING_SESSION_KEY, save) : save());
+    } catch {
+      cookingUnsaved.current = true;
+      setCookingSession(next);
+      setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it.");
+      return true;
+    }
+  }, [adoptCookingSnapshot, renderedCookingSnapshot]);
 
   useEffect(() => {
     if (!pendingCompletion) return;
@@ -432,7 +496,7 @@ export default function RagChefApp() {
       setChefFlow(current => ({ kind: "dinner", date: meal.date, origin: current.origin })); setView("chef");
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [pendingCompletion, kitchen.recoverable, kitchen.state.meals, cookingSession, completionFingerprint]);
+  }, [pendingCompletion, kitchen.recoverable, kitchen.state.meals, cookingSession, completionFingerprint, persistCookingSession]);
 
   const navigationSnapshot = useRef("");
   useEffect(() => {
@@ -456,6 +520,7 @@ export default function RagChefApp() {
         setDiscoveryQuery(""); setChefRefinements([]); setChefPortions(""); lastChefPrompt.current = "";
       }
       setSelectedRecipe(null); setPendingChoice(null); setShoppingReviewDate(null); setMethodDate(null);
+      setPantryPreview(null); setPurchaseItems(null);
       setToday(currentDate); setView(restored.view); setChefFlow(restored.flow);
       setUseSoonId(restored.useSoonId); setPantryFilter(restored.pantryFilter); setPantryFocusId(restored.pantryFocusId);
     };
@@ -477,9 +542,10 @@ export default function RagChefApp() {
     try {
       const response = await fetch("/api/recipes/catalog", { cache: "no-store" });
       if (!response.ok) throw new Error("Catalog unavailable");
-      const data = await response.json() as { recipes: Recipe[]; metadataByRecipeId?: RecipeMetadataMap };
+      const data = await response.json() as { recipes: Recipe[]; metadataByRecipeId?: RecipeMetadataMap; contentHashesByRecipeId?: Record<string, string> };
       if (!Array.isArray(data.recipes)) throw new Error("Invalid catalog");
       setCatalogRecipes(data.recipes);
+      setContentHashesByRecipeId(data.contentHashesByRecipeId ?? {});
       setMetadataByRecipeId(data.metadataByRecipeId ?? {});
       setCatalogState("ready");
     } catch {
@@ -495,6 +561,10 @@ export default function RagChefApp() {
 
   const constraints = useMemo(() => normalizeConstraints(profile), [profile]);
   const refinedConstraints = useMemo(() => chefRefinements.reduce((current, refinement) => constraintsForRecipeQuery(refinement, current), constraints), [chefRefinements, constraints]);
+  const contentHashForRecipe = (recipe: Recipe) => {
+    const current = catalogRecipes.find(item => item.id === recipe.id);
+    return current && JSON.stringify(current) === JSON.stringify(recipe) ? contentHashesByRecipeId[recipe.id] : undefined;
+  };
   const metadataForRecipe = (recipe: Recipe) => {
     const current = catalogRecipes.find((item) => item.id === recipe.id);
     return current && JSON.stringify(current) === JSON.stringify(recipe) ? metadataByRecipeId[recipe.id] : undefined;
@@ -520,13 +590,19 @@ export default function RagChefApp() {
   const recentOrder = useMemo(() => new Map(recentlyCooked.map((meal, index) => [meal.recipeId, index])), [recentlyCooked]);
   const collectionCatalog = useMemo(() => browseCatalog.filter(recipe => recipeCollection === "all" || (recipeCollection === "favorites"
     ? kitchen.state.favoriteRecipeIds?.includes(recipe.id) : recentOrder.has(recipe.id))), [browseCatalog, recipeCollection, kitchen.state.favoriteRecipeIds, recentOrder]);
-  const browserMatches = useMemo(() => browseRecipes(collectionCatalog, recipeQuery, pantry)
-    .filter(recipe => !coreDinnersOnly || metadataByRecipeId[recipe.id]?.coreDinner), [collectionCatalog, recipeQuery, pantry, coreDinnersOnly, metadataByRecipeId]);
+  const browserSearchMatches = useMemo(() => browseRecipes(collectionCatalog, recipeQuery, pantry), [collectionCatalog, recipeQuery, pantry]);
+  const browserMatches = useMemo(() => browserSearchMatches
+    .filter(recipe => !coreDinnersOnly || metadataByRecipeId[recipe.id]?.coreDinner), [browserSearchMatches, coreDinnersOnly, metadataByRecipeId]);
   const verifiedTimeRecipes = useMemo(() => browserMatches.filter(recipe => {
     const metadata = metadataByRecipeId[recipe.id];
     return metadata?.totalMinutes != null && metadata.provenance.totalMinutes?.basis === "source";
   }), [browserMatches, metadataByRecipeId]);
   const timeLimit = Number(maxMinutes) > 0 ? Number(maxMinutes) : null;
+  const reviewedDinnerCount = browserSearchMatches.filter(recipe => {
+    const metadata = metadataByRecipeId[recipe.id];
+    return metadata?.coreDinner && (timeLimit === null || (metadata.totalMinutes != null
+      && metadata.provenance.totalMinutes?.basis === "source" && metadata.totalMinutes <= timeLimit));
+  }).length;
   const browserResults = [...(timeLimit === null ? browserMatches : verifiedTimeRecipes.filter(recipe => metadataByRecipeId[recipe.id].totalMinutes! <= timeLimit))];
   if (recipeCollection === "recent") browserResults.sort((a, b) => recentOrder.get(a.id)! - recentOrder.get(b.id)!);
   const timeHidesMatches = timeLimit !== null && browserMatches.length > 0 && browserResults.length === 0;
@@ -616,7 +692,7 @@ export default function RagChefApp() {
         ...(saved ? { mealDate: saved.date, mealId: saved.id, mealHash: await chefMealHash(saved) } : {}),
         ...(override ?? { purpose: "planning", targetDate: selectionDate ?? saved?.date ?? today,
           ...(chefPortions ? { servings: Number(chefPortions) } : {}),
-          ...(chefResult ? { previousRecipeIds: chefResult.recommendations.slice(0, 3).map((item) => item.recipeId) } : {}),
+          ...(chefResult ? { previousRecipeIds: chefResult.recipes.filter(recipe => chefResult.recommendations.some(item => item.recipeId === recipe.id)).slice(0, 3).map(recipe => recipe.id) } : {}),
         }) };
       const continuingDiscussion = !override || target?.id === pinnedRecipe?.id && (mealDate ?? null) === chefMealDate;
       const history = continuingDiscussion ? chefTurns.flatMap((turn) => [{ role: "user" as const, content: turn.query }, { role: "assistant" as const, content: turn.answer }]).slice(-6) : [];
@@ -642,7 +718,7 @@ export default function RagChefApp() {
         const current = await kitchenRef.current.refreshSavedKitchen(controller.signal);
         if (!current) throw new Error("Review the kitchen save status above, then retry Chef. Your draft is preserved.");
         const state = current.state;
-        const refreshedContext = JSON.stringify({ profile: state?.cookingProfile ?? DEFAULT_PROFILE, pantry: state?.pantry ?? [], meals: state?.meals ?? {}, settings, today });
+        const refreshedContext = JSON.stringify({ profile: state?.cookingProfile ?? DEFAULT_PROFILE, pantry: state?.pantry ?? [], meals: state?.meals ?? {}, personalRecipeAmounts: state?.personalRecipeAmounts ?? {}, settings, today });
         setChefResult(null);
         setChefError({ contextKey: refreshedContext, prompt: finalQuery, message: "Your kitchen was refreshed from another tab. Retry Chef to use the latest saved amounts and cooking preferences." });
         return;
@@ -701,13 +777,13 @@ export default function RagChefApp() {
       return;
     }
     const candidates = catalogRecipes.filter(recipeAllowed);
-    const options = { metadataByRecipeId, preferReviewedMains };
+    const options = { metadataByRecipeId, preferReviewedMains, contentHashesByRecipeId, personalRecipeAmounts: kitchen.state.personalRecipeAmounts };
     const seed = crypto.getRandomValues(new Uint32Array(1))[0];
     const proposed = fillEmptyDays(candidates, kitchen.state.pantry, week, kitchen.state.meals, today, planningRandom(seed), options);
     const emptyDays = weekDates.filter((date) => date >= today && !kitchen.state.meals[date]).length;
     setPlanningReasons(proposed.reasons);
     setPlanningNotice(emptyDays === 0 ? "No upcoming empty days in this week. Past dinners can be added manually." : proposed.additions.length < emptyDays ? `Added ${proposed.additions.length} different eligible dinners. Remaining days were left empty.` : "Upcoming empty days filled without repeats. Saved dinners reserve their pantry stock first.");
-    kitchen.update((state) => ({ ...state, meals: fillEmptyDays(candidates, state.pantry, week, state.meals, today, planningRandom(seed), options).meals }));
+    kitchen.update((state) => ({ ...state, meals: fillEmptyDays(candidates, state.pantry, week, state.meals, today, planningRandom(seed), { ...options, personalRecipeAmounts: state.personalRecipeAmounts }).meals }));
   }
 
   function patchDinner(date: string, expectedId: string, patch: Partial<PlannedMeal>) {
@@ -787,8 +863,12 @@ export default function RagChefApp() {
     const portions = Number(chefPortions);
     const validPortions = Number.isInteger(portions) && portions > 0 && portions <= 100;
     const current = chefMealDate === date && pinnedRecipe?.id === recipe.id && kitchen.state.meals[date]?.recipeId === recipe.id ? kitchen.state.meals[date] : undefined;
-    const chosenTemplate = template ?? (current || validPortions ? chefMealPreview(current ?? createPlannedMeal(date, recipe), { purpose: "planning", targetDate: date, ...(validPortions ? { servings: portions } : {}) }) : undefined);
-    kitchen.update(state => placePlannedDinner(state, date, recipe, expectedId, chosenTemplate));
+    const contentHash = contentHashForRecipe(recipe);
+    kitchen.update(state => {
+      const fresh = () => createPlannedMeal(date, recipe, true, { amounts: state.personalRecipeAmounts?.[recipe.id], contentHash });
+      const chosenTemplate = template ?? (current || validPortions ? chefMealPreview(current ?? fresh(), { purpose: "planning", targetDate: date, ...(validPortions ? { servings: portions } : {}) }) : undefined);
+      return placePlannedDinner(state, date, recipe, expectedId, chosenTemplate, contentHash);
+    });
     setUseSoonId(null); setPendingChoice(null); setSelectedRecipe(null); setReviewDate(null); setSelectionNotice("");
     setChefPortions(""); setChefResult(null); setChefError(null); setMethodDate(null);
     setWeek(weekStart(date)); setPlanningNotice(`Dinner saved for ${dateLabel(date)}.`);
@@ -849,16 +929,13 @@ export default function RagChefApp() {
     setSelectedRecipe(recipe);
   }
 
-  function persistCookingSession(next: CookingSession | null) {
-    setCookingSession(next);
-    try {
-      if (next) window.localStorage.setItem(COOKING_SESSION_KEY, JSON.stringify(next));
-      else window.localStorage.removeItem(COOKING_SESSION_KEY);
-      setCookingStorageNotice("");
-    } catch { setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it."); }
+  function undoCooked(date: string) {
+    const problem = undoMealProblem(kitchen.state, date);
+    setUndoNotice(problem);
+    if (!problem) kitchen.update(state => undoMeal(state, date));
   }
 
-  function startCooking(
+  async function startCooking(
     recipe: Recipe,
     steps: string[],
     method: string,
@@ -867,8 +944,16 @@ export default function RagChefApp() {
     if (!steps.length) return;
     const meal = plannedDinner ?? (cookingMealDate ? kitchen.state.meals[cookingMealDate] : undefined);
     const next = createCookingSession(recipe, steps, method, meal?.recipeId === recipe.id ? meal : undefined);
+    try {
+      const text = window.localStorage.getItem(COOKING_SESSION_KEY);
+      const current = parseCookingSession(text);
+      if (current) {
+        if (text !== cookingSnapshot.current) adoptCookingSnapshot(text);
+        setPendingCookingStart(next); return;
+      }
+    } catch { /* Retain the in-tab replacement prompt when storage is unavailable. */ }
     if (cookingSession) { setPendingCookingStart(next); return; }
-    persistCookingSession(next);
+    if (!await persistCookingSession(next)) { setPendingCookingStart(next); return; }
     setSelectedRecipe(null);
     setCooking(true);
   }
@@ -913,14 +998,14 @@ export default function RagChefApp() {
   const chosenReadiness = chosenDinner?.recipe && chosenDinner.status !== "cooked" ? mealReadiness(chosenDinner, allocateStockForMeals(reserved, kitchen.state.pantry, today).pantry, today) : null;
   const useSoonResult = useMemo(() => activeUseSoonId && view === "chef" && chefFlow.kind === "discovery"
     ? rankUseSoonDinners({ kitchen: kitchen.state, selectedId: activeUseSoonId, today, date: dinnerDate,
-      portions: chefPortions ? Number(chefPortions) : null, recipes: catalogRecipes, metadata: metadataByRecipeId, constraints }) : null,
-    [activeUseSoonId, view, chefFlow.kind, kitchen.state, today, dinnerDate, chefPortions, catalogRecipes, metadataByRecipeId, constraints]);
+      portions: chefPortions ? Number(chefPortions) : null, recipes: catalogRecipes, metadata: metadataByRecipeId, constraints, contentHashesByRecipeId }) : null,
+    [activeUseSoonId, view, chefFlow.kind, kitchen.state, today, dinnerDate, chefPortions, catalogRecipes, metadataByRecipeId, constraints, contentHashesByRecipeId]);
   const addDinnerLabel = dinnerDate === today ? "Choose for tonight" : `Choose for ${dateLabel(dinnerDate, { weekday: "long" })}`;
   const dinnerContext = <details className="dinner-context panel" key={pinnedRecipe?.id ?? "search"} open={selectionDate && !showChosenDinner ? true : undefined}>
     <summary>Dinner day and portions <span>{hydrated ? dateLabel(dinnerDate) : "Choose a dinner day"}{showChosenDinner && chosenDinner ? chosenDinner.servings ? ` · ${chosenDinner.servings} servings` : ` · ${mealScale(chosenDinner)} recipe batches` : chefPortions ? ` · ${chefPortions} servings` : " · Source quantities"}</span></summary>
     <section aria-label="Dinner context" className="dinner-context-fields">
       <label>Dinner day<input type="date" aria-label="Dinner day" value={dinnerDate} onChange={event => { if (event.target.value) { cancelChef(); setChefFlow(current => ({ kind: activeUseSoonId ? "discovery" : "dinner", date: event.target.value, origin: current.origin })); setChefResult(null); setChefPortions(""); setMethodDate(null); } }} /></label>
-      <label>{showChosenDinner && !chosenDinner?.baseServings ? "Recipe batches" : "Cook for"}<input type="number" aria-label="Chef portions" min="1" max="100" step="1" placeholder="Source portions" disabled={showChosenDinner && Boolean(chosenDinner?.locked || chosenDinner?.status === "cooked")} value={showChosenDinner && chosenDinner ? chosenDinner.baseServings ? chosenDinner.servings ?? "" : chosenDinner.batches : chefPortions} onChange={event => { const value = event.target.value; if (!value || Number.isInteger(Number(value)) && Number(value) > 0 && Number(value) <= 100) { cancelChef(); if (showChosenDinner && chosenDinner) { if (value) patchDinner(chosenDinner.date, chosenDinner.id, chosenDinner.baseServings ? { servings: Number(value) } : { batches: Number(value) }); } else setChefPortions(value); setChefResult(null); } }} /></label>
+      <label>{showChosenDinner && !chosenDinner?.baseServings ? "Recipe batches" : "Cook for"}<ValidatedInput key={showChosenDinner && chosenDinner ? `${chosenDinner.id}:${Boolean(chosenDinner.baseServings)}` : `preview:${pinnedRecipe?.id ?? "discovery"}`} type="number" aria-label="Chef portions" {...DINNER_AMOUNT_LIMITS[showChosenDinner && !chosenDinner?.baseServings ? "batches" : "servings"]} allowEmpty={!showChosenDinner} placeholder="Source portions" disabled={showChosenDinner && Boolean(chosenDinner?.locked || chosenDinner?.status === "cooked")} value={showChosenDinner && chosenDinner ? chosenDinner.baseServings ? chosenDinner.servings ?? "" : chosenDinner.batches : chefPortions} onCommit={value => { cancelChef(); if (showChosenDinner && chosenDinner) patchDinner(chosenDinner.date, chosenDinner.id, chosenDinner.baseServings ? { servings: Number(value) } : { batches: Number(value) }); else setChefPortions(value); setChefResult(null); }} /></label>
       {pinnedRecipe && !pinnedRecipe.servings && <p className="quantity-note">Yield unknown · use recipe batches in dinner amounts.</p>}
     </section>
   </details>;
@@ -931,7 +1016,7 @@ export default function RagChefApp() {
   const completionValid = Boolean(completionMeal && completionMeal.id === completionMealId && completionMeal.status === "planned"
     && plannedDinnerFingerprint(completionMeal) === completionFingerprint
     && (!cooking || cookingSession && canCompleteCookingSession(cookingSession, completionMeal)));
-  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>This recipe was not attached to a saved dinner. Your plan and pantry stay as entered.</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={() => { persistCookingSession(null); setCompletionDate(null); setCooking(false); }}>Finish session</button></section>
+  const completionReview = completionDate === "unplanned" ? <section className="completion-review" aria-label="Complete cooking"><h2>Finished cooking?</h2><p>{cookingSession?.plannedMeal?.status === "cooked" ? "This dinner is already marked cooked. Your saved dinner and pantry stay unchanged." : "This recipe was not attached to a saved dinner. Your plan and pantry stay as entered."}</p><button className="secondary-button" onClick={() => setCompletionDate(null)}>Back to directions</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(null)) { setCompletionDate(null); setCooking(false); } }}>Finish session</button></section>
     : completionDate && (completionMeal || cookingSession?.plannedMeal) ? <DinnerCompletionReview
       meal={completionMeal ?? cookingSession!.plannedMeal!} preview={pendingCompletion?.preview ?? consumptionPreview(completionMeal ?? cookingSession!.plannedMeal!, kitchen.state.pantry, today)} valid={completionValid}
       deduct={deductStock} setDeduct={setDeductStock} confirm={confirmCompletion} cancel={() => setCompletionDate(null)} pending={Boolean(pendingCompletion)} retry={kitchen.retrySave} /> : null;
@@ -986,7 +1071,7 @@ export default function RagChefApp() {
         {kitchen.conflict && <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.{JSON.stringify(kitchen.conflict.state?.cookingProfile ?? DEFAULT_PROFILE) !== JSON.stringify(profile) && " Cooking preferences also differ; review allergies and equipment before choosing."}</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>}
         {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
         {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{[cookingSession.timer, ...(cookingSession.extraTimers ?? [])].some(timer => timer.status === "finished") ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
-        {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
+        {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
         {(view === "recipes" || view === "chef") && <>
@@ -1012,7 +1097,7 @@ export default function RagChefApp() {
               patch={patch => patchDinner(chosenDinner.date, chosenDinner.id, patch)} cook={() => cookMeal(chosenDinner.date)} change={newDinnerSearch}
               details={() => { setCookingMealDate(chosenDinner.date); setSelectedRecipe(chosenDinner.recipe ?? null); }}
               shop={() => { setShoppingDinnerDate(chosenDinner.date); setWeek(weekStart(chosenDinner.date)); navigate("shop"); }}
-              undo={() => kitchen.update(state => undoMeal(state, chosenDinner.date))}
+              undo={() => undoCooked(chosenDinner.date)}
               methods={chosenDinner.recipe ? instructionSections(chosenDinner.recipe) : []} methodsOpen={methodDate === chosenDinner.date}
               cancelMethod={() => setMethodDate(null)} selectMethod={index => {
                 if (!chosenDinner.recipe) return;
@@ -1086,7 +1171,8 @@ export default function RagChefApp() {
             </div>
             {recipeCollection === "recent" && <p className="quantity-note">Pick a dinner you’ve cooked before. Current recipe quantities and your selected portions apply.</p>}
             {recipeCollection === "favorites" && <p className="quantity-note">Your saved favorites. Saved exclusions still apply; unavailable recipes are hidden.</p>}
-            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Core dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label>{timeLimit !== null && <button className="text-button" onClick={() => { setMaxMinutes(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear time limit</button>}</div>
+            <div className="catalog-search panel"><label htmlFor="recipe-search">Search recipes</label><div className="catalog-search-row"><input id="recipe-search" type="search" placeholder="Recipe name or ingredient…" value={recipeQuery} onChange={(event) => { setRecipeQuery(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /><button className="secondary-button" disabled={!recipeQuery} onClick={() => { setRecipeQuery(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear search</button></div><div className="catalog-filters"><label><input type="checkbox" aria-describedby="reviewed-dinners-help" checked={coreDinnersOnly} onChange={(event) => { setCoreDinnersOnly(event.target.checked); setRecipeLimit(RECIPE_PAGE_SIZE); }} />Reviewed dinners</label><label>Maximum total minutes<input type="number" min="1" max="1440" placeholder="Any" value={maxMinutes} onChange={(event) => { setMaxMinutes(event.target.value); setRecipeLimit(RECIPE_PAGE_SIZE); }} /></label>{timeLimit !== null && <button className="text-button" onClick={() => { setMaxMinutes(""); setRecipeLimit(RECIPE_PAGE_SIZE); }}>Clear time limit</button>}</div>
+              {catalogState === "ready" && <p id="reviewed-dinners-help" className="quantity-note">{reviewedDinnerCount} reviewed {reviewedDinnerCount === 1 ? "dinner matches" : "dinners match"} these filters. Selected as main dishes; amounts and dietary suitability may still need review.</p>}
               {catalogState === "ready" && <p className="quantity-note" role="status">{verifiedTimeRecipes.length} of {browserMatches.length} matching recipes have verified total cooking times.</p>}
               {timeLimit !== null && <p className="quantity-note">Time filtering includes source-backed total times only. Recipes with unknown times are hidden.</p>}
             </div>
@@ -1128,7 +1214,7 @@ export default function RagChefApp() {
             setPreferReviewedMains={setPreferReviewedMains}
             openMeal={(date) => { const meal = kitchen.state.meals[date]; if (meal?.recipe) { setCookingMealDate(date); setSelectedRecipe(meal.recipe); } }}
             markCooked={date => beginCompletion(kitchen.state.meals[date])}
-            undoCooked={(date) => kitchen.update((state) => undoMeal(state, date))}
+            undoCooked={undoCooked}
             goShopping={() => setView("shop")}
             shoppingCount={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length}
           />
@@ -1177,7 +1263,7 @@ export default function RagChefApp() {
         </fieldset>
       </main>
 
-      <nav className="mobile-nav" aria-label="Mobile navigation">
+      <nav ref={mobileNavRef} className="mobile-nav" aria-label="Mobile navigation">
         <NavButton active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
         <NavButton active={view === "chef"} icon="✦" label="Chef" onClick={() => navigate("chef")} />
         <NavButton active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />
@@ -1204,6 +1290,16 @@ export default function RagChefApp() {
       {selectedRecipe && !cooking && (
         <RecipeDrawer
           recipe={selectedRecipe}
+          personalAmountsEditor={<PersonalRecipeAmountsEditor
+            key={JSON.stringify([selectedRecipe.id, contentHashForRecipe(selectedRecipe), kitchen.state.personalRecipeAmounts?.[selectedRecipe.id]])}
+            recipe={selectedRecipe} contentHash={contentHashForRecipe(selectedRecipe)}
+            saved={kitchen.state.personalRecipeAmounts?.[selectedRecipe.id]} disabled={!kitchen.ready || kitchen.busy}
+            save={(amounts: PersonalRecipeAmounts | undefined) => kitchen.update(state => {
+              const personalRecipeAmounts = { ...state.personalRecipeAmounts };
+              if (amounts) personalRecipeAmounts[selectedRecipe.id] = amounts;
+              else delete personalRecipeAmounts[selectedRecipe.id];
+              return { ...state, personalRecipeAmounts };
+            })} />}
           favorite={kitchen.state.favoriteRecipeIds?.includes(selectedRecipe.id)}
           toggleFavorite={() => toggleFavorite(selectedRecipe.id)}
           plannedMeal={cookingMealDate ? kitchen.state.meals[cookingMealDate] : undefined}
@@ -1227,6 +1323,7 @@ export default function RagChefApp() {
           session={cookingSession}
           visible={cooking}
           chefBusy={askingChef}
+          chefUnavailable={kitchen.saveState === "saved" ? "" : kitchen.status}
           chefError={chefError?.message ?? ""}
           chefReply={chefResult?.resolvedContext?.purpose === "cooking" && chefResult.resolvedContext.recipeId === cookingSession.recipe.id
             && chefResult.resolvedContext.mealId === cookingSession.plannedMeal?.id ? chefResult : null}
@@ -1242,7 +1339,7 @@ export default function RagChefApp() {
           onChange={persistCookingSession}
           completionReview={completionReview ?? undefined}
           finish={() => {
-            if (cookingSession.plannedMeal) beginCompletion(cookingSession.plannedMeal);
+            if (cookingSession.plannedMeal?.status === "planned") beginCompletion(cookingSession.plannedMeal);
             else setCompletionDate("unplanned");
           }}
           close={() => {
@@ -1251,7 +1348,13 @@ export default function RagChefApp() {
           }}
         />
       )}
-      {pendingCookingStart && <Modal className="kitchen-modal-backdrop" label="Replace cooking session" close={() => setPendingCookingStart(null)}><section className="panel kitchen-modal"><h2>Keep your current cooking session?</h2><p>{cookingSession?.recipe.title} has saved progress{cookingSession && cookingHasRunningTimer(cookingSession) ? " and running timers" : ""}. Starting {pendingCookingStart.recipe.title} will replace that progress and all timers.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setPendingCookingStart(null)}>Keep current session</button><button className="primary-button" onClick={() => { persistCookingSession(pendingCookingStart); setPendingCookingStart(null); setSelectedRecipe(null); setCooking(true); }}>Replace cooking session</button></div></section></Modal>}
+      {cookingConflict && <Modal className="kitchen-modal-backdrop" label="Cooking progress changed" close={() => { if (!cookingResolution.current) setCookingConflict(null); }}><section className="panel kitchen-modal"><h2>Keep your unsaved cooking progress?</h2><p>This tab has progress that could not be saved. Another tab saved a different session. Choose which progress to keep.</p><div className="modal-actions"><button className="secondary-button" disabled={cookingResolving} onClick={() => { if (cookingResolution.current) return; cookingUnsaved.current = false; setCookingConflict(null); adoptCookingSnapshot(cookingConflict.stored); }}>Use saved session</button><button className="primary-button" disabled={cookingResolving} onClick={async () => {
+        if (cookingResolution.current) return;
+        cookingResolution.current = true; setCookingResolving(true);
+        try { await persistCookingSession(cookingSession, cookingConflict.stored); }
+        finally { cookingResolution.current = false; setCookingResolving(false); }
+      }}>Keep this tab’s progress</button></div></section></Modal>}
+      {pendingCookingStart && <Modal className="kitchen-modal-backdrop" label="Replace cooking session" close={() => setPendingCookingStart(null)}><section className="panel kitchen-modal"><h2>Keep your current cooking session?</h2><p>{cookingSession?.recipe.title} has saved progress{cookingSession && cookingHasRunningTimer(cookingSession) ? " and running timers" : ""}. Starting {pendingCookingStart.recipe.title} will replace that progress and all timers.</p><div className="modal-actions"><button className="secondary-button" onClick={() => setPendingCookingStart(null)}>Keep current session</button><button className="primary-button" onClick={async () => { if (await persistCookingSession(pendingCookingStart)) { setPendingCookingStart(null); setSelectedRecipe(null); setCooking(true); } }}>Replace cooking session</button></div></section></Modal>}
     </div>
   );
 }
@@ -1539,11 +1642,11 @@ export function RecipeCard({
           {toggleFavorite && <button className="text-button favorite-toggle" aria-pressed={Boolean(favorite)} aria-label={`${favorite ? "Remove favorite" : "Favorite"}: ${recipe.title}`} onClick={toggleFavorite}>{favorite ? "★ Saved" : "☆ Save favorite"}</button>}
         </div>
         <h4><button className="recipe-title-button" onClick={open}>{recipe.title}</button></h4>
-        {metadata?.coreDinner && <span className="core-badge">Core dinner</span>}
+        {metadata?.coreDinner && <span className="core-badge">Reviewed dinner</span>}
         {!readiness && <><p className="pantry-coverage">{details.matched.length} of {details.total} ingredients in pantry</p><small className="coverage-note">Names only · amounts not checked</small></>}
         {dietUnknowns.length > 0 && <p className="diet-note">Diet not verified: {dietUnknowns.map((diet) => diet.replaceAll("_", " ")).join(", ")}</p>}
         <small className="recipe-quality">{recipe.servings ? `${recipe.servings} source servings` : "Yield unknown · recipe batches"}{completeness.amountReviewCount ? ` · ${completeness.amountReviewCount} amounts to review` : " · Amounts quantified"}{metadata?.totalMinutes !== null && metadata?.totalMinutes !== undefined ? ` · ${metadata.totalMinutes} min${metadata.provenance.totalMinutes?.basis === "source" ? " total" : " estimated"}` : ""}</small>
-        {readiness && <div className="recipe-readiness"><strong>Pantry amounts for this dinner</strong><p>{readiness.coveredCount} covered · {readiness.partialCount} partial · {readiness.missingCount} missing · {readiness.reviewCount} need review</p><small>After stock reserved for saved dinners. Estimates use the selected day and portions.</small>{readiness.shopping.length > 0 && <details><summary>Shopping needs ({readiness.shopping.length})</summary><ul>{readiness.shopping.map((item, index) => <li key={index}>{item.name}: {item.measure}{item.needsReview ? " · review" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul></details>}</div>}
+        {readiness && <div className="recipe-readiness"><strong>Pantry amounts for this dinner</strong><p>{readiness.coveredCount} covered · {readiness.partialCount} partial · {readiness.missingCount} missing · {readiness.reviewCount} need review</p><small>After stock reserved for saved dinners. Estimates use the selected day and portions.</small>{readiness.personalAmountsApplied && <small>Includes personal amounts scaled for this dinner.</small>}{readiness.shopping.length > 0 && <details><summary>Shopping needs ({readiness.shopping.length})</summary><ul>{readiness.shopping.map((item, index) => <li key={index}>{item.name}: {item.measure}{item.needsReview ? " · review" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul></details>}</div>}
         {evidence && <blockquote className="card-source-excerpt"><small>Recipe excerpt</small>{evidence}</blockquote>}
         {add && <button className="primary-button recipe-add-action" onClick={add} aria-label={`${addLabel}: ${recipe.title}`}>{addLabel}</button>}
         {recommendation && <div className="recommendation-details">{recommendation.matchReason && <p className="match-reason"><strong>Why this match:</strong> {recommendation.matchReason}</p>}{recommendation.reason !== recommendation.matchReason && <p>{recommendation.reason}</p>}<p className="quantity-note" hidden={Boolean(readiness)}>{recommendation.missingIngredients.length ? `Missing ingredient names: ${recommendation.missingIngredients.join(", ")}` : "All ingredient names match your pantry; check quantities before cooking."}</p></div>}
@@ -1669,18 +1772,22 @@ function SettingsView({
   const [restorePreview, setRestorePreview] = useState<ReturnType<typeof parseKitchenBackup> | null>(null);
   const [restoreError, setRestoreError] = useState("");
   const [reviewedProfile, setReviewedProfile] = useState("");
+  const backupRead = useRef(0);
+  useEffect(() => () => { ++backupRead.current; }, []);
   const restoreProfile = restorePreview?.state.cookingProfile ?? profile;
-  const restoreProfileKey = JSON.stringify(restoreProfile);
+  const restoreProfileKey = JSON.stringify([restorePreview, restoreProfile]);
   async function readBackup(file: File | undefined) {
+    const readId = ++backupRead.current;
     setRestorePreview(null);
     setRestoreError("");
     setReviewedProfile("");
     if (!file) return;
     try {
       if (file.size > 2_000_000) throw new Error("This backup exceeds the 2 MB kitchen limit.");
-      setRestorePreview(parseKitchenBackup(await file.text()));
+      const preview = parseKitchenBackup(await file.text());
+      if (readId === backupRead.current) setRestorePreview(preview);
     } catch (error) {
-      setRestoreError(error instanceof Error ? error.message : "This backup could not be read.");
+      if (readId === backupRead.current) setRestoreError(error instanceof Error ? error.message : "This backup could not be read.");
     }
   }
   return (
@@ -1700,7 +1807,7 @@ function SettingsView({
       </section>
 
       <section className="panel settings-panel wide-panel">
-        <h2>Kitchen backup</h2><p>Plans, pantry amounts, favorites, and cooking preferences save automatically on this Mac.</p>
+        <h2>Kitchen backup</h2><p>Plans, pantry amounts, personal recipe amounts, favorites, and cooking preferences save automatically on this Mac.</p>
         <button className="secondary-button" onClick={exportBackup}>Export backup</button>
         {backupExportError && <p role="alert">{backupExportError}</p>}
         <label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
@@ -1708,15 +1815,16 @@ function SettingsView({
         {restoreError && <p role="alert">{restoreError}</p>}
         {restorePreview && <section className="restore-preview" role="region" aria-label="Backup preview">
           <h3>Review this backup</h3><p>Exported {new Date(restorePreview.exportedAt).toLocaleString()}</p>
-          <p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners · {restorePreview.state.favoriteRecipeIds?.length ?? 0} favorites</p>
-          <p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners · {currentKitchen.favoriteRecipeIds?.length ?? 0} favorites</p>
+          <p>Backup: {restorePreview.state.pantry.length} pantry rows · {Object.keys(restorePreview.state.meals).length} dinners · {restorePreview.state.favoriteRecipeIds?.length ?? 0} favorites · {Object.keys(restorePreview.state.personalRecipeAmounts ?? {}).length} personal amount sets</p>
+          <p>Current kitchen: {currentKitchen.pantry.length} pantry rows · {Object.keys(currentKitchen.meals).length} dinners · {currentKitchen.favoriteRecipeIds?.length ?? 0} favorites · {Object.keys(currentKitchen.personalRecipeAmounts ?? {}).length} personal amount sets</p>
+          <p>{compareKitchens(currentKitchen, restorePreview.state).personalAmountsChanged} personal amount sets changed. Older backups without personal amounts restore an empty set.</p>
           <p>Amounts, favorites, cooked records, and shopping checks will be replaced with the backup’s values.</p>
           <h4>Cooking preferences after restore</h4>
           {!restorePreview.state.cookingProfile && <p role="status">This older backup has no cooking preferences. Your current preferences will be kept. Review them before restoring.</p>}
           <p>Allergies: {restoreProfile.allergies.join(", ") || "None entered"}. Diet: {restoreProfile.diet}. Equipment: {restoreProfile.equipment.join(", ") || "None selected"}.</p>
           <p>Dislikes: {restoreProfile.dislikes.join(", ") || "None entered"}. Skill: {restoreProfile.skillLevel}. Budget: {restoreProfile.budget}.</p>
           <label><input type="checkbox" checked={reviewedProfile === restoreProfileKey} onChange={event => setReviewedProfile(event.target.checked ? restoreProfileKey : "")} />I reviewed the cooking preferences, including allergies and equipment.</label>
-          <div className="modal-actions"><button className="secondary-button" onClick={() => setRestorePreview(null)}>Cancel restore</button>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => { ++backupRead.current; setRestorePreview(null); setReviewedProfile(""); }}>Cancel restore</button>
             <button className="primary-button" disabled={!canRestore || reviewedProfile !== restoreProfileKey} onClick={() => {
               if (restoreBackup({ ...restorePreview.state, cookingProfile: restoreProfile })) { setRestorePreview(null); setRestoreError(""); }
               else setRestoreError("Restore could not start. Finish any save or conflict and check browser storage before retrying.");
@@ -1749,6 +1857,7 @@ function SettingsView({
 
 export function RecipeDrawer({
   favorite, toggleFavorite,
+  personalAmountsEditor,
   askAboutRecipe,
   recipe,
   plannedMeal,
@@ -1764,6 +1873,7 @@ export function RecipeDrawer({
   metadata,
 }: {
   favorite?: boolean; toggleFavorite?: () => void;
+  personalAmountsEditor?: import("react").ReactNode;
   askAboutRecipe?: () => void;
   recipe: Recipe;
   plannedMeal?: PlannedMeal;
@@ -1789,7 +1899,7 @@ export function RecipeDrawer({
   return (
     <Modal className="drawer-backdrop" labelledBy="recipe-title" close={close}>
       <article className="recipe-drawer">
-        <button className="drawer-close" onClick={close} aria-label="Close recipe">×</button>
+        <header className="drawer-toolbar"><button className="drawer-close" onClick={close} aria-label="Close recipe">×</button></header>
         {recipe.image && <div className="drawer-hero"><img src={recipe.image} alt="" /></div>}
         <div className="drawer-content">
           <span className="eyebrow">{recipe.category}</span>
@@ -1817,12 +1927,14 @@ export function RecipeDrawer({
               </div>
             </div>
           )}
-          <div className="drawer-actions">{askAboutRecipe && <button className="secondary-button" onClick={askAboutRecipe}>Ask Chef about this recipe</button>}<button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>Start cooking{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
+          {plannedMeal?.status === "cooked" && <p className="quantity-note">This dinner is already cooked. Starting again uses original recipe quantities; your saved dinner and pantry stay unchanged.</p>}
+          <div className="drawer-actions">{askAboutRecipe && <button className="secondary-button" onClick={askAboutRecipe}>Ask Chef about this recipe</button>}<button className="primary-button" onClick={() => activeDirection && start(activeDirection.steps, activeDirection.title)} disabled={!activeDirection}>{plannedMeal?.status === "cooked" ? "Start cooking again" : "Start cooking"}{activeDirection && directions.length > 1 ? ` · ${activeDirection.title}` : ""}</button><button className="secondary-button" disabled={eligibility && !eligibility.eligible} onClick={addToPlan}>{addLabel}</button></div>
           <p className="drawer-source-link">Source: <a href={recipe.sourceUrl} target={recipe.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{sourceLabel(recipe)}</a></p>
           {plannedMeal ? <section className="planned-amounts" aria-label="Planned dinner ingredients"><h3>Ingredients for your dinner</h3><p className="quantity-note">{dateLabel(plannedMeal.date)} · {plannedMeal.servings ? `${plannedMeal.servings} servings` : `${mealScale(plannedMeal)} recipe batches`}. Final amounts for this dinner; source directions below use original recipe quantities.</p><ul className="ingredient-list">{resolvedMealIngredients(plannedMeal).map((ingredient, index) => {
             const amount = `${ingredient.measure || "Amount needs review"}${ingredient.needsReview && mealScale(plannedMeal) !== 1 ? ` · review for ${mealScale(plannedMeal)} batches` : ""}`;
-            return <li key={index}><strong>{ingredient.name}</strong><small>{amount}</small></li>;
+            return <li key={index}><strong>{ingredient.name}</strong><small>{amount}<span className="amount-basis">{mealAmountLabel(plannedMeal, index)}</span></small></li>;
           })}</ul><details className="original-ingredients"><summary>Original recipe quantities</summary>{originalIngredients}</details></section> : originalIngredients}
+          {personalAmountsEditor}
           <div className="directions-heading">
             <div><h3>Source directions</h3>{activeDirection && directions.length > 1 && <span>{activeDirection.title} method</span>}</div>
             <small>{activeDirection?.steps.length ?? 0} steps</small>

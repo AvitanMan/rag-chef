@@ -3,8 +3,34 @@ import type { Recipe } from "./recipe-types";
 import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validation";
 
 export const COOKING_SESSION_KEY = "rag-chef-cooking-v1";
+
+/** Reject stale edits, including deletion, before replacing another tab's progress. */
+export function writeCookingSession(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">, expected: string | null, next: CookingSession | null) {
+  const stored = storage.getItem(COOKING_SESSION_KEY);
+  if (stored !== expected) return { saved: false, stored };
+  const text = next ? JSON.stringify(next) : null;
+  if (text === null) storage.removeItem(COOKING_SESSION_KEY);
+  else storage.setItem(COOKING_SESSION_KEY, text);
+  return { saved: true, stored: text };
+}
 export const MAX_TIMER_MS = 86_400_000;
 export const MAX_COOKING_TIMERS = 8;
+const TIMER_DURATION_ERROR = "Choose a timer between 1 second and 24 hours.";
+
+/** Parse both timer forms' whole-minute/second fields into a bounded duration. */
+export function parseTimerDuration(minutes: string, seconds: string): number {
+  const mins = Number(minutes), secs = Number(seconds);
+  if (!minutes.trim() || !Number.isInteger(mins) || mins < 0 || mins > MAX_TIMER_MS / 60_000) {
+    throw new Error(`Enter whole minutes from 0 to ${MAX_TIMER_MS / 60_000}.`);
+  }
+  if (!seconds.trim() || !Number.isInteger(secs) || secs < 0 || secs > 59) {
+    throw new Error("Enter whole seconds from 0 to 59.");
+  }
+  const duration = mins * 60 + secs;
+  if (duration < 1 || duration > MAX_TIMER_MS / 1000) throw new Error(TIMER_DURATION_ERROR);
+  return duration;
+}
+
 export interface CookingTimer {
   durationMs: number;
   remainingMs: number;
@@ -48,7 +74,7 @@ export function finishElapsedTimers(session: CookingSession, now = Date.now()): 
 }
 
 export function plannedDinnerFingerprint(meal: PlannedMeal): string {
-  return JSON.stringify([meal.recipeId, meal.recipe, meal.planningIngredients ?? null, meal.baseServings, meal.servings, meal.batches, meal.ingredientOverrides]);
+  return JSON.stringify([meal.recipeId, meal.recipe, meal.planningIngredients ?? null, meal.personalAmountIndices ?? null, meal.baseServings, meal.servings, meal.batches, meal.ingredientOverrides]);
 }
 
 export function canCompleteCookingSession(session: CookingSession, current: PlannedMeal | undefined): boolean {
@@ -67,7 +93,7 @@ export function timerAction(timer: CookingTimer, action: "start" | "pause" | "re
     const remainingMs = remainingTimerMs(timer, now);
     return { ...timer, endAt: null, remainingMs, status: remainingMs ? "paused" : "finished" };
   }
-  if (!Number.isFinite(durationMs) || durationMs < 1000 || durationMs > MAX_TIMER_MS) throw new Error("Choose a timer between 1 second and 24 hours.");
+  if (!Number.isFinite(durationMs) || durationMs < 1000 || durationMs > MAX_TIMER_MS) throw new Error(TIMER_DURATION_ERROR);
   const resuming = timer.status === "paused" && durationMs === timer.durationMs;
   const remainingMs = resuming ? timer.remainingMs : durationMs;
   return { durationMs, remainingMs, endAt: now + remainingMs, status: "running" };
@@ -75,7 +101,7 @@ export function timerAction(timer: CookingTimer, action: "start" | "pause" | "re
 
 export function createCookingSession(recipe: Recipe, instructions: string[], method: string, plannedMeal?: PlannedMeal): CookingSession {
   return { version: 1, id: crypto.randomUUID(), recipe: structuredClone(recipe),
-    ...(plannedMeal ? { plannedMeal: structuredClone(plannedMeal) } : {}),
+    ...(plannedMeal?.status === "planned" ? { plannedMeal: structuredClone(plannedMeal) } : {}),
     instructions: [...instructions], method, step: 0, soundEnabled: false,
     timer: { durationMs: 300_000, remainingMs: 300_000, endAt: null, status: "idle" } };
 }
@@ -115,7 +141,7 @@ export function stepTimerSeconds(text: string): number | null {
   if (matches.length !== 1) return null;
   const match = matches[0];
   const prefix = text.slice(0, match.index);
-  if (/(?:[\d./¼½¾⅓⅔⅛⅜⅝⅞]|\d\s*[-–—]|\d\s+(?:to|or))\s*$/.test(prefix)) return null;
+  if (/(?:[\d./¼½¾⅓⅔⅛⅜⅝⅞]|\d\s*[-–—]|\d\s+(?:to|or|and))\s*$/i.test(prefix)) return null;
   const factor = /^hour/i.test(match[2]) ? 3600 : /^minute/i.test(match[2]) ? 60 : 1;
   const seconds = Number(match[1]) * factor;
   return seconds >= 1 && seconds <= 86_400 ? seconds : null;

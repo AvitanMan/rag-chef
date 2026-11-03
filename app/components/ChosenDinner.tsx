@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PlannedMeal } from "../lib/kitchen-types";
-import { mealScale } from "../lib/kitchen-types";
+import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { MealReadiness } from "../lib/quantities";
 import type { RecipeEligibility } from "../lib/recipe-constraints";
 import { ValidatedInput } from "./ValidatedInput";
@@ -29,6 +29,7 @@ export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook,
       {readiness && <section className="dinner-needs" aria-label="Dinner shopping needs"><h3>What’s missing?</h3>
         <p>{readiness.coveredCount} covered · {readiness.partialCount} partial · {readiness.missingCount} missing · {readiness.reviewCount} need review</p>
         <p className="quantity-note">After reserving stock for your other saved dinners this week. Missing ingredients do not block cooking.</p>
+        {readiness.personalAmountsApplied && <p className="quantity-note">Includes captured personal amounts scaled for this dinner.</p>}
         {readiness.shopping.length ? <ul>{readiness.shopping.map((item, index) => <li key={index}><strong>{item.name}</strong>: {item.measure}{item.needsReview ? " · Review amount" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul> : <p>Known quantities are covered.</p>}
       </section>}
       {!meal.recipe && <p role="alert">This saved recipe is unavailable. Choose a replacement to recover its shopping amounts.</p>}
@@ -36,7 +37,7 @@ export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook,
         : meal.recipe && <button className="primary-button" onClick={cook}>Cook dinner</button>}
       {!meal.locked && <button className="text-button" onClick={change}>Change dinner</button>}
       {meal.recipe && <details open={adjusting} onToggle={event => setAdjusting(event.currentTarget.open)}><summary>Adjust amounts</summary>
-        <label>{meal.baseServings ? "Servings" : "Recipe batches"}<ValidatedInput aria-label="Dinner portions" type="number" min={1} max={100} step={1} value={meal.baseServings ? meal.servings ?? 1 : meal.batches} disabled={meal.locked} onCommit={text => { const value = Number(text); patch(meal.baseServings ? { servings: value } : { batches: value }); }} /></label>
+        <label>{meal.baseServings ? "Servings" : "Recipe batches"}<ValidatedInput key={meal.baseServings ? "servings" : "batches"} aria-label="Dinner portions" type="number" {...DINNER_AMOUNT_LIMITS[meal.baseServings ? "servings" : "batches"]} value={meal.baseServings ? meal.servings ?? 1 : meal.batches} disabled={meal.locked} onCommit={text => { const value = Number(text); patch(meal.baseServings ? { servings: value } : { batches: value }); }} /></label>
         <DinnerAmounts meal={meal} patch={patch} />
       </details>}
     </>}

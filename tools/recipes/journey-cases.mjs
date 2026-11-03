@@ -1,4 +1,5 @@
-// Evaluation contract v2: saved amounts are calculated facts, other factual turns require AI verification.
+// Evaluation contract v3: ingredient discovery checks canonical ingredients; factual follow-ups explicitly select their source.
+// Saved amounts are calculated facts; other factual turns require AI verification.
 // Fixed journey expectations. They are not derived from the model's responses.
 export const JOURNEY_DATE = "2026-10-26";
 export const journeyTitles = { bake: "Zucchini Pasta Bake", soup: "Red Lentil Soup" };
@@ -14,8 +15,8 @@ const excluded = { outcome: "constraints_unsatisfied", status: "unsupported", em
 export const journeyCases = [
   { id: "natural-discovery", title: "Ask ordinary dinner questions, choose an ingredient, then discuss the source", pantry, steps: [
     { id: "default-dinner", query: "What can I cook with what I have?", expect: { minRecommendations: 1, maxRecommendations: 3 } },
-    { id: "ingredient-question", query: "What can I cook with lentils?", clearHistory: true, expect: { first: "soup", only: "soup", minRecommendations: 1, maxRecommendations: 1 } },
-    { id: "source-follow-up", query: "How long should I simmer it, and what should the lentils feel like?", previous: true, expect: { only: "soup", factual: true, evidence: ["S3"], answerPatterns: ["20\\s*(?:–|—|-|to)\\s*30\\s*(?:minutes?|mins?)", "soft|tender"] } },
+    { id: "ingredient-question", query: "What can I cook with lentils?", clearHistory: true, expect: { ingredientPatterns: ["\\blentils?\\b"], minRecommendations: 1, maxRecommendations: 3 } },
+    { id: "source-follow-up", query: "How long should I simmer it, and what should the lentils feel like?", focus: "soup", expect: { only: "soup", factual: true, evidence: ["S3"], answerPatterns: ["20\\s*(?:–|—|-|to)\\s*30\\s*(?:minutes?|mins?)", "soft|tender"] } },
   ] },
   { id: "pantry-plan-cook", title: "Use ordinary pantry names, choose dinner, change portions, and ask during cooking", pantry, steps: [
     { id: "find-dinner", query: "Recommend Zucchini Pasta Bake for tonight.", expect: bake },

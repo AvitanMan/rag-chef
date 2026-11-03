@@ -1,10 +1,11 @@
 import { mealScale } from "./kitchen-types";
-import type { RecipeIngredient } from "./recipe-types";
+import type { Recipe, RecipeIngredient } from "./recipe-types";
 import type {
   KitchenState,
   PantryDeduction,
   PantryStock,
   PlannedMeal,
+  PersonalRecipeAmounts,
 } from "./kitchen-types";
 
 export interface ParsedMeasure {
@@ -212,6 +213,38 @@ export function normalizePlanningIngredient(ingredient: RecipeIngredient): Recip
   return parsed ? { name: ingredientLabel(count![2]), measure: formatMeasure(parsed.quantity, parsed.unit) } : original;
 }
 
+/** Blank means inherit; saved personal quantities must be measurable and positive. */
+export function personalAmountInputProblem(value: string): string {
+  if (!value.trim()) return "";
+  const parsed = parseMeasure(value);
+  return value.length <= 160 && parsed && parsed.quantity > 0 && parsed.quantity <= 1_000_000_000
+    ? "" : "Enter a positive measured amount, such as 300 g, 1 cup, or 2.";
+}
+
+export function personalAmountsMatch(recipe: Recipe, amounts: PersonalRecipeAmounts | undefined, contentHash: string | undefined): boolean {
+  return Boolean(amounts && contentHash && amounts.contentHash === contentHash
+    && amounts.referenceServings === (recipe.servings ?? null)
+    && amounts.amounts.every(item => recipe.ingredients[item.ingredientIndex]?.name === item.originalName));
+}
+
+/** Shared by selection and every stock preview. Only the planning copy changes. */
+export function applyPersonalRecipeAmounts(meal: PlannedMeal, amounts: PersonalRecipeAmounts | undefined, contentHash: string | undefined): PlannedMeal {
+  if (!meal.recipe || !amounts || !personalAmountsMatch(meal.recipe, amounts, contentHash)) return meal;
+  const ingredients = meal.recipe.ingredients.map(normalizePlanningIngredient);
+  for (const item of amounts.amounts) ingredients[item.ingredientIndex].measure = item.measure;
+  return { ...meal, planningIngredients: ingredients, personalAmountIndices: amounts.amounts.map(item => item.ingredientIndex) };
+}
+
+export function mealAmountBasis(meal: PlannedMeal, index: number): "saved_override" | "personal_scaled" | "source_scaled" {
+  return Object.hasOwn(meal.ingredientOverrides, String(index)) ? "saved_override"
+    : meal.personalAmountIndices?.includes(index) ? "personal_scaled" : "source_scaled";
+}
+
+export function mealAmountLabel(meal: PlannedMeal, index: number): string {
+  const basis = mealAmountBasis(meal, index);
+  return basis === "saved_override" ? "Dinner override" : basis === "personal_scaled" ? "Personal amount · scaled for this dinner" : "Scaled from source";
+}
+
 interface Requirement {
   identity: string;
   name: string;
@@ -257,7 +290,7 @@ function requirementsFor(meals: PlannedMeal[]): Requirement[] {
       group.recipeTitles.add(title);
       group.mealDates.add(meal.date);
       group.needsReview ||= !overridden && !validScale;
-      group.descriptions.push(`${title} (${meal.date}): ${raw || "amount missing"}${overridden ? " (custom amount for this meal)" : ` × ${displayQuantity(effectiveScale)}`}${!overridden && !validScale ? " (invalid portions; check amount)" : ""}`);
+      group.descriptions.push(`${title} (${meal.date}): ${raw || "amount missing"}${overridden ? " (custom amount for this meal)" : `${meal.personalAmountIndices?.includes(index) ? " (personal amount)" : ""} × ${displayQuantity(effectiveScale)}`}${!overridden && !validScale ? " (invalid portions; check amount)" : ""}`);
     }
   }
   return [...groups.values()].sort((a, b) => a.identity.localeCompare(b.identity) || (a.parsed?.dimension ?? a.raw).localeCompare(b.parsed?.dimension ?? b.raw));
@@ -312,6 +345,7 @@ export interface MealStockAllocation {
 }
 
 export interface MealReadiness {
+  personalAmountsApplied?: boolean;
   coveredCount: number;
   partialCount: number;
   missingCount: number;
@@ -332,6 +366,7 @@ export function mealReadiness(meal: PlannedMeal, pantry: PantryStock[], today = 
     else summary.missingCount++;
   }
   return { ...summary, coverage: allocation.coverage, useSoonCoverage: allocation.useSoonCoverage,
+    ...(meal.personalAmountIndices?.some(index => mealAmountBasis(meal, index) === "personal_scaled") ? { personalAmountsApplied: true } : {}),
     shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote }) => ({ name, measure, needsReview, ...(preparationNote ? { preparationNote } : {}) })) };
 }
 
@@ -493,9 +528,9 @@ export function completeMeal(state: KitchenState, date: string, deduct: boolean,
   };
 }
 
-export function undoMeal(state: KitchenState, date: string): KitchenState {
+function previewMealUndo(state: KitchenState, date: string): { state: KitchenState; problem: string } {
   const meal = state.meals[date];
-  if (!meal || (meal.status === "planned" && !meal.completion)) return state;
+  if (!meal || (meal.status === "planned" && !meal.completion)) return { state, problem: "" };
   const pantry = state.pantry.slice();
   const existingIds = new Set(pantry.map((stock) => stock.id));
   const legacyRequirements = requirementsFor([{ ...meal, status: "planned" }]);
@@ -533,11 +568,29 @@ export function undoMeal(state: KitchenState, date: string): KitchenState {
     existingIds.add(id);
     pantry.push({ id, name, measure: formatMeasure(quantity, before.unit), ...(deduction.useBy ? { useBy: deduction.useBy } : {}) });
   }
+  // Check the complete restoration before changing either stock or completion.
+  // Restoring into existing rows is still allowed when the pantry is full.
+  if (pantry.length > 500) {
+    const excess = pantry.length - 500;
+    return { state, problem: `Make room in your pantry before undoing this dinner. Remove ${excess} pantry ${excess === 1 ? "row" : "rows"} so the restored stock fits within the 500-row limit.` };
+  }
   const plannedMeal = { ...meal };
   delete plannedMeal.completion;
   return {
-    ...state,
-    pantry,
-    meals: { ...state.meals, [date]: { ...plannedMeal, status: "planned" } },
+    state: {
+      ...state,
+      pantry,
+      meals: { ...state.meals, [date]: { ...plannedMeal, status: "planned" } },
+    },
+    problem: "",
   };
+}
+
+/** Explain a blocked undo without changing the dinner or its pantry deductions. */
+export function undoMealProblem(state: KitchenState, date: string): string {
+  return previewMealUndo(state, date).problem;
+}
+
+export function undoMeal(state: KitchenState, date: string): KitchenState {
+  return previewMealUndo(state, date).state;
 }

@@ -1,4 +1,5 @@
 import type { Recipe, RecipeMetadata } from "./recipe-types";
+import { cookingStepText, isCookingMethodHeading } from "./recipe-instructions";
 import { RECIPE_EMBEDDING_KIND, RECIPE_STEP_EMBEDDING_KIND, isValidEmbeddingVector } from "./recipe-embeddings";
 import type {
   RecipeEmbeddingRecord,
@@ -827,14 +828,11 @@ function normalizeInstructionSections(recipe: Recipe): InstructionSection[] {
   };
 
   for (const raw of recipe.instructions) {
-    const step = raw
-      .trim()
-      .replace(/^(?:step\s+)?\d+[.)]\s+/i, "")
-      .trim();
+    const step = cookingStepText(raw);
     if (!step || /^(?:step\s*#?\s*\d+|instructions?|directions?)\s*[:.)-]?$/i.test(step)) {
       continue;
     }
-    if (isInstructionHeading(step)) {
+    if (isCookingMethodHeading(step)) {
       if (current.steps.length > 0) sections.push(current);
       current = { title: instructionHeading(step), steps: [] };
     } else {
@@ -853,17 +851,6 @@ function defaultInstructionTitle(title: string): string {
   if (/slow cooker|crockpot/.test(value)) return "Slow cooker";
   if (/air fryer/.test(value)) return "Air fryer";
   return "Main method";
-}
-
-function isInstructionHeading(value: string): boolean {
-  const heading = value.trim().replace(/:$/, "");
-  return (
-    heading.length <= 80 &&
-    (/(?:instructions?|directions?|method)$/i.test(heading) ||
-      /^(?:instant pot|pressure cooker|stove ?top|oven|slow cooker|air fryer|grill|hob)$/i.test(
-        heading,
-      ))
-  );
 }
 
 function instructionHeading(value: string): string {

@@ -14,7 +14,7 @@ for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-sto
   await writeFile(join(dir, `${name}.mjs`), code);
 }
 const load = (name) => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
-const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, resolvedMealIngredients, mealReadiness } = await load("quantities");
+const { allocateMealStock, allocateStockForMeals, buildShoppingList, consumptionPreview, completeMeal, undoMeal, undoMealProblem, resolvedMealIngredients, mealReadiness } = await load("quantities");
 const { recipePantryDetails } = await load("recipe-browser");
 const { DEFAULT_COOKING_PROFILE } = await load("kitchen-types");
 const { createPlannedMeal } = await load("kitchen-state");
@@ -54,6 +54,49 @@ test("optional pantry and deduction dates round-trip while old kitchens remain u
     const invalid = kitchen([{ ...stock("invalid", "rice", "1 kg"), useBy }]);
     assert.throws(() => validateKitchenState(invalid), /useBy/);
   }
+});
+
+test("undo checks every restored batch before changing a nearly full pantry or the cooked dinner", () => {
+  const dinner = meal("2026-10-22", recipe("rice-and-beans", [
+    { name: "rice", measure: "400 g" }, { name: "beans", measure: "200 g" }, { name: "oil", measure: "30 ml" },
+  ]));
+  const cooked = completeMeal(kitchen([
+    stock("rice", "rice", "500 g"), stock("beans", "beans", "500 g"), stock("oil", "oil", "100 ml"),
+  ], { [dinner.date]: dinner }), dinner.date, true, "2026-10-22T12:00:00.000Z");
+  // Rice can merge into its existing row, but beans and oil were removed.
+  const full = { ...cooked, pantry: [cooked.pantry[0], ...Array.from({ length: 499 }, (_, index) => stock(`other-${index}`, `Other food ${index}`, "1"))] };
+  validateKitchenState(full);
+  const before = structuredClone(full);
+  assert.match(undoMealProblem(full, dinner.date), /Remove 2 pantry rows/);
+  assert.strictEqual(undoMeal(full, dinner.date), full);
+  assert.deepEqual(full, before, "a blocked undo cannot partially restore rice or remove completion history");
+
+  const oneSpace = { ...full, pantry: full.pantry.slice(0, 499) };
+  assert.match(undoMealProblem(oneSpace, dinner.date), /Remove 1 pantry row/);
+  assert.strictEqual(undoMeal(oneSpace, dinner.date), oneSpace);
+  const room = { ...full, pantry: full.pantry.slice(0, 498) };
+  assert.equal(undoMealProblem(room, dinner.date), "");
+  const restored = undoMeal(room, dinner.date);
+  assert.equal(restored.pantry.length, 500);
+  assert.equal(restored.pantry.find(row => row.id === "rice").measure, "500 g");
+  assert.equal(restored.pantry.find(row => row.id === "beans").measure, "200 g");
+  assert.equal(restored.pantry.find(row => row.id === "oil").measure, "30 ml");
+  assert.equal(restored.meals[dinner.date].status, "planned");
+  assert.equal(restored.meals[dinner.date].completion, undefined);
+  validateKitchenState(restored);
+  assert.deepEqual(parseKitchenBackup(serializeKitchenBackup(restored)).state, { ...restored, cookingProfile: DEFAULT_COOKING_PROFILE });
+  assert.strictEqual(undoMeal(restored, dinner.date), restored);
+});
+
+test("a full pantry still permits undo when all consumed stock restores into existing rows", () => {
+  const dinner = meal();
+  const pantry = [stock("rice", "rice", "500 g"), ...Array.from({ length: 499 }, (_, index) => stock(`other-${index}`, `Other food ${index}`, "1"))];
+  const cooked = completeMeal(kitchen(pantry, { [dinner.date]: dinner }), dinner.date, true, "2026-10-22T12:00:00.000Z");
+  assert.equal(undoMealProblem(cooked, dinner.date), "");
+  const restored = undoMeal(cooked, dinner.date);
+  assert.deepEqual(restored.pantry, pantry);
+  assert.equal(restored.meals[dinner.date].status, "planned");
+  validateKitchenState(restored);
 });
 
 test("availability dates are inclusive and never count known zero or past stock", () => {
