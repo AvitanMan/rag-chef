@@ -2236,3 +2236,59 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
   .personal-amounts { padding: 14px; }
   .personal-amount-row { grid-template-columns: 1fr; gap: 8px; }
 }
+
+/* Reviewed conversational dinner plans use the same kitchen surfaces and colors. */
+.chef-plan-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--green-pale); }
+.chef-plan-entry p { margin: 5px 0 0; font-size: 13px; }
+.chef-plan-backdrop { overflow: auto; }
+.chef-plan-workspace { width: min(960px, calc(100vw - 32px)); max-width: 960px; max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; padding: 24px; }
+.chef-plan-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.chef-plan-heading h2 { margin: 0 0 8px; }
+.chef-plan-heading p { margin: 0 0 20px; color: var(--ink-soft); }
+.chef-plan-request { display: grid; gap: 10px; }
+.chef-plan-request > label, .chef-plan-fields > label { font-weight: 650; font-size: 13px; }
+.chef-plan-request textarea, .chef-plan-fields input, .chef-plan-fields select { width: 100%; padding: 10px 12px; border: 1px solid var(--line-dark); border-radius: 10px; color: var(--ink); background: var(--paper); font: inherit; }
+.chef-plan-request textarea { min-height: 86px; resize: vertical; }
+.chef-plan-controls { margin: 24px 0; padding: 18px; border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
+.chef-plan-controls > legend, .chef-plan-dates > legend { padding: 0 6px; font-weight: 700; }
+.chef-plan-controls > p { margin-top: 0; font-size: 13px; color: var(--ink-soft); }
+.chef-plan-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.chef-plan-fields > label { display: grid; gap: 7px; align-content: start; }
+.chef-plan-checks { display: flex; flex-wrap: wrap; gap: 12px 18px; margin: 18px 0; }
+.chef-plan-checks label, .chef-plan-date label { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.chef-plan-checks input, .chef-plan-date input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; }
+.chef-plan-dates { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+.chef-plan-date { display: grid; grid-template-columns: minmax(165px, 1fr) minmax(120px, 1.3fr) auto; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.chef-plan-date > span { font-size: 12px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.chef-plan-date > select { grid-column: 2 / -1; }
+.chef-plan-card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; margin: 14px 0; }
+.chef-plan-card-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.chef-plan-card h4 { margin: 0; font: 600 20px var(--serif); }
+.chef-plan-card-heading > span { font-size: 11px; background: var(--green-pale); padding: 5px 8px; border-radius: 12px; }
+.chef-plan-card p, .chef-plan-card li, .chef-plan-card a, .chef-plan-notices li, .chef-plan-shopping { font-size: 13px; line-height: 1.6; }
+.chef-plan-card details { margin-top: 12px; }
+.chef-plan-notices { padding: 14px 18px; background: var(--warning); border-radius: 12px; }
+.chef-plan-notices h4 { margin: 0; }
+.chef-plan-shopping { margin: 24px 0; }
+.chef-plan-shopping ul { list-style: none; margin: 0; padding: 0; }
+.chef-plan-shopping li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 20px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.chef-plan-shopping li small { flex-basis: 100%; }
+.chef-plan-shopping details { margin-top: 18px; }
+.chef-plan-footer { border-top: 1px solid var(--line); padding-top: 16px; }
+.chef-plan-footer > p { font-size: 13px; color: var(--ink-soft); }
+@media (max-width: 650px) {
+  .chef-plan-entry { flex-direction: column; align-items: stretch; }
+  .chef-plan-workspace { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); padding: 16px; }
+  .chef-plan-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chef-plan-date { grid-template-columns: 1fr auto; }
+  .chef-plan-date > span { grid-column: 1 / -1; }
+  .chef-plan-date > select { grid-column: 1 / -1; }
+  .chef-plan-heading h2 { font-size: 25px; }
+}
+@media (max-width: 390px) { .chef-plan-fields { grid-template-columns: 1fr; } }
+.chef-plan-day-options { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding: 8px 0; }
+.chef-plan-day-options > label { flex: 1 1 135px; align-items: start; flex-direction: column; }
+.chef-plan-day-options > label:has(input[type="checkbox"]) { flex-direction: row; flex-basis: 100%; align-items: center; }
+.chef-plan-day-options input[type="number"] { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 9px; font-size: 12px; }
+.accessible-modal.chef-plan-backdrop { padding: 16px; }
+@media (max-width: 650px) { .accessible-modal.chef-plan-backdrop { padding: 8px; } }

@@ -9,7 +9,7 @@ async function saveFixture(request: APIRequestContext, state: ReturnType<typeof 
   expect(result.ok()).toBeTruthy();
 }
 async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
 }
 
 test.beforeEach(async ({ request }) => {

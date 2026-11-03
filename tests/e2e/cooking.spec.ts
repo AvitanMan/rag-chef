@@ -19,7 +19,7 @@ async function recipeFixture(request: APIRequestContext, id = "fixture-tomato-ri
 function mealFixture(recipe: Recipe, date = TODAY, overrides: Partial<PlannedMeal> = {}): PlannedMeal {
   return { id: `meal-${date}`, date, recipeId: recipe.id, recipe, title: recipe.title, baseServings: recipe.servings ?? null, servings: recipe.servings ?? null, batches: 1, locked: false, status: "planned", ingredientOverrides: {}, ...overrides };
 }
-async function navigate(page: Page, name: string) { await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
+async function navigate(page: Page, name: string) { await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
 
 test.beforeEach(async ({ page, request }) => {
   await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });

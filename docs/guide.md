@@ -214,6 +214,42 @@ disposable copies and leave this preview and its database untouched.
 
 ## Planning and shopping rules
 
+### Plan dinners with Chef
+
+Open **Plan with Chef** from Chef or Weekly Plan. Ask for several dinners,
+portions, exclusions, or a priority such as using food due soon. The assistant
+uses the configured local Ollama model to interpret your request. The application
+selects approved recipes and calculates stock coverage and shopping requirements.
+
+Review the dates, portions or recipe batches, dietary requirements, exclusions,
+and ranking priority. Edit those controls and select **Preview plan** to produce
+a new preview without a model call. **Revise with Chef** carries the structured
+draft into a follow-up request; refer to dates when keeping or replacing dinners.
+
+Each dinner shows its original source, measured pantry coverage, missing
+ingredients and amounts requiring review. The shopping preview covers the whole
+selected week, including saved dinners. **Apply plan** saves the reviewed changes
+in one revision-checked operation. **Discard draft** does not change the kitchen.
+Drafts remain in this tab only and are not included in kitchen backups.
+
+Saved dinners stay in place unless their replacement is explicitly selected.
+Locked and cooked dinners cannot be replaced through this workspace. If another
+tab changes the kitchen or a recipe changes, refresh the kitchen and review a new
+preview. A repeated Apply cannot save the same draft twice. Pantry quantities and
+purchase status are not changed by applying a dinner plan.
+
+Planning understands dates, portions, exclusions, dietary requirements, and
+shopping priorities. Use Recipes search to choose a particular dish or cuisine.
+Planning is limited to upcoming dates in one selected week. A partial preview
+explains dates it could not fill; its eligible dinners can still be applied.
+Explicit serving requests require known recipe yield; use recipe batches for
+unknown yields. Time limits require verified source totals. Unknown amounts and
+diet suitability remain labeled for review. Shopping priorities compare needed
+ingredient rows, not prices, and entered use-by dates are planning information.
+
+If Ollama is unavailable, use the manual controls and **Preview plan** or the
+existing **Fill empty days** flow.
+
 ### Use food that is due soon
 
 Chef’s **Use soon** section shows up to five nonzero pantry items with entered
@@ -775,6 +811,8 @@ in an isolated Python environment. No separate vector database is required.
 | `GET /api/recipes/catalog` | Full approved catalog |
 | `GET /api/recipes` | Ranked search; setup-time live-source fallback |
 | `POST /api/chef` | Grounded answer or labeled catalog suggestions |
+| `POST /api/chef/plan` | Read-only conversational or manual dinner-plan preview |
+| `POST /api/chef/plan/apply` | Revalidate and atomically save a reviewed plan |
 | `GET /api/kitchen`, `PUT /api/kitchen` | Revision-checked kitchen persistence |
 | `GET /api/admin/catalog` | Catalog and embedding status |
 | `POST /api/admin/catalog/demo` | Add original starters without AI or downloads |

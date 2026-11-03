@@ -21,7 +21,8 @@ async function save(request: APIRequestContext, state: KitchenState) {
   expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
 }
 async function navigate(page: Page, name: string) {
-  await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Settings") { await page.getByRole("button", { name, exact: true }).filter({ visible: true }).first().click(); return; }
+  await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
 }
 async function recipe(request: APIRequestContext): Promise<Recipe> {
   return (await (await request.get("/api/recipes/catalog")).json()).recipes.find((r: Recipe) => r.id === "fixture-tomato-rice");

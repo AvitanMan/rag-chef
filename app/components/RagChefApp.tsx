@@ -19,6 +19,7 @@ import { constraintsForRecipeQuery, queryRequestsRecipes } from "../lib/recipe-q
 import { measureInputProblem } from "../lib/kitchen-validation";
 import { IngredientChips } from "./IngredientChips";
 import { Modal } from "./Modal";
+import { ChefPlanWorkspace } from "./ChefPlanWorkspace";
 import { parsePantryInput, pantryInputProblem, type PantryInputRow } from "../lib/pantry-input";
 import { CookingWorkspace } from "./CookingWorkspace";
 import { UseSoonSummary, UseSoonResults } from "./UseSoon";
@@ -348,6 +349,7 @@ export default function RagChefApp() {
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [planningNotice, setPlanningNotice] = useState("");
+  const [chefPlanOpen, setChefPlanOpen] = useState(false);
   const [preferReviewedMains, setPreferReviewedMains] = useState(true);
   const [focusDate, setFocusDate] = useState<string | null>(null);
   const [planningReasons, setPlanningReasons] = useState<Record<string, string>>({});
@@ -1072,6 +1074,15 @@ export default function RagChefApp() {
         {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
         {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{[cookingSession.timer, ...(cookingSession.extraTimers ?? [])].some(timer => timer.status === "finished") ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
         {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
+        <ChefPlanWorkspace key={`${week}:${today}`} visible={chefPlanOpen} close={() => setChefPlanOpen(false)}
+          week={week} today={today} kitchen={kitchen.state} revision={kitchen.getRevision()} saveState={kitchen.saveState} model={settings.ollamaModel}
+          refreshKitchen={async () => Boolean(await kitchenRef.current.refreshSavedKitchen())}
+          applied={async () => {
+            const refreshed = await kitchenRef.current.refreshSavedKitchen();
+            setPlanningNotice(refreshed ? "Chef plan saved. Review the weekly shopping list below." : "Chef plan saved on this Mac. Review the kitchen save status before continuing.");
+            if (refreshed) setView("plan");
+            return Boolean(refreshed);
+          }} />
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
         {(view === "recipes" || view === "chef") && <>
@@ -1083,6 +1094,7 @@ export default function RagChefApp() {
 
         {view === "chef" && (<>
           <div className="discovery-navigation">
+            <button className="secondary-button" onClick={() => setChefPlanOpen(true)}>Plan with Chef</button>
             <button className="text-button flow-back" onClick={backFromChef}>{chefOrigin === "plan" ? "← Back to plan" : chefOrigin === "recipes" ? "← Back to Recipes" : "Browse recipes"}</button>
             {chefOrigin === "plan" && <button className="text-button" onClick={() => navigate("recipes")}>Browse recipes</button>}
             {pinnedRecipe && chosenDinner && <button className="secondary-button" onClick={() => showDinner()}>Back to dinner</button>}
@@ -1190,7 +1202,8 @@ export default function RagChefApp() {
         )}
 
         {view === "plan" && hydrated && kitchen.ready && !weekMeals.length && <section className="onboarding-next" aria-label="Get started"><p>Choose tonight’s dinner to get started. Your shopping list builds itself.</p><button className="text-button" onClick={() => navigate("settings")}>Review preferences</button><button className="text-button" onClick={() => navigate("pantry")}>Add pantry ingredients</button></section>}
-        {view === "plan" && (
+        {view === "plan" && (<>
+          <div className="chef-plan-entry"><div><strong>Plan a few dinners together</strong><p>Use pantry food, review shopping, and save when you are ready.</p></div><button className="secondary-button" onClick={() => setChefPlanOpen(true)}>Plan with Chef</button></div>
           <DurablePlanView
             focusDate={focusDate}
             clearFocusDate={() => setFocusDate(null)}
@@ -1218,7 +1231,7 @@ export default function RagChefApp() {
             goShopping={() => setView("shop")}
             shoppingCount={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length}
           />
-        )}
+        </>)}
 
         {view === "shop" && (<>
           {shoppingDinnerDate && <button className="secondary-button" onClick={() => showDinner(shoppingDinnerDate)}>Back to dinner</button>}

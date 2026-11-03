@@ -163,6 +163,63 @@ checks those conditions and records non-regression results.
 The attributed corpus is a test fixture, not an application seed. See
 [NOTICE](../NOTICE) for source terms.
 
+## Conversational dinner planning
+
+```bash
+pnpm recipes:planning-eval
+pnpm recipes:planning-eval --model qwen3.5:9b
+```
+
+Planning and RAG regression evaluations accept `OLLAMA_BASE_URL` for a separate
+loopback Ollama server. The default is `http://127.0.0.1:11434`.
+
+This isolated track exercises `POST /api/chef/plan` against synthetic recipes and
+kitchen state with the real local model. Forty fixed requests are divided into
+20 development and 20 held-out cases. Both splits require at least 18 correct
+outcomes, with zero saved-constraint violations, changes to protected dinners,
+or writes during preview. An unnecessary clarification fails an answerable case.
+The report independently recalculates the full-week shopping preview and checks
+recipe identity and the interpreted request against fixed expectations.
+
+The latency target is warm end-to-end p95 below 15 seconds. The first model request
+is reported separately; setup and embedding refresh are excluded. Results include
+model, corpus, source and evaluator fingerprints in
+`output/playwright/planning-*/planning-results.json`. These small fixed cases are
+not a general natural-language accuracy benchmark. Source and browser tests
+separately cover Apply, cancellation, stale revisions and duplicate submissions.
+
+### Planning implementation check — November 3, 2026
+
+The first valid local-model run passed 20/20 development and 19/20 held-out
+requests, with no safety or preview-write failures. The missed case lost the
+count in “two gluten-free dinners”; the explicit count parser was corrected and
+covered with a regression test. Subsequent runs are regression evidence: the
+held-out labels had already been inspected, so they are not new independent
+accuracy estimates.
+
+The reviewed planning change passed all 40 fixed requests with `qwen3.5:9b`:
+36 successful model requests, 5.889-second warm p95, and a 7.631-second first
+request after unloading the model. No preview writes or saved-constraint
+violations occurred; the disposable kitchen and catalog stayed unchanged.
+The evaluator checks expected dates independently and requires a proposal when
+eligible choices exist. A no-choice draft passes only when the catalog has no
+eligible dinner and every omitted date has an explanation.
+
+Validation of the scoped commit candidate: 468 source tests; type checking and
+lint; isolated build/render checks; 179 desktop and 179 mobile browser checks
+(including 30 planning checks); four WebKit/offline checks; two fresh-install
+checks; and two development/HMR checks. The real-model retrieval/claim regression
+also passed all 40 fixed cases, with zero unsupported claims accepted. Earlier
+unrelated cooking/timer edits were excluded from this candidate.
+
+The final planning report is saved locally under
+`output/playwright/planning-2026-11-03T19-43-34-964Z/planning-results.json`;
+its runtime and evaluator fingerprints match the staged source. The grounding
+report is `output/playwright/planning-review-rag.json`. These model runs used a
+separate loopback test daemon via `OLLAMA_BASE_URL`, with the installed model
+files. The initial held-out result remains under
+`output/playwright/planning-2026-11-03T19-07-18-549Z/planning-results.json`.
+
 ## Preparing release evidence
 
 Run the deterministic checks first, then run each real-model suite sequentially

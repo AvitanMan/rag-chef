@@ -7,10 +7,13 @@ import { fileURLToPath } from "node:url";
 import { fixtureSql } from "./fixtures.mjs";
 import { startModelStub } from "./model-stub.mjs";
 import { parseJourneyOptions } from "../recipes/journey-grading.mjs";
+import { localOllamaBaseUrl } from "./local-ollama.mjs";
 
 const mode = process.argv[2];
-if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, or journeys.");
+if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys", "planning"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, journeys, or planning.");
 const journeyOptions = mode === "journeys" ? parseJourneyOptions(process.argv.slice(3)) : undefined;
+// Other model tracks still read model metadata from the default daemon.
+const realModelURL = ["chef", "journeys", "planning"].includes(mode) ? localOllamaBaseUrl(mode === "planning" ? process.env.OLLAMA_BASE_URL : "") : undefined;
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "rag-chef-test-"));
 const project = join(directory, "project");
@@ -108,8 +111,9 @@ try {
   await symlink(join(root, "node_modules"), join(project, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   if (journeyOptions?.catalog === "local") originalSnapshot = localSnapshot("snapshot");
   if (mode === "journeys") env.RAG_CHEF_JOURNEY_ISOLATED = "1";
-  stub = ["chef", "journeys"].includes(mode) ? undefined : await startModelStub();
-  const ollamaURL = stub?.url ?? "http://127.0.0.1:11434";
+  if (mode === "planning") env.RAG_CHEF_PLANNING_ISOLATED = "1";
+  stub = ["chef", "journeys", "planning"].includes(mode) ? undefined : await startModelStub();
+  const ollamaURL = stub?.url ?? realModelURL;
   env.OLLAMA_BASE_URL = ollamaURL;
   if (stub) env.RAG_CHEF_TEST_MODEL_URL = stub.url;
   // Wrangler explicitly injects these test values into the isolated Worker.
@@ -124,7 +128,7 @@ try {
     await launch("migrations", [wrangler, "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state]);
     if (mode !== "setup" && journeyOptions?.catalog !== "local") {
       const seedFile = join(directory, "fixtures.sql");
-      await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: mode === "journeys" }));
+      await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: ["journeys", "planning"].includes(mode) }));
       await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
     }
     const port = await freePort();
@@ -135,10 +139,13 @@ try {
       : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`];
     const preview = await launch("preview", previewArgs, { wait: false });
     await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
-    if (["chef", "journeys"].includes(mode)) {
+    if (["chef", "journeys", "planning"].includes(mode)) {
       const indexed = await fetch(`${env.RAG_CHEF_TEST_BASE_URL}/api/admin/catalog`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ embeddingsOnly: true }), signal: AbortSignal.timeout(300_000) });
       if (!indexed.ok || !(await indexed.json()).ok) throw new Error("Disposable fixture embedding refresh failed.");
-      if (mode === "journeys") {
+      if (mode === "planning") {
+        await launch("planning", ["tools/recipes/evaluate-planning.mjs", ...process.argv.slice(3)]);
+        console.log("Isolated real-model planning checks passed.");
+      } else if (mode === "journeys") {
         await launch("journeys", ["tools/recipes/evaluate-journeys.mjs", ...process.argv.slice(3)]);
         console.log("Isolated real-model journey checks passed.");
       } else {

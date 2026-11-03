@@ -24,6 +24,11 @@ export async function startModelStub() {
         if (mode === "hold") await new Promise((resolve) => pending.push(resolve));
         const prompt = body.messages?.find((item) => item.role === "user")?.content ?? "";
         const context = JSON.parse(prompt.startsWith("{") ? prompt : prompt.slice(prompt.lastIndexOf("\n\n") + 2));
+        if (body.format?.properties?.count && body.format?.properties?.evidence) {
+          const fields = ["count", "servings", "batches", "excludedIngredients", "diets", "excludedEquipment", "maxTotalMinutes", "priority", "allowRepeats"];
+          const interpretation = { count: null, servings: null, batches: null, dates: [], excludedIngredients: [], diets: [], excludedEquipment: [], maxTotalMinutes: null, priority: null, allowRepeats: null, evidence: Object.fromEntries(fields.map(field => [field, ""])) };
+          send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify(interpretation) } }); return;
+        }
         if (context.task === "verify_recipe_answer") {
           if (mode === "verification_hold") await new Promise((resolve) => pending.push(resolve));
           if (mode === "verification_unavailable") { send(503, { error: "Verification unavailable" }); return; }
