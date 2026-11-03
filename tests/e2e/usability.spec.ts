@@ -119,6 +119,103 @@ test("fractional dinner batches stay valid and editable across Plan and both Che
   await expect(page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true })).toHaveValue("0.25");
 });
 
+for (const surface of ["Chef", "Plan", "Shopping"]) {
+  test(`yield unit changes preserve dinner quantities in ${surface}`, async ({ page, request }) => {
+    const source = await recipe(request);
+    delete source.servings;
+    source.ingredients = [{ name: "rice", measure: "200 g" }, { name: "tomato", measure: "2" }, { name: "salt", measure: "to taste" }];
+    const dinner = { ...meal(source), baseServings: null, servings: null, batches: 0.5, ingredientOverrides: { "1": "3" } };
+    await save(request, { ...empty(), meals: { [TODAY]: dinner } });
+    await page.goto("/");
+    let editor = page.getByRole("region", { name: "Chosen dinner", exact: true });
+    if (surface === "Chef") await editor.getByText("Adjust amounts", { exact: true }).click();
+    if (surface === "Plan") {
+      await navigate(page, "Plan");
+      editor = page.getByRole("article", { name: "Sun, Oct 25", exact: true });
+      await editor.locator(".meal-review > summary").click();
+    }
+    if (surface === "Shopping") {
+      await navigate(page, "Shopping");
+      await page.getByRole("button", { name: "Review salt for Sun, Oct 25", exact: true }).click();
+      editor = page.getByRole("dialog", { name: "Review dinner amounts", exact: true });
+    }
+    const rice = editor.getByRole("textbox", { name: "rice amount Sun, Oct 25", exact: true });
+    const original = editor.getByRole("spinbutton", { name: "Original servings Sun, Oct 25", exact: true });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("4");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 4, servings: 2, batches: 0.5, ingredientOverrides: { "1": "3" } });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("8");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 8, servings: 4, batches: 0.5 });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 0.5, ingredientOverrides: { "1": "3" } });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    if (surface === "Shopping") await editor.getByRole("button", { name: "Back to shopping", exact: true }).click();
+    else await navigate(page, "Shopping");
+    await expect(page.getByRole("checkbox", { name: "Bought rice 100 g", exact: true })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Bought tomato 3", exact: true })).toBeVisible();
+    expect((await read(request)).state.meals[TODAY].recipe).toEqual(source);
+  });
+}
+
+test("yield changes keep unsupported portion conversions unsaved and explain how to correct them", async ({ page, request }) => {
+  const source = await recipe(request);
+  delete source.servings;
+  await save(request, { ...empty(), meals: { [TODAY]: { ...meal(source), baseServings: null, servings: null, batches: 0.25 } } });
+  await page.goto("/");
+  const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
+  await dinner.getByText("Adjust amounts", { exact: true }).click();
+  const original = dinner.getByRole("spinbutton", { name: "Original servings Sun, Oct 25", exact: true });
+  const portions = dinner.getByRole("spinbutton", { name: "Dinner portions", exact: true });
+  for (const invalid of ["0", "10001", "1.5", "2", "401"]) {
+    await original.fill(invalid);
+    await expect(original).toHaveAttribute("aria-invalid", "true");
+    expect((await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 0.25 });
+  }
+  await expect(dinner.getByRole("alert")).toContainText("1–100 whole servings");
+  await portions.fill("0.5");
+  await expect(original).toHaveValue(""); await expect(original).toHaveAttribute("aria-invalid", "false");
+  await portions.fill("0.25");
+  await original.pressSequentially("400");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 400, servings: 100, batches: 0.25 });
+  await expect(original).toBeFocused();
+  await expect(portions).toHaveValue("100"); await expect(portions).toHaveAttribute("aria-invalid", "false");
+  const knownSource = { ...source, servings: 49 };
+  await save(request, { ...empty(), meals: { [TODAY]: { ...meal(knownSource), baseServings: 49, servings: 1 } } });
+  await page.reload(); await dinner.getByText("Adjust amounts", { exact: true }).click();
+  await expect(original).toHaveAttribute("aria-invalid", "false");
+  await original.fill("98");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(2);
+  await expect(portions).toHaveValue("2"); await expect(portions).toHaveAttribute("aria-invalid", "false");
+  await original.fill("");
+  await expect(original).toHaveAttribute("aria-invalid", "true");
+  await expect(dinner.getByRole("alert")).toContainText("quarter-batch increments");
+  expect((await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 98, servings: 2 });
+  await portions.fill("98"); await expect(original).toHaveValue("98"); await original.fill("");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 1 });
+});
+
+test("a mobile recipe can be closed directly after scrolling to its source directions", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto("/"); await navigate(page, "Recipes");
+  const trigger = page.getByRole("button", { name: "View Tomato Rice", exact: true });
+  await trigger.focus(); await trigger.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "Tomato Rice", exact: true });
+  await drawer.getByRole("heading", { name: "Source directions", exact: true }).scrollIntoViewIfNeeded();
+  expect(await drawer.locator(".recipe-drawer").evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  const close = drawer.getByRole("button", { name: "Close recipe", exact: true });
+  await expect.poll(() => close.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return box.top >= 0 && box.bottom <= innerHeight && Boolean(hit && element.contains(hit));
+  })).toBe(true);
+  const box = (await close.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(drawer).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 for (const withRemoval of [false, true]) {
   test(`keyboard focus stays above mobile navigation${withRemoval ? " and removal recovery" : ""}`, async ({ page, request }) => {
     await page.setViewportSize({ width: 320, height: 740 });

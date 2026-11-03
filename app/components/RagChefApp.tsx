@@ -1899,7 +1899,7 @@ export function RecipeDrawer({
   return (
     <Modal className="drawer-backdrop" labelledBy="recipe-title" close={close}>
       <article className="recipe-drawer">
-        <button className="drawer-close" onClick={close} aria-label="Close recipe">×</button>
+        <header className="drawer-toolbar"><button className="drawer-close" onClick={close} aria-label="Close recipe">×</button></header>
         {recipe.image && <div className="drawer-hero"><img src={recipe.image} alt="" /></div>}
         <div className="drawer-content">
           <span className="eyebrow">{recipe.category}</span>

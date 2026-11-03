@@ -1160,8 +1160,20 @@ img {
   height: 100%;
   max-width: 620px;
   overflow-y: auto;
+  scroll-padding-block: 80px 16px;
   position: relative;
   width: min(100%, 620px);
+}
+
+.drawer-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  background: var(--cream);
+  border-bottom: 1px solid var(--line);
 }
 
 .drawer-close {
@@ -1171,12 +1183,9 @@ img {
   border-radius: 50%;
   display: flex;
   font-size: 22px;
-  height: 36px;
+  height: 44px;
   justify-content: center;
-  position: absolute;
-  right: 18px;
-  top: 18px;
-  width: 36px;
+  width: 44px;
   z-index: 2;
 }
 
@@ -1187,7 +1196,7 @@ img {
 }
 
 .drawer-content {
-  padding: 52px clamp(22px, 5vw, 45px) 60px;
+  padding: 24px clamp(22px, 5vw, 45px) 60px;
 }
 
 .drawer-hero + .drawer-content { padding-top: 24px; }
@@ -2203,7 +2212,7 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .extra-cooking-timers > button { justify-self: start; }
 .extra-timer, .additional-timer-setup { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); min-width: 0; }
 .extra-timer label, .additional-timer-setup label { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
-.extra-timer input, .additional-timer-setup input, .timer-setup input[type="text"] { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+.extra-timer input, .additional-timer-setup input, .timer-setup input:not([type]), .timer-setup input[type="text"] { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
 .extra-timer strong[role="timer"] { font-size: 24px; font-variant-numeric: tabular-nums; }
 .extra-timer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .extra-timer p, .additional-timer-setup p { margin: 0; font: 14px/1.5 var(--sans); }

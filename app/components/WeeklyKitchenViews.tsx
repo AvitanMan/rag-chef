@@ -176,11 +176,36 @@ export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patc
   const immutable = meal.locked || meal.status === "cooked";
   if (!meal.recipe) return null;
   const baseline = { ...meal, ingredientOverrides: {} };
+  function yieldChange(baseServings: number | null) {
+    const batches = mealScale(meal);
+    return {
+      baseServings,
+      servings: baseServings ? baseServings * batches : null,
+      batches,
+    };
+  }
+  function yieldProblem(text: string) {
+    const baseServings = text.trim() ? Number(text) : null;
+    if (baseServings !== null && (!Number.isSafeInteger(baseServings) || baseServings < 1 || baseServings > 10_000)) return "Enter a whole source yield from 1 to 10000.";
+    const next = yieldChange(baseServings);
+    const amount = baseServings ? next.servings! : next.batches;
+    const limits = DINNER_AMOUNT_LIMITS[baseServings ? "servings" : "batches"];
+    const steps = (amount - limits.min) / limits.step;
+    const nearest = limits.min + Math.round(steps) * limits.step;
+    if (nearest < limits.min || nearest > limits.max || Math.abs(amount - nearest) > 0.000001) {
+      return baseServings
+        ? "Use a batch size that gives 1–100 whole servings before recording this yield."
+        : "Adjust dinner servings to give 0.25–20 batches in quarter-batch increments before clearing the yield.";
+    }
+    return "";
+  }
   return <section className="dinner-amount-editor">
     {immutable && <p className="quantity-note">This dinner is {meal.status === "cooked" ? "cooked" : "locked"}; its saved amounts cannot be edited.</p>}
-                <label>Original recipe servings (if known)<ValidatedInput type="number" min={1} max={10000} step={1} allowEmpty placeholder="Unknown" aria-label={`Original servings ${dateLabel(date)}`} value={meal.baseServings ?? ""} disabled={Boolean(immutable)} onCommit={(text) => {
+                <label>Original recipe servings (if known)<ValidatedInput type="number" min={1} max={10000} step={1} allowEmpty validate={yieldProblem} resetKey={meal.baseServings ? `servings:${meal.servings}` : `batches:${meal.batches}`} placeholder="Unknown" aria-label={`Original servings ${dateLabel(date)}`} value={meal.baseServings ?? ""} disabled={Boolean(immutable)} onCommit={(text) => {
                   const baseServings = text.trim() ? Number(text) : null;
-                  patch({ baseServings, servings: baseServings ? (meal.servings ?? baseServings) : null });
+                  const next = yieldChange(baseServings);
+                  // Validation permits whole servings and quarter batches; normalize floating-point residue.
+                  patch({ ...next, servings: next.servings === null ? null : Math.round(next.servings), batches: baseServings ? next.batches : Math.round(next.batches / DINNER_AMOUNT_LIMITS.batches.step) * DINNER_AMOUNT_LIMITS.batches.step });
                 }} /></label>
                 <p>{meal.baseServings ? "Amounts scale to your serving count." : "Servings are unknown, so quantities use recipe batches."} Enter a final amount below to correct any ingredient. Source wording stays unchanged.</p>{(meal.planningIngredients ?? meal.recipe!.ingredients).map((ingredient, index) => {
                 const parsed = plannedIngredientMeasure(baseline, index, ingredient);
