@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import type { KitchenState } from "../../app/lib/kitchen-types";
 
-const emptyState = () => ({ schemaVersion: 2, pantry: [] as { id: string; name: string; measure: string }[], meals: {}, shoppingChecked: {}, migratedLegacy: false });
+const emptyState = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
 async function readKitchen(request: APIRequestContext) { return (await request.get("/api/kitchen")).json(); }
 async function saveFixture(request: APIRequestContext, state: ReturnType<typeof emptyState>) {
   const current = await readKitchen(request);
@@ -68,6 +69,24 @@ test("allergy aliases and diet conflicts agree across browsing, planning and Che
   const chefTitles = answer.recipes.map((recipe: { title: string }) => recipe.title);
   for (const excluded of ["Cheese Pasta", "Peanut Noodles", "Salmon Bowl"]) expect(chefTitles).not.toContain(excluded);
   expect(answer.recipes[0].title).toBe("Tomato Rice");
+});
+
+test("Chef submits all saved allergies and excludes an allergen at the end of a full preference list", async ({ page, request }) => {
+  const allergies = [...Array.from({ length: 99 }, (_, index) => `excluded food ${index}`), "peanut"];
+  const cookingProfile = { version: 1 as const, allergies, diet: "No restriction", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"] };
+  await saveFixture(request, { ...emptyState(), cookingProfile });
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Recommend Peanut Noodles");
+  const responding = page.waitForResponse(response => response.url().endsWith("/api/chef") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
+  const response = await responding;
+  expect(response.ok()).toBeTruthy();
+  expect(response.request().postDataJSON().profile.allergies).toEqual(allergies);
+  const answer = await response.json();
+  expect(answer.retrieval.allergyExcludedCount).toBe(1);
+  expect(answer.recommendations).toEqual([]);
+  expect(answer.recipes).toEqual([]);
+  expect((await readKitchen(request)).state.cookingProfile).toEqual(cookingProfile);
 });
 
 test("backup restore previews changes and rejects invalid files without changing saved state", async ({ page, request }) => {

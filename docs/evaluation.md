@@ -116,6 +116,11 @@ help, ambiguity, and stale context. Exact evidence and server-calculated amounts
 are checked independently of generation. The application's model-assisted
 verifier is one signal, not an independent semantic judge.
 
+Journey report version 3 accepts up to three lentil recipes when their canonical
+ingredients match the request, then explicitly selects a recipe before its
+factual follow-up. Ambiguous follow-ups are tested separately. Exact citations
+cover original ingredients (`I#`), directions (`S#`), and source notes (`N#`).
+
 The report includes quality and latency gates, complete/subset status, model,
 catalog, application and evaluator fingerprints, answers, and failed checks.
 Failed, blocked, timed-out, or withheld turns never count as useful passes.
@@ -130,7 +135,8 @@ not a claim that the experience feels instant.
 Outputs are `output/playwright/journeys-*/journey-results.json` and
 `journey-report.md`, with source/canonical-response records alongside them.
 The optional local-catalog track snapshots SQLite read-only, substitutes a test
-kitchen, and compares the original database before and after. It requires the
+kitchen, and compares the original application tables and schemas before and
+after. D1's internal read-bookmark counter is excluded from that comparison. It requires the
 documented fixed Zucchini Pasta Bake and Red Lentil Soup facts; source drift stops
 the evaluation instead of silently rewriting expected answers.
 

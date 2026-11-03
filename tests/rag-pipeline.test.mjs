@@ -8,7 +8,7 @@ import ts from "typescript";
 import { ragCases, ragRecipes } from "../tools/recipes/rag-cases.mjs";
 const directory = await mkdtemp(join(tmpdir(), "rag-pipeline-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["retrieval-ranking", "chef-evidence", "chef-context", "chef-verification", "recipe-embeddings", "quantities", "kitchen-types"]) {
+for (const name of ["recipe-instructions", "retrieval-ranking", "chef-evidence", "chef-context", "chef-verification", "recipe-embeddings", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
@@ -60,6 +60,35 @@ test("missing or wrong-dimension vectors fall back without inventing semantic co
   assert.equal(selection.method, "lexical_steps"); assert.equal(selection.indexedSteps, 0);
   assert.ok(selection.items.some((item) => item.evidenceId === "S16"));
 });
+test("source-note answers are retrieved with canonical IDs within the whole-evidence budget", () => {
+  const source = { ...recipe, instructions: Array.from({ length: 20 }, (_, index) => `Direction ${index + 1}: ${"Mix the dough gently. ".repeat(20)}`),
+    sourceNotes: ["Total time: 45 minutes.", "Protein: 12 g per serving."] };
+  const before = structuredClone(source);
+  const selected = selectRecipeEvidence(source, "How much protein per serving?", { budget: 80 });
+  assert.ok(selected.items.some(item => item.evidenceId === "N2" && item.text === source.sourceNotes[1]));
+  assert.ok(selected.items.reduce((sum, item) => sum + item.text.length, 0) <= 80);
+  assert.equal(selected.complete, false);
+  const complete = selectRecipeEvidence(source, "Give the full method", { budget: 16_000 });
+  assert.equal(complete.complete, true);
+  assert.deepEqual(complete.items.slice(-2).map(item => item.evidenceId), ["N1", "N2"]);
+  assert.deepEqual(source, before);
+});
+test("omitting a source note prevents a falsely complete evidence selection", () => {
+  const source = { ...recipe, ingredients: [{ name: "flour", measure: "10 g" }], instructions: ["Mix."], sourceNotes: ["Original note. ".repeat(20)] };
+  const selected = selectRecipeEvidence(source, "What does mixing mean?", { budget: 30 });
+  assert.deepEqual(selected.items.map(item => item.evidenceId), ["I1", "S1"]);
+  assert.equal(selected.complete, false);
+});
+test("a relevant later note outranks a long earlier note under tight evidence budgets", () => {
+  const unrelated = "Traditional family recipe served at special family celebrations.";
+  for (const [query, note] of [["How much protein per serving?", "Protein: 12 g per serving."], ["How long overall?", "Total time: 45 minutes."]]) {
+    const source = { ...recipe, ingredients: [{ name: "flour", measure: "10 g" }], instructions: ["Mix."], sourceNotes: [unrelated, note] };
+    const selected = selectRecipeEvidence(source, query, { budget: unrelated.length + 2 });
+    assert.ok(selected.items.some(item => item.evidenceId === "N2" && item.text === note), query);
+    assert.ok(!selected.items.some(item => item.evidenceId === "N1"), query);
+    assert.equal(selected.complete, false);
+  }
+});
 test("verification requires exhaustive unique coverage and valid scoped support", () => {
   const claims = [{ id: "A1", text: "A factual sentence." }, { id: "R1.1", text: "A reason.", recipeId: "one" }];
   const supports = [{ ref: "E1", recipeId: "one", text: "Source" }, { ref: "E2", recipeId: "two", text: "Other" }];
@@ -81,6 +110,19 @@ test("local verifier returns canonical source facts and permits no rewritten fac
     return Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map((claim) => ({ id: claim.id, verdict: "supported", supportRefs: [data.evidence[0].ref] })) }) } });
   } });
   assert.equal(result.verification.status, "checked"); assert.equal(result.sourceFacts[0].fact, evidence[0].text);
+});
+test("verified nutrition source notes keep their N evidence identity and exact source wording", async () => {
+  const note = { recipeId: recipe.id, evidenceId: "N1", text: "Protein: 12 g per serving." };
+  const result = await verifyChefAnswer({ ...answer, answer: "Each serving has 12 g protein." }, [note], {
+    baseUrl: "http://localhost:1234", model: "local", metadata: {}, completeByRecipe: { [recipe.id]: false }, fetchImpl: async (_url, request) => {
+      const data = JSON.parse(JSON.parse(request.body).messages[1].content);
+      assert.equal(data.evidence[0].text, note.text);
+      assert.equal(data.sourceCompleteness[recipe.id], false);
+      return Response.json({ message: { content: JSON.stringify({ sentences: data.sentences.map(claim => ({ id: claim.id, verdict: "supported", supportRefs: [data.evidence[0].ref] })) }) } });
+    },
+  });
+  assert.equal(result.verification.status, "checked");
+  assert.deepEqual(result.sourceFacts, [{ recipeId: recipe.id, evidenceId: "N1", fact: note.text }]);
 });
 
 test("verification covers every generated warning sentence without treating advisory changes as source claims", () => {

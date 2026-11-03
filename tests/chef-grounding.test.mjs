@@ -18,6 +18,24 @@ const sources = [{ recipeId: "bake", evidence: [{ evidenceId: "I1", text: "200 g
 const answer = (text, extra = {}) => ({ answer: text, sourceFacts: facts, recommendations: [], chefChanges: [], warnings: [], ...extra });
 const check = (text, extra = {}, metadata = {}, options = {}) => chefGroundingIssue(answer(text, extra), sources, metadata, { cookingStep: false, ...options });
 
+test("an explicitly unknown reviewed total overrides a preserved source time label", () => {
+  const recipe = { ingredients: [{ name: "cooked rice", measure: "1 cup" }], instructions: ["Fry the cooked rice."], sourceNotes: ["Time: 20 minutes"] };
+  const unknown = { totalMinutes: null, provenance: { totalMinutes: { basis: "curator_assessment", evidence: "Cooking the rice is an untimed prerequisite." } } };
+  assert.equal(lacksRequestedTotalTime("What is the total recipe time?", recipe), false);
+  assert.equal(lacksRequestedTotalTime("What is the total recipe time?", recipe, unknown), true);
+  assert.equal(lacksRequestedTotalTime("How long does this recipe take?", recipe, unknown), true);
+  assert.equal(lacksRequestedTotalTime("How long should I fry it?", recipe, unknown), false);
+  const sourceFacts = [{ recipeId: "rice", evidenceId: "N1", fact: recipe.sourceNotes[0] }];
+  const source = [{ recipeId: "rice", evidence: [{ evidenceId: "N1", text: recipe.sourceNotes[0] }] }];
+  const total = answer("Total time: 20 minutes.", { sourceFacts });
+  assert.equal(chefGroundingIssue(total, source, {}, { cookingStep: false }), null);
+  assert.equal(chefGroundingIssue(total, source, { rice: unknown }, { cookingStep: false }), "unsupported_total_time");
+  const quotation = answer("The source note says Time: 20 minutes. The complete total is unknown.", { sourceFacts });
+  assert.equal(chefGroundingIssue(quotation, source, { rice: unknown }, { cookingStep: false }), null);
+  const recommendation = answer("Try this recipe.", { sourceFacts: [], recommendations: [{ recipeId: "rice", reason: "Total time: 20 minutes." }] });
+  assert.equal(chefGroundingIssue(recommendation, source, { rice: unknown }, { cookingStep: false }), "unsupported_total_time");
+});
+
 test("missing nutrition is explicit while source-provided nutrition stays answerable", () => {
   const recipe = { ingredients: [{ measure: "200 g", name: "rice" }], instructions: ["Boil for 10 minutes."], sourceNotes: [] };
   assert.equal(lacksRequestedNutrition("How many calories per serving?", recipe), true);
@@ -26,10 +44,49 @@ test("missing nutrition is explicit while source-provided nutrition stays answer
   assert.equal(lacksRequestedNutrition("How many calories?", { ...recipe, sourceNotes: ["Energy: 250 calories per serving."] }), false);
   assert.equal(lacksRequestedNutrition("How much protein?", { ...recipe, sourceNotes: ["Protein: 12 g per serving."] }), false);
 });
+test("ingredient purpose and amount requests do not become nutrition requests", () => {
+  const recipe = { ingredients: [{ measure: "50 g", name: "sugar" }, { measure: "20 g", name: "fat" }], instructions: ["Add sugar and fry in the fat."] };
+  for (const query of ["What is the sugar used for?", "What is the fat used for?", "How much sugar?", "How much fat do I use?", "How much sugar should I add per serving?", "What is the purpose of sugar?", "Why do I use fat?", "How much protein powder?", "How much protein powder per serving?"]) {
+    assert.equal(lacksRequestedNutrition(query, recipe), false, query);
+  }
+  for (const query of ["How much sugar per serving?", "What is the fat content?", "How much protein?", "What is the nutritional information?", "How much sugar should I add and how many calories per serving?"]) {
+    assert.equal(lacksRequestedNutrition(query, recipe), true, query);
+  }
+});
+test("ingredient weights and cooking directions cannot establish nutrients while source notes can", () => {
+  const recipe = { ingredients: [{ measure: "50 g", name: "sugar" }], instructions: ["Add 50 g sugar."] };
+  assert.equal(lacksRequestedNutrition("How much sugar per serving?", recipe), true);
+  assert.equal(lacksRequestedNutrition("How much sugar per serving?", { ...recipe, sourceNotes: ["Add 50 g sugar."] }), true);
+  assert.equal(lacksRequestedNutrition("How much sugar per serving?", { ...recipe, sourceNotes: ["Sugar: 8 g per serving."] }), false);
+  assert.equal(lacksRequestedNutrition("How much fat per serving?", { ...recipe, sourceNotes: ["Sugar: 8 g per serving."] }), true);
+  assert.equal(lacksRequestedNutrition("How much protein per serving?", { ...recipe, sourceNotes: ["50 g protein powder"] }), true);
+  assert.equal(lacksRequestedNutrition("What is the nutritional content of the protein powder?", { ...recipe, sourceNotes: ["50 g protein powder"] }), true);
+  for (const [evidenceId, fact] of [["I1", "50 g sugar"], ["I1", "Sugar: 50 g"], ["S1", "Add 50 g sugar."], ["N1", "Add 50 g sugar."]]) {
+    assert.equal(check("Each serving has 50 g sugar.", { sourceFacts: [{ recipeId: "bake", evidenceId, fact }] }), "unsupported_detail", fact);
+  }
+  assert.equal(check("Each serving has 8 g sugar.", { sourceFacts: [{ recipeId: "bake", evidenceId: "N1", fact: "Sugar: 8 g per serving." }] }), null);
+  assert.equal(check("Use 50 g sugar.", { sourceFacts: [{ recipeId: "bake", evidenceId: "I1", fact: "50 g sugar" }] }), null);
+});
 
 test("a real citation cannot support an invented cooking time or temperature", () => {
   for (const text of ["Bake for 99 minutes.", "A 99-minute bake.", "Bake at 250°C.", "Bake for two hours.", "Bake for one hundred twenty minutes."]) assert.equal(check(text), "unsupported_detail", text);
   assert.equal(check("Bake for 30 minutes.", { sourceFacts: [{ recipeId: "bake", evidenceId: "I1", fact: "200 g rice" }] }), "unsupported_detail");
+});
+test("cited ingredient labels remain amounts without establishing nutrient values", () => {
+  const sourceFacts = [{ recipeId: "bake", evidenceId: "I1", fact: "50 g sugar" }, { recipeId: "bake", evidenceId: "I2", fact: "20 g fat" }];
+  for (const text of ["Sugar: 50 g.", "Ingredients:\nSugar: 50 g.\nFat: 20 g.", "Ingredients:\n- Sugar: 50 g\n- Fat: 20 g", "Sugar: 50000 mg."]) {
+    assert.equal(check(text, { sourceFacts }), null, text);
+  }
+  for (const text of ["Sugar: 500 g.", "Fat: 50 g.", "Each serving has 50 g sugar.", "Sugar: 50 g per serving.", "Nutrition:\nSugar: 50 g.", "Nutrition facts:\n- Fat: 20 g.", "Nutrition per portion:\nSugar: 50 g.", "Per serving:\nSugar: 50 g.", "Per-serving:\nSugar: 50 g.", "Each‑portion:\nFat: 20 g.", "**Nutrition:**\nSugar: 50 g."]) {
+    assert.equal(check(text, { sourceFacts }), "unsupported_detail", text);
+  }
+  assert.equal(check("Sugar: 50 g.", { sourceFacts: [{ recipeId: "bake", evidenceId: "I1", fact: "sugar" }] }), "unsupported_detail");
+  assert.equal(check("Nutrition:\nSugar: 8 g.", { sourceFacts: [{ recipeId: "bake", evidenceId: "N1", fact: "Nutrition per serving: sugar: 8 g." }] }), null);
+  assert.equal(check("Nutrition is unknown.\nIngredients:\nSugar: 50 g.", { sourceFacts }), null);
+  assert.equal(check("Sugar: 50 g.", { sourceFacts: [{ recipeId: "bake", evidenceId: "I1", fact: "50 g granulated sugar" }] }), null);
+  for (const [text, fact] of [["Sugar: 50 g.", "50 g sugar snap peas"], ["Fat: 50 g.", "50 g fat-free yogurt"]]) {
+    assert.equal(check(text, { sourceFacts: [{ recipeId: "bake", evidenceId: "I1", fact }] }), "unsupported_detail", fact);
+  }
 });
 test("supported time ranges, unit conversions, and temperatures survive validation", () => {
   for (const text of ["Bake for 25–30 minutes at 180°C.", "Bake for half an hour.", "Bake for 0.5 hours at 356°F.", "Bake for thirty minutes."]) assert.equal(check(text), null, text);
@@ -55,9 +112,14 @@ test("total-time questions refuse known source gaps without blocking source tota
   const recipe = { instructions: ["Rinse rice.", "Simmer for 10 minutes."] };
   assert.equal(lacksRequestedTotalTime("What is the total recipe time from start to finish?", recipe), true);
   assert.equal(lacksRequestedTotalTime("How long should I simmer?", recipe), false);
+  for (const question of ["How long does the first one take?", "How long does the second recipe take to cook?", "How long will this dish take?"]) assert.equal(lacksRequestedTotalTime(question, recipe), true, question);
+  for (const question of ["How long does the first step take?", "How long does it take?", "How long does the first one take to boil?"]) assert.equal(lacksRequestedTotalTime(question, recipe), false, question);
   assert.equal(lacksRequestedTotalTime("What is the total amount of rice?", recipe), false);
   assert.equal(lacksRequestedTotalTime("What is the total time?", recipe, { totalMinutes: 20 }), false);
   assert.equal(lacksRequestedTotalTime("What is the total time?", { instructions: ["Total time: 20 minutes."] }), false);
+  assert.equal(lacksRequestedTotalTime("What is the total time?", { instructions: ["Simmer for 10 minutes."], sourceNotes: ["Total time: 20 minutes."] }), false);
+  assert.equal(check("Total time is 20 minutes.", { sourceFacts: [{ recipeId: "bake", evidenceId: "N1", fact: "Total time: 20 minutes." }] }), null);
+  assert.equal(lacksRequestedTotalTime("What is the total time?", { instructions: ["Simmer for 10 minutes."], sourceNotes: ["The sauce is ready in 5 minutes."] }), true);
 });
 test("reviewed total time is usable and curator estimates must remain labeled", () => {
   const metadata = { bake: { totalMinutes: 45, provenance: { totalMinutes: { basis: "source" } } } };
@@ -66,6 +128,36 @@ test("reviewed total time is usable and curator estimates must remain labeled", 
   metadata.bake.provenance.totalMinutes.basis = "curator_estimate";
   assert.equal(check("Total time is 45 minutes.", {}, metadata), "unlabeled_time_estimate");
   assert.equal(check("Estimated total time is about 45 minutes.", {}, metadata), null);
+});
+test("plain Time labels establish recipe ranges only in original source notes", () => {
+  const note = "Time: 20–25 minutes";
+  const recipe = { ingredients: [], instructions: ["Cook the pasta."], sourceNotes: [note] };
+  assert.equal(lacksRequestedTotalTime("What does the source say about total time?", recipe), false);
+  assert.equal(lacksRequestedTotalTime("What is the total time?", { ...recipe, sourceNotes: [], instructions: [note] }), true);
+  const noteFacts = [{ recipeId: "bake", evidenceId: "N1", fact: note }];
+  const metadata = { bake: { totalMinutes: 25, provenance: { totalMinutes: { basis: "source", evidence: note } } } };
+  assert.equal(check("The total recipe time is 20–25 minutes.", { sourceFacts: noteFacts }, metadata), null);
+  assert.equal(check("The total recipe time is 20–25 minutes.", { sourceFacts: noteFacts }), null);
+  assert.equal(check("The total recipe time is 20–25 minutes.", { sourceFacts: [{ ...noteFacts[0], evidenceId: "S1" }] }), "unsupported_total_time");
+  assert.equal(check("The total recipe time is 20–25 minutes.", { sourceFacts: [{ ...noteFacts[0], evidenceId: "I1" }] }), "unsupported_total_time");
+  assert.equal(check("The total recipe time is 15–25 minutes.", { sourceFacts: noteFacts }, metadata), "unsupported_detail");
+  metadata.bake.provenance.totalMinutes.basis = "curator_estimate";
+  assert.equal(check("The total recipe time is 20–25 minutes.", { sourceFacts: noteFacts }, metadata), null);
+});
+test("reviewed metadata preserves an original range only when its provenance matches available note evidence", () => {
+  const note = "Time: 20–25 minutes";
+  const source = [{ recipeId: "bake", evidence: [{ evidenceId: "S1", text: step }, { evidenceId: "N1", text: note }] }];
+  const metadata = { bake: { totalMinutes: 25, provenance: { totalMinutes: { basis: "source", evidence: "Time: 20-25 minutes" } } } };
+  const result = () => chefGroundingIssue(answer("The total recipe time is 20–25 minutes."), source, metadata, { cookingStep: false });
+  assert.equal(result(), null);
+  source[0].evidence[1].evidenceId = "S2";
+  assert.ok(result(), "A step label must not expand metadata to a recipe total range");
+  source[0].evidence[1].evidenceId = "N1";
+  metadata.bake.provenance.totalMinutes.evidence = "Time: 10–15 minutes";
+  assert.ok(result(), "Unmatched provenance must not establish the range");
+  metadata.bake.provenance.totalMinutes.evidence = note;
+  metadata.bake.totalMinutes = 45;
+  assert.ok(result(), "The reviewed scalar must belong to the matched source range");
 });
 test("nutrition values require nutrition evidence rather than ingredient weights", () => {
   for (const text of ["It has 650 calories.", "Each portion has 25 g protein.", "Protein: 25 g."]) assert.equal(check(text), "unsupported_detail", text);

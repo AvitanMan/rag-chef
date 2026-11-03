@@ -31,6 +31,23 @@ picker. Recipes uses the same selection action. **Dinner day and portions** is
 shared across Chef and Recipes; choose another day before selecting when needed.
 Source quantities are the default, and unknown yields use recipe batches.
 
+In **Recipe details → Personal amounts**, save measured quantities for the
+source's serving yield, or one recipe batch when yield is unknown. For example,
+300 g saved for four source servings becomes 150 g for a two-serving dinner.
+Blank fields inherit the source amount. **Cancel** discards drafts and **Reset
+to source amounts** clears the defaults. Invalid or unmeasurable entries stay
+in the editor until corrected.
+
+Personal amounts apply to new selections, **Cook again**, automatic planning,
+and pantry-readiness previews. Existing dinners and explicit dinner copies keep
+their captured quantities. Final dinner overrides take priority. Labels identify
+personal calculations separately from source quantities and dinner overrides;
+source directions, ingredient identities, yield, diet eligibility, and verified
+times stay unchanged. If source ingredients, yield, directions, or notes change,
+previous personal amounts remain visible but inactive. Enter and save amounts
+against the current rows to use them again. Kitchen backups and recovery drafts
+include these defaults and show changes before replacement.
+
 **Change dinner** searches for a replacement while keeping the saved meal.
 **Cancel change** returns to it; replacing an occupied day still needs confirmation.
 Locked and cooked dinners stay protected. **Adjust amounts** changes your saved
@@ -99,8 +116,8 @@ batches. **Cook for** changes deterministic planning quantities, while Chef's
 substitution advice remains separate and never rewrites a meal.
 
 For a saved dinner, quantity-only questions show **Your dinner amounts** using
-those same calculations. Serving changes scale original amounts; an explicit
-saved override remains final. Labels distinguish scaled amounts from overrides,
+those same calculations. Serving changes scale source or captured personal
+amounts; an explicit saved override remains final. Labels identify each basis,
 while original ingredient evidence stays visible separately. These answers work
 with the AI provider offline and make no generation or verification call.
 Unclear measures or ingredient names ask for clarification. Questions about the
@@ -319,6 +336,11 @@ Saved meals retain independent recipe snapshots, so catalog updates do not
 silently rewrite existing dinners or historical quantities.
 
 Cooking mode shows the same final amounts and overrides as the dinner details.
+For an already-cooked dinner, **Start cooking again** opens an independent session
+using original recipe quantities. **Finish session** leaves the saved dinner,
+shopping, and pantry unchanged. Choose **Cook again** from Recipes to plan a new
+dinner with current personal amounts instead.
+
 Ingredients start collapsed and expand into the main cooking panel. That panel
 is the single scrolling area; the header and step controls stay visible, and
 changing steps returns to the top. Background page scrolling is locked while
@@ -590,12 +612,20 @@ Apply migrations before using reviewed metadata. Reviews live in a separate,
 versioned table bound to the source content hash. Stale reviews become unknown;
 metadata changes do not rewrite source recipes, embeddings or saved dinners.
 
-With the local app running, inspect and load the attributed 30-dinner review:
+The current **v2 dinner review** covers the same 30 Wikibooks mains. Refresh the
+matching sources with the current collector before applying it. The two explicit
+link lists stay within the collector's 20-page limit; each recipe still requires
+review in the terminal.
+
+With the local app running and migrations applied:
 
 ```bash
-pnpm recipes:curate -- validate tools/recipes/core-dinners.v1.json
-pnpm recipes:curate -- preview tools/recipes/core-dinners.v1.json
-pnpm recipes:curate -- import tools/recipes/core-dinners.v1.json
+pnpm recipes:collect -- tools/recipes/core-dinners.v2.part1.txt
+pnpm recipes:collect -- tools/recipes/core-dinners.v2.part2.txt
+pnpm recipes:curate -- validate tools/recipes/core-dinners.v2.json
+pnpm recipes:curate -- preview tools/recipes/core-dinners.v2.json
+pnpm recipes:curate -- import tools/recipes/core-dinners.v2.json
+pnpm recipes:embed
 pnpm recipes:curate -- report recipe-runs/quality-report.json
 pnpm recipes:curate -- export recipe-runs/review-worksheet.json
 ```
@@ -603,18 +633,43 @@ pnpm recipes:curate -- export recipe-runs/review-worksheet.json
 Preview verifies source hashes and field provenance without writing. Repeated
 imports are idempotent. Reports classify unresolved amounts and retain source
 links; worksheets require explicit review before import. Use a new output path
-for each report/worksheet. Add `--app http://localhost:PORT` for another local
-preview. The checked-in core annotates existing catalog records; it is not a seed
-dataset. Import the matching source recipes first on a fresh installation.
+for each report/worksheet. Worksheets support up to 1,000 entries; preview and
+import split them into requests of at most 100 entries within the API body limit.
+Multi-batch imports preview every batch before writing. Each batch saves
+independently; if a later request fails, the error reports how many entries were
+already imported. Correct the problem and rerun the same worksheet; unchanged
+reviews remain idempotent. Add `--app http://localhost:PORT` for another local
+preview; for `recipes:embed`, set `RECIPES_APP_URL=http://localhost:PORT` instead.
+Embedding refresh updates source and step search vectors without fetching pages.
+The checked-in core annotates existing catalog records. Source recipes
+are collected separately; this review does not preload a fresh installation.
+If preview reports a changed source hash, review the new source and its complete
+metadata again. Do not force an older annotation onto changed content. Blocked
+source pages stay untouched and must be reported as deferred.
 
-All 30 reviews retain explicit source servings. Total cooking time and low-carb
-suitability remain unknown where the captured source cannot establish them.
+All 30 reviews retain explicit source servings. The November 1, 2026 review
+captured original source notes for 19 recipes without changing ingredients,
+directions or servings. Twelve mains have complete source-backed totals; eight
+other source time labels remain unknown because of omitted preparation or
+inconsistent timing. Ten sources state no complete total. Twenty-nine mains
+still have at least one amount requiring review. These include seasonings,
+ranges and prepared ingredients; missing amounts are not invented.
+
+In **Recipes**, enable **Reviewed dinners** to narrow results to reviewed mains.
+Its matching count respects the selected collection, search, saved exclusions,
+and time limit before pagination. It also works in **Favorites** and **Cook again**.
+Main-dish classification does not establish quantified amounts or dietary safety.
+
 **Maximum total minutes** includes only complete, source-backed totals, never
-step durations or curator estimates. Consequently the initial core has no time
-filter matches until source-backed totals are reviewed. All other recipes remain
-available with explicit unknowns.
+step durations or curator estimates. Required preparation outside the directions,
+such as cooking rice or thawing an ingredient, keeps the complete total unknown.
+Optional serving suggestions are outside the main dish's stated time. Unknown
+times remain browsable when the time filter is cleared. Chef also honors an
+explicit unknown-total review: preserving an incomplete original time label
+does not make that label a complete total in answers or recommendations. See the
+[30-dinner review](dinner-review.md) for outcomes and outstanding gaps.
 
-Source-time reviews for Quick Risotto, Tomato Pasta, and Chickpea Omelette are in
+The earlier source-time reviews for Quick Risotto, Tomato Pasta, and Chickpea Omelette are in
 `tools/recipes/verified-times.v1.json`, with links to the reviewed source revisions.
 The source statements are retained as **Original source notes**, separate from
 cooking steps. Tomato Pasta’s 20–25 minute source range uses its upper bound for
@@ -629,7 +684,11 @@ pnpm recipes:curate -- preview tools/recipes/verified-times.v1.json
 pnpm recipes:curate -- import tools/recipes/verified-times.v1.json
 ```
 
-Both curation manifests are tied to their captured source hashes. A source-note
+Apply that earlier timing manifest **before** `core-dinners.v2.json` when using
+both, so the refreshed Chickpea Omelette review stays current. The v2 manifest
+supersedes `core-dinners.v1.json`; the older file remains a historical review.
+
+All curation manifests are tied to their captured source hashes. A source-note
 change requires a fresh metadata review; older metadata cannot silently carry
 forward to a new source version. The collector displays source notes during
 approval and includes them in the review hash.
@@ -698,7 +757,7 @@ held-out quality gates, result definitions, fingerprints, and limitations.
 app/components/       Screens, recipe details, weekly plan, and shopping UI
 app/lib/              Retrieval, provider schemas, storage, and quantities
 app/api/              Chef, recipes, kitchen, and catalog administration
-db/                   Drizzle schema and database access
+db/                   Drizzle schema used for migration generation
 drizzle/              Database migrations
 tools/recipes/        Collection, embedding refresh, and evaluation tools
 tests/                App regression tests

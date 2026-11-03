@@ -58,9 +58,9 @@ test("reviewed metadata previews, applies idempotently and drives public constra
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Eggplant Stew");
   await expect(page.locator(".recipe-card")).toBeVisible();
   await expect(page.locator(".recipe-card")).not.toContainText("Diet not verified");
-  await page.getByRole("checkbox", { name: "Core dinners", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
   await expect(page.locator(".recipe-card")).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Core dinners", exact: true }).uncheck();
+  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).uncheck();
   await expect(page.locator(".recipe-card")).toHaveCount(1);
   await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("15");
   await expect(page.locator(".recipe-card")).toHaveCount(0);

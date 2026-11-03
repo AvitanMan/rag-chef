@@ -1,0 +1,21 @@
+# Explicit source URLs for the v2 30-dinner review. Review every collected draft.
+https://en.wikibooks.org/wiki/Cookbook:Asparagus_Frittata
+https://en.wikibooks.org/wiki/Cookbook:Baked_Ziti
+https://en.wikibooks.org/wiki/Cookbook:Basic_Lasagna
+https://en.wikibooks.org/wiki/Cookbook:Bean_Chili
+https://en.wikibooks.org/wiki/Cookbook:Bean_Soup_%28Vegetarian%29
+https://en.wikibooks.org/wiki/Cookbook:Beef_Stew_II
+https://en.wikibooks.org/wiki/Cookbook:Basic_Scrambled_Eggs
+https://en.wikibooks.org/wiki/Cookbook:Black-Eyed_Peas_and_Kale
+https://en.wikibooks.org/wiki/Cookbook:Chanterelle_Goulash
+https://en.wikibooks.org/wiki/Cookbook:Chicken_Fried_Rice
+https://en.wikibooks.org/wiki/Cookbook:Chickpea_Omelette
+https://en.wikibooks.org/wiki/Cookbook:Chili_%28Vegan%29
+https://en.wikibooks.org/wiki/Cookbook:Creamy_Mushroom_Pasta
+https://en.wikibooks.org/wiki/Cookbook:Easy_Onion_Chicken
+https://en.wikibooks.org/wiki/Cookbook:Eggplant_Pasta
+https://en.wikibooks.org/wiki/Cookbook:Eggplant_and_Chickpea_Skillet
+https://en.wikibooks.org/wiki/Cookbook:Garbanzo_Bean_Stew
+https://en.wikibooks.org/wiki/Cookbook:Garlic_Parmesan_Pasta
+https://en.wikibooks.org/wiki/Cookbook:Hamburger_Skillet_Dinner
+https://en.wikibooks.org/wiki/Cookbook:Jambalaya_I

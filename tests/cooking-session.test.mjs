@@ -8,15 +8,43 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-cooking-session-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["cooking-session", "kitchen-validation", "kitchen-types"]) {
+for (const name of ["cooking-session", "kitchen-validation", "kitchen-types", "quantities"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { createCookingSession, parseCookingSession, remainingTimerMs, timerAction, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
+const { COOKING_SESSION_KEY, writeCookingSession, createCookingSession, parseCookingSession, remainingTimerMs, timerAction, parseTimerDuration, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
 const recipe = () => ({ id: "rice", title: "Test Rice", image: null, category: "Dinner", cuisine: "International", source: { name: "Wikibooks", url: "https://en.wikibooks.org/" }, sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Rice", ingredients: [{ name: "rice", measure: "100 g" }], instructions: ["Rinse rice.", "Simmer for 10 minutes."], tags: [], servings: 2 });
 const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 4, batches: 1, locked: false, status: "planned", ingredientOverrides: {} });
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
 const parse = (value) => parseCookingSession(JSON.stringify(value));
+
+test("starting an already-cooked dinner creates an unattached session without changing its captured amounts", () => {
+  const source = recipe();
+  const cooked = { ...planned(source), status: "cooked", ingredientOverrides: { "0": "350 g" }, completion: { id: "done", at: "2026-10-22T10:00:00.000Z", deductions: [] } };
+  const before = structuredClone(cooked);
+  const session = createCookingSession(source, source.instructions, "Main method", cooked);
+  assert.equal(session.plannedMeal, undefined);
+  assert.deepEqual(session.recipe, source);
+  assert.deepEqual(parse(session), session);
+  assert.deepEqual(cooked, before);
+  const next = createCookingSession(source, source.instructions, "Main method", planned(source));
+  assert.deepEqual(next.plannedMeal, planned(source), "planned dinners still capture portions and overrides");
+});
+
+test("custom timer fields distinguish minute and second limits and accept up to 24 hours", () => {
+  for (const [minutes, seconds, duration] of [["0", "1", 1], ["90", "15", 5415], ["1440", "0", 86400], [" 60 ", " 0 ", 3600]]) {
+    assert.equal(parseTimerDuration(minutes, seconds), duration);
+  }
+  for (const minutes of ["", " ", "-1", "1.5", "1441", "NaN", "Infinity"]) {
+    assert.throws(() => parseTimerDuration(minutes, "0"), /whole minutes from 0 to 1440/);
+  }
+  for (const seconds of ["", " ", "-1", "0.5", "60", "NaN", "Infinity"]) {
+    assert.throws(() => parseTimerDuration("90", seconds), /whole seconds from 0 to 59/);
+  }
+  for (const [minutes, seconds] of [["0", "0"], ["1440", "1"]]) {
+    assert.throws(() => parseTimerDuration(minutes, seconds), /between 1 second and 24 hours/);
+  }
+});
 
 test("multiple named timers survive reload and simultaneous deadlines finish in one immutable update", () => {
   const session = fresh();
@@ -126,4 +154,26 @@ test("corrupt, oversized and incompatible cooking snapshots are rejected without
 test("source timer shortcuts accept a single point duration and reject ranges, fractions, compound or ambiguous durations", () => {
   for (const [text, seconds] of [["Simmer for about 10 minutes.", 600], ["Rest 30 seconds.", 30], ["Bake 1 hour at 180 C.", 3600], ["Heat for 24 hours.", 86400]]) assert.equal(stepTimerSeconds(text), seconds, text);
   for (const text of ["Cook until tender.", "Cook 5–10 minutes.", "Cook 5-10 minutes.", "Cook 5 to 10 minutes.", "Cook 5 or 10 minutes.", "Cook 1.5 minutes.", "Cook 1/2 hour.", "Cook 1½ hours.", "Cook 1 hour 30 minutes.", "Simmer 5 minutes, then rest 10 minutes.", "Wait 0 seconds.", "Cook 25 hours."]) assert.equal(stepTimerSeconds(text), null, text);
+  for (const text of ["Simmer between 5 and 10 minutes.", "Rest between 20 and 30 seconds.", "Bake between 1 and 2 hours.", "Simmer BETWEEN 5 AND 10 minutes.", "Rest between 5\nand\n10 minutes."]) assert.equal(stepTimerSeconds(text), null, text);
+});
+
+
+test("stale tabs cannot replace, edit or delete another cooking snapshot", () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, text) => values.set(key, text), removeItem: key => values.delete(key) };
+  const active = fresh(); active.step = 1; active.timer = timerAction(active.timer, "start", 1000, 600000);
+  const first = writeCookingSession(storage, null, active);
+  assert.equal(first.saved, true);
+  for (const next of [fresh(), null]) {
+    assert.deepEqual(writeCookingSession(storage, null, next), { saved: false, stored: first.stored });
+    assert.deepEqual(parseCookingSession(storage.getItem(COOKING_SESSION_KEY)), active);
+  }
+  const paused = { ...active, timer: timerAction(active.timer, "pause", 2000) };
+  const second = writeCookingSession(storage, first.stored, paused);
+  assert.equal(second.saved, true);
+  assert.equal(writeCookingSession(storage, first.stored, { ...active, step: 0 }).saved, false);
+  assert.equal(writeCookingSession(storage, first.stored, null).saved, false);
+  assert.deepEqual(parseCookingSession(storage.getItem(COOKING_SESSION_KEY)), paused);
+  assert.equal(writeCookingSession(storage, second.stored, null).saved, true);
+  assert.equal(storage.getItem(COOKING_SESSION_KEY), null);
 });

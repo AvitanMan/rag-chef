@@ -2,7 +2,7 @@ import type { KitchenState, PantryStock, PlannedMeal } from "./kitchen-types";
 import type { Recipe, RecipeConstraints, RecipeMetadataMap } from "./recipe-types";
 import { addDateDays, weekStart } from "./kitchen-state";
 import { evaluateRecipeConstraints } from "./recipe-constraints";
-import { allocateMealStock, allocateStockForMeals, canonicalIngredient, formatMeasure, mealReadiness, normalizePlanningIngredient, parseMeasure } from "./quantities";
+import { applyPersonalRecipeAmounts, allocateMealStock, allocateStockForMeals, canonicalIngredient, formatMeasure, mealReadiness, normalizePlanningIngredient, parseMeasure } from "./quantities";
 
 export type PantryFilter = "all" | "soon" | "past";
 
@@ -17,9 +17,10 @@ export function pantryDateGroups(pantry: PantryStock[], today: string) {
 }
 
 /** Estimates share the planner's inventory and never mutate kitchen or source data. */
-export function rankUseSoonDinners({ kitchen, selectedId, today, date, portions, recipes, metadata, constraints }: {
+export function rankUseSoonDinners({ kitchen, selectedId, today, date, portions, recipes, metadata, constraints, contentHashesByRecipeId = {} }: {
   kitchen: KitchenState; selectedId: string; today: string; date: string; portions: number | null;
   recipes: Recipe[]; metadata: RecipeMetadataMap; constraints: RecipeConstraints;
+  contentHashesByRecipeId?: Record<string, string>;
 }) {
   const selected = pantryDateGroups(kitchen.pantry, today).soon.find(item => item.id === selectedId);
   const saved = Object.values(kitchen.meals).filter(meal => meal.date !== date && weekStart(meal.date) === weekStart(date));
@@ -30,13 +31,13 @@ export function rankUseSoonDinners({ kitchen, selectedId, today, date, portions,
   const candidates = status !== "ready" ? [] : recipes.flatMap(recipe => {
     const eligibility = evaluateRecipeConstraints(recipe, metadata[recipe.id], constraints);
     if (!eligibility.eligible) return [];
-    const meal: PlannedMeal = {
+    const meal: PlannedMeal = applyPersonalRecipeAmounts({
       id: `use-soon:${recipe.id}`, date, recipeId: recipe.id, recipe, title: recipe.title,
       baseServings: recipe.servings && recipe.servings > 0 ? recipe.servings : null,
       servings: recipe.servings ? portions ?? recipe.servings : null, batches: 1,
       locked: false, status: "planned", ingredientOverrides: {},
       planningIngredients: recipe.ingredients.map(normalizePlanningIngredient),
-    };
+    }, kitchen.personalRecipeAmounts?.[recipe.id], contentHashesByRecipeId[recipe.id]);
     const allocation = allocateMealStock(meal, remaining, today);
     if (!allocation.ingredientIdentities.includes(canonicalIngredient(selected!.name))) return [];
     const deductions = allocation.deductions.filter(item => item.pantryId === selectedId);

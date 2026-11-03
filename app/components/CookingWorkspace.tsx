@@ -8,10 +8,10 @@ import { Modal } from "./Modal";
 import { ThemeToggle } from "./ThemeToggle";
 import { ValidatedInput } from "./ValidatedInput";
 import { mealScale } from "../lib/kitchen-types";
-import { normalizePlanningIngredient, resolvedMealIngredients } from "../lib/quantities";
+import { mealAmountLabel, normalizePlanningIngredient, resolvedMealIngredients } from "../lib/quantities";
 import type { ChefApiResponse } from "../lib/chef-schema";
 import { cookingSourceStep } from "../lib/chef-context";
-import { cookingHasRunningTimer, finishElapsedTimers, MAX_COOKING_TIMERS, remainingTimerMs, stepTimerSeconds, timerAction, type CookingSession } from "../lib/cooking-session";
+import { cookingHasRunningTimer, finishElapsedTimers, MAX_COOKING_TIMERS, parseTimerDuration, remainingTimerMs, stepTimerSeconds, timerAction, type CookingSession } from "../lib/cooking-session";
 
 function timerDisplay(milliseconds: number): string {
   const remaining = Math.ceil(milliseconds / 1000);
@@ -45,14 +45,12 @@ function ExtraCookingTimers({ session, now, onChange, sourceSeconds }: { session
     </div>)}
     <button className="secondary-button" aria-expanded={adding} disabled={timers.length >= MAX_COOKING_TIMERS - 1} onClick={() => { setAdding(open => !open); setError(""); }}>{adding ? "Cancel new timer" : "Add another timer"}</button>
     {timers.length >= MAX_COOKING_TIMERS - 1 && <p className="quantity-note">Up to {MAX_COOKING_TIMERS} timers can be saved with this cooking session.</p>}
-    {adding && <form className="additional-timer-setup" aria-label="New cooking timer" onSubmit={event => {
+    {adding && <form className="additional-timer-setup" aria-label="New cooking timer" noValidate onSubmit={event => {
       event.preventDefault();
       if (labelProblem(label)) { setError(labelProblem(label)); return; }
-      const mins = Number(minutes), secs = Number(seconds);
-      if (!minutes.trim() || !seconds.trim() || !Number.isInteger(mins) || !Number.isInteger(secs) || mins < 0 || secs < 0 || secs > 59) { setError("Enter whole minutes and seconds from 0 to 59."); return; }
       if (timers.length >= MAX_COOKING_TIMERS - 1) { setError("Remove a timer before adding another."); return; }
       try {
-        const timer = timerAction({ ...session.timer, status: "idle" }, "start", Date.now(), (mins * 60 + secs) * 1000);
+        const timer = timerAction({ ...session.timer, status: "idle" }, "start", Date.now(), parseTimerDuration(minutes, seconds) * 1000);
         onChange({ ...session, extraTimers: [...timers, { ...timer, id: crypto.randomUUID(), label: label.trim() }] });
         setLabel(""); setAdding(false); setError("");
       } catch (error) { setError(error instanceof Error ? error.message : "Choose a valid duration."); }
@@ -66,10 +64,11 @@ function ExtraCookingTimers({ session, now, onChange, sourceSeconds }: { session
   </section>;
 }
 
-export function CookingWorkspace({ session, visible, onChange, close, finish, completionReview, chefBusy = false, chefError = "", chefReply = null, askChefStep }: {
+export function CookingWorkspace({ session, visible, onChange, close, finish, completionReview, chefBusy = false, chefUnavailable = "", chefError = "", chefReply = null, askChefStep }: {
   session: CookingSession;
   visible: boolean;
   chefBusy?: boolean;
+  chefUnavailable?: string;
   chefError?: string;
   chefReply?: (Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus" | "answerKind" | "planningFacts" | "cookingTechniques"> & { requestQuery?: string }) | null;
   askChefStep?: (question: string) => void;
@@ -184,17 +183,18 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
       <ExtraCookingTimers session={session} now={now} onChange={onChange} sourceSeconds={sourceSeconds} />
       <details className="cook-ingredients"><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
         <p className="quantity-note">{session.plannedMeal ? session.plannedMeal.servings ? `${session.plannedMeal.servings} servings` : `${mealScale(session.plannedMeal)} recipe batches` : "Original recipe quantities"}. Source directions retain their original wording.</p>
-        <ul className="ingredient-list">{ingredients.map((ingredient, index) => <li key={index}><strong>{ingredient.name}</strong><small>{ingredient.measure || "Amount needs review"}{ingredient.needsReview && ingredient.measure ? " · review amount" : ""}</small></li>)}</ul>
+        <ul className="ingredient-list">{ingredients.map((ingredient, index) => <li key={index}><strong>{ingredient.name}</strong><small>{ingredient.measure || "Amount needs review"}{ingredient.needsReview && ingredient.measure ? " · review amount" : ""}{session.plannedMeal && <span className="amount-basis">{mealAmountLabel(session.plannedMeal, index)}</span>}</small></li>)}</ul>
       </section></details>
       {askChefStep && <details className="cook-help"><summary>Ask about this step</summary><section aria-label="Cooking step help">
         <p className="quantity-note" id="cooking-question-help">{cookingSourceStep(session.recipe, session.instructions, session.step) ? "Ask about this instruction, its ingredients, or timing stated in the recipe. Timers keep running while Chef answers." : "Chef will use the recipe as a whole because this saved step cannot be matched to one source direction."}</p>
-        <form onSubmit={(event) => { event.preventDefault(); if (helpQuestion.trim()) { const question = helpQuestion.trim(); setLastHelpRequest({ question, step: session.step }); askChefStep(question); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" aria-describedby="cooking-question-help" placeholder="e.g. What does this instruction mean?" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
+        <form onSubmit={(event) => { event.preventDefault(); if (!chefUnavailable && !chefBusy && helpQuestion.trim()) { const question = helpQuestion.trim(); setLastHelpRequest({ question, step: session.step }); askChefStep(question); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" aria-describedby="cooking-question-help" placeholder="e.g. What does this instruction mean?" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={Boolean(chefUnavailable) || chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
+        {chefUnavailable && <p className="quantity-note" role="status">Chef is waiting for the kitchen: {chefUnavailable}</p>}
         {chefError && <p role="alert">{chefError}</p>}
         {chefReply && lastHelpRequest?.step === session.step && chefReply.requestQuery === lastHelpRequest.question && chefReply.resolvedContext?.stepEvidenceId === cookingSourceStep(session.recipe, session.instructions, session.step) && <div className="step-chef-reply" aria-live="polite">
           <strong>{chefReply.answerKind === "planning_quantities" ? "Saved dinner calculation" : chefReply.generation === "ai" ? "Chef explanation" : "Recipe reference"}</strong>
           {chefReply.answerKind === "planning_quantities" && <PlanningFacts result={chefReply} />}
           {chefReply.answerKind !== "cooking_technique" && (chefReply.answerKind !== "planning_quantities" || chefReply.answerStatus !== "answered") && <p className="step-explanation">{chefReply.answer}</p>}
-          {chefReply.answerStatus === "unverified" && <button className="secondary-button" disabled={chefBusy} onClick={() => askChefStep(lastHelpRequest.question)}>Retry step answer</button>}
+          {chefReply.answerStatus === "unverified" && <button className="secondary-button" disabled={Boolean(chefUnavailable) || chefBusy} onClick={() => askChefStep(lastHelpRequest.question)}>Retry step answer</button>}
           <CookingTechniqueReferences guides={chefReply.cookingTechniques} />
           {chefReply.sourceFacts.length > 0 && <details className="step-source-evidence"><summary>Source for this answer</summary>{chefReply.sourceFacts.map((fact, index) => <blockquote key={index}>{fact.fact}</blockquote>)}</details>}
           {chefReply.chefChanges.map((change, index) => <div key={index}><b>Suggested change — original recipe unchanged</b><p>{change.change} {change.reason}</p></div>)}
@@ -208,9 +208,8 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
         <div className="timer-presets" aria-label="Quick timers">{[1, 5, 10, 15].map((minutes) => <button key={minutes} onClick={() => start(minutes * 60)}>Start {minutes} min timer</button>)}</div>
         {timerError && <p role="alert">{timerError}</p>}
         <button onClick={() => {
-          const mins = Number(minutesInput), secs = Number(secondsInput);
-          if (!minutesInput.trim() || !secondsInput.trim() || !Number.isInteger(mins) || !Number.isInteger(secs) || mins < 0 || secs < 0 || secs > 59) { setTimerError("Enter whole minutes and seconds from 0 to 59."); return; }
-          start(mins * 60 + secs);
+          try { start(parseTimerDuration(minutesInput, secondsInput)); }
+          catch (error) { setTimerError(error instanceof Error ? error.message : "Choose a valid duration."); }
         }}>Start custom timer</button>
         <label className="timer-sound"><input type="checkbox" checked={session.soundEnabled} onChange={(event) => {
           if (event.target.checked) { try { audio.current ??= new AudioContext(); void audio.current.resume(); } catch { /* Optional sound. */ } }
