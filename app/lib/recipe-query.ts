@@ -5,12 +5,40 @@ import type { RecipeConstraints } from "./recipe-types";
 export const STOP_WORDS = new Set("a an and are as at be by can cook cooking could dish dishes do eat find for from give have help how i in ingredients is it like make meal meals me most my of on only or pantry please perishable quick recipe recipes recommend should some something suggest suggestions that the to today tomorrow tonight try use want we what when which with would dinner dinners idea ideas option options choice choices using".split(" "));
 const REQUEST_EQUIPMENT = new Set(["oven", "stovetop", "microwave", "blender", "slow cooker", "pressure cooker", "air fryer", "grill"]);
 
+const RECIPE_DIRECTIVE = String.raw`(?:substitut\w*|replac\w*|swap\w*|adapt\w*|chang\w*|rewrit\w*|alter\w*|modif\w*|scal(?:e|ing)|halv(?:e|ing)|doubl(?:e|ing)|reduc\w*|cut(?:ting)?|make|making|suggest\w*|recommend\w*|propos\w*|offer\w*|find|choos\w*|list|tell|show|summari[sz]\w*|describe|outline|explain|give)`;
+const INDEPENDENT_EXCLUSION = String.raw`(?:do\s+not|don't|without|no|not|avoid|exclud(?:e|ing)|leave\s+out)`;
+const NEXT_RECIPE_DIRECTIVE = String.raw`(?:please|instead|explain|list|tell|show|summari[sz]e|describe|outline|give|find|recommend|suggest|can|could|how|what|why|${INDEPENDENT_EXCLUSION})`;
+const NEGATED_RECIPE_DIRECTIVE = new RegExp(String.raw`\b(?:do\s+not|don't|never|without|avoid|no|not)\s+(?:(?:want(?:ing)?|ask(?:ing)?)\s+(?:you\s+to\s+|for\s+)?|(?:any|new|further)\s+|need\s+to\s+)*${RECIPE_DIRECTIVE}\b[^.;!?]*?(?=[.;!?]|\b(?:but|however)\b|,\s*(?:and\s+)?${NEXT_RECIPE_DIRECTIVE}\b|\band\s+(?:please|instead|explain|list|tell|show|summari[sz]e|describe|outline|${INDEPENDENT_EXCLUSION})\b|$)`, "gi");
+
+/** Instructions about what not to change are not ingredient exclusions.
+ * Keep later independent requests, including joined food/equipment exclusions
+ * and a positive change after "but". Ingredient lists remain in the negation. */
+function recipeRequestText(query: string): string {
+  return query.replaceAll("’", "'").replace(NEGATED_RECIPE_DIRECTIVE, " ");
+}
+
+const RECIPE_DETAIL = String.raw`(?:ingredients?|instructions?|directions?|steps?|method|amounts?|quantities|quantity|nutrition|calories|protein|temperature|timings?|time|duration|servings?|yield)`;
+const NON_DISCOVERY_OBJECT = new RegExp(String.raw`^(?:(?:me|us|the|a|an|some|this|that|its|their|original|source|recipe(?:'s)?|cooking|current|next|exact|total)\s+)*(?:${RECIPE_DETAIL}|substitutions?|substitutes?|swaps?|adaptations?|changes?)\b`, "i");
+const RECIPE_HELP_IMPERATIVE = new RegExp(String.raw`\b(?:list|tell|show|summari[sz]e|describe|outline|give|find)\b[^.;!?]*\b${RECIPE_DETAIL}\b`, "i");
+
 /** Dinner discovery can be phrased as a question; punctuation alone is not intent. */
 export function queryRequestsRecipes(query: string): boolean {
-  return /\b(?:recommend\w*|suggest\w*|find|choose)\b/i.test(query)
-    || /\bwhat\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat)(?=\s*(?:[?!.]|$)|\s+(?:with|using|for|tonight|today|tomorrow)\b)/i.test(query)
-    || /\b(?:what|which)\s+(?:recipes?|dinners?|meals?|dishes?)\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat|try)\b/i.test(query)
-    || /\bwhat(?:'s| is)\s+for\s+dinner\b/i.test(query);
+  const request = recipeRequestText(query);
+  const discoveryCommand = [...request.matchAll(/\b(?:recommend\w*|suggest\w*|find|choose)\b/gi)]
+    .some(match => !NON_DISCOVERY_OBJECT.test(request.slice(match.index + match[0].length).trimStart()));
+  return discoveryCommand
+    || /\bwhat\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat)(?=\s*(?:[?!.]|$)|\s+(?:with|using|for|tonight|today|tomorrow)\b)/i.test(request)
+    || /\b(?:what|which)\s+(?:recipes?|dinners?|meals?|dishes?)\s+(?:can|could|should)\s+(?:i|we)\s+(?:cook|make|eat|try)\b/i.test(request)
+    || /\bwhat(?:'s| is)\s+for\s+dinner\b/i.test(request);
+}
+
+/** Recipe help includes imperative requests, not just sentences with a question mark. */
+export function queryRequestsRecipeHelp(query: string): boolean {
+  const request = recipeRequestText(query);
+  if (queryRequestsRecipes(request)) return false;
+  return /[?]|\b(?:how|why|what|when|which|can|could|does|explain)\b/i.test(request)
+    || RECIPE_HELP_IMPERATIVE.test(request)
+    || /\b(?:summari[sz]e|describe|outline)\s+(?:(?:this|that|the|original|source)\s+)*recipe\b/i.test(request);
 }
 
 export interface RecipeQueryIntent {
@@ -26,7 +54,7 @@ export interface RecipeQueryIntent {
 }
 
 export function queryRequestsAdaptation(query: string, hasRecipeFocus = false): boolean {
-  const request = query
+  const request = recipeRequestText(query)
     .replace(/\b(?:change|swap|replace)\s+(?:(?:the|my|this|that)\s+)?recipe\s+(?:with|for|to)\s+(?![^.;!?]*\b(?:vegan|vegetarian|meatless|gluten[ -]free|dairy[ -]free|ingredients?|amounts?|method|technique)\b)[^.;!?]+/gi, "")
     .replace(/\b(?:change|swap|replace)\s+(?:(?:the|my|this|that)\s+)?recipe(?:\s+instead)?(?=\s*[.;!?]|\s*$)/gi, "")
     .replace(/\bwithout\s+(?:changing|rewriting|altering|modifying)\b[^.;!?]*/gi, "")
@@ -39,7 +67,7 @@ export function queryRequestsAdaptation(query: string, hasRecipeFocus = false): 
 
 /** Deterministic intent only: do not let generated text relax stored exclusions. */
 export function recipeQueryIntent(query: string, hasRecipeFocus = false): RecipeQueryIntent {
-  const text = query.normalize("NFKD").replace(/\p{M}/gu, "").replaceAll("’", "'").toLowerCase().replace(/\bwhat's\b/g, "what is");
+  const text = recipeRequestText(query).normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\bwhat's\b/g, "what is");
   const excluded: string[] = [];
   const excludedEquipment: string[] = [];
   const equipmentAware = text.replace(/\b(?:do not have|don't have|no access to|without access to)\s+(?:(?:an?|the|my)\s+)?(oven|stove(?:top| top)?|hob|microwave|blender|slow cooker|pressure cooker|air fryer|grill)\b/g, (_clause, name: string) => {

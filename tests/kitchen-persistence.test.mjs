@@ -22,6 +22,7 @@ after(async () => {
 await writeFile(join(directory, "test-cloudflare.mjs"), "export const env = { DB: undefined };\n");
 for (const [name, sourcePath] of [
   ["kitchen-types", "../app/lib/kitchen-types.ts"],
+  ["quantities", "../app/lib/quantities.ts"],
   ["kitchen-store", "../app/lib/kitchen-store.ts"],
   ["kitchen-validation", "../app/lib/kitchen-validation.ts"],
   ["kitchen-route", "../app/api/kitchen/route.ts"],
@@ -267,7 +268,7 @@ test("simultaneous initial saves have one winner and return the winning document
 
 test("stale updates cannot overwrite a newer revision and return its current state", async () => {
   await responseJson(await route.PUT(request({ revision: 0, state: state() })), 200);
-  const changed = state({ pantry: [{ id: "rice-stock", name: "rice", measure: "2 kg" }] });
+  const changed = state({ pantry: [{ id: "rice-stock", name: "rice", measure: "2 kg" }], personalRecipeAmounts: { rice: { contentHash: "a".repeat(64), referenceServings: 4, amounts: [{ ingredientIndex: 0, originalName: "rice", measure: "300 g" }] } } });
   const saved = await responseJson(await route.PUT(request({ revision: 1, state: changed })), 200);
   assert.equal(saved.revision, 2);
   const stale = await responseJson(await route.PUT(request({ revision: 1, state: state() })), 409);

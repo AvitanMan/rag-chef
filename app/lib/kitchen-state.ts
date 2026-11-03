@@ -1,6 +1,6 @@
-import type { KitchenState, PlannedMeal } from "./kitchen-types";
+import type { KitchenState, PlannedMeal, PersonalRecipeAmounts } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
-import { normalizePlanningIngredient } from "./quantities";
+import { applyPersonalRecipeAmounts, normalizePlanningIngredient } from "./quantities";
 
 export const LEGACY_STORAGE_KEY = "rag-chef-prototype-v1";
 export const PREFERENCES_STORAGE_KEY = "rag-chef-preferences-v2";
@@ -22,15 +22,16 @@ export function weekStart(date = localDate()): string {
   return addDateDays(date, -((day + 6) % 7));
 }
 
-export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true): PlannedMeal {
+export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true, personal?: { amounts?: PersonalRecipeAmounts; contentHash?: string }): PlannedMeal {
   const baseServings = recipe.servings && recipe.servings > 0 ? recipe.servings : null;
-  return {
+  const meal: PlannedMeal = {
     id: crypto.randomUUID(), date, recipeId: recipe.id,
     recipe: structuredClone(recipe), title: recipe.title,
     baseServings, servings: baseServings, batches: 1, locked: false,
     status: "planned", ingredientOverrides: {},
     ...(normalizeIngredients ? { planningIngredients: recipe.ingredients.map(normalizePlanningIngredient) } : {}),
   };
+  return normalizeIngredients ? applyPersonalRecipeAmounts(meal, personal?.amounts, personal?.contentHash) : meal;
 }
 
 export function dinnerSelectionStatus(meals: Record<string, PlannedMeal>, date: string, expectedId: string | null): "available" | "protected" | "changed" {
@@ -39,10 +40,10 @@ export function dinnerSelectionStatus(meals: Record<string, PlannedMeal>, date: 
   return (current?.id ?? null) === expectedId ? "available" : "changed";
 }
 
-export function placePlannedDinner(state: KitchenState, date: string, recipe: Recipe, expectedId: string | null, template?: PlannedMeal): KitchenState {
+export function placePlannedDinner(state: KitchenState, date: string, recipe: Recipe, expectedId: string | null, template?: PlannedMeal, contentHash?: string): KitchenState {
   if (dinnerSelectionStatus(state.meals, date, expectedId) !== "available") return state;
-  const fresh = createPlannedMeal(date, recipe);
-  const meal = template ? { ...structuredClone(template), planningIngredients: structuredClone(template.planningIngredients ?? fresh.planningIngredients), id: fresh.id, date, locked: false, status: "planned" as const } : fresh;
+  const fresh = createPlannedMeal(date, recipe, true, { amounts: state.personalRecipeAmounts?.[recipe.id], contentHash });
+  const meal = template ? { ...structuredClone(template), id: fresh.id, date, locked: false, status: "planned" as const } : fresh;
   delete meal.completion;
   return { ...state, meals: { ...state.meals, [date]: meal } };
 }

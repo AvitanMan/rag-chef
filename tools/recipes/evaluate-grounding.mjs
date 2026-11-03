@@ -49,10 +49,10 @@ for (const item of cases) {
     const recipe = catalog.find((recipe) => recipe.id === item.recipeId);
     const selected = result.selectedEvidenceByRecipeId?.[item.recipeId] ?? [];
     const exactEvidence = (result.sourceFacts ?? []).every((fact) => {
-      const match = fact.evidenceId?.match(/^([IS])([1-9]\d{0,2})$/);
+      const match = fact.evidenceId?.match(/^([ISN])([1-9]\d{0,2})$/);
       if (fact.recipeId !== recipe.id || !match || !selected.includes(fact.evidenceId)) return false;
       const index = Number(match[2]) - 1;
-      return fact.fact === (match[1] === "I" ? [recipe.ingredients[index]?.measure, recipe.ingredients[index]?.name].filter(Boolean).join(" ") : recipe.instructions[index]);
+      return fact.fact === (match[1] === "I" ? [recipe.ingredients[index]?.measure, recipe.ingredients[index]?.name].filter(Boolean).join(" ") : match[1] === "S" ? recipe.instructions[index] : recipe.sourceNotes?.[index]);
     });
     const expectedEvidence = !item.evidence || (result.sourceFacts ?? []).some((fact) => fact.recipeId === recipe.id && fact.evidenceId === item.evidence);
     // This mistaken-premise case measures the guard, not successful answering:

@@ -16,8 +16,8 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
-  ...["retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
+  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
+  ...["recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -27,8 +27,9 @@ for (const [folder, name, extension] of [
 }
 const { RecipeCard, RecipeDrawer } = await import(pathToFileURL(join(directory, "RagChefApp.mjs")).href);
 const { ChefGrounding } = await import(pathToFileURL(join(directory, "ChefGrounding.mjs")).href);
-const { DurablePlanView, DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")).href);
+const { DinnerAmounts, DurablePlanView, DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")).href);
 const { recipePantryDetails } = await import(pathToFileURL(join(directory, "recipe-browser.mjs")).href);
+const { metricMeasure } = await import(pathToFileURL(join(directory, "recipe-presentation.mjs")).href);
 const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
 const noop = () => {};
 const recipe = {
@@ -39,6 +40,53 @@ const recipe = {
   source: { name: "Wikibooks Cookbook", url: "https://en.wikibooks.org/wiki/Cookbook:Test_Rice", licenseId: "CC-BY-SA-4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/", attributionText: "Wikibooks contributors. Formatting normalized; source wording retained." },
 };
 const drawer = (props = {}) => renderToStaticMarkup(createElement(RecipeDrawer, { recipe, pantry: ["rice"], metric: false, setMetric: noop, chefResult: null, close: noop, addToPlan: noop, addLabel: "Add to Monday", start: noop, ...props }));
+
+test("metric ingredient display keeps Unicode and mixed fractions without rounding to a whole unit", () => {
+  for (const [original, expected] of [
+    ["1½ cups", "360 ml"], ["1 ½ cups", "360 ml"], ["1¾ cup", "420 ml"],
+    ["1 1/2 tbsp", "22.5 ml"], ["½ cup", "120 ml"], ["¼ tsp", "1.25 ml"],
+  ]) assert.equal(metricMeasure(original, true), expected, original);
+});
+
+test("metric ingredient display keeps fluid ounces distinct from mass ounces", () => {
+  assert.equal(metricMeasure("8 fl oz", true), "236.59 ml");
+  assert.equal(metricMeasure("8 fluid ounces", true), "236.59 ml");
+  assert.equal(metricMeasure("8 oz", true), "226.8 g");
+  assert.equal(metricMeasure("1 1/2 pounds", true), "680.39 g");
+});
+
+test("metric ingredient display retains existing metric precision and does not round a positive amount to zero", () => {
+  for (const original of ["0.125 g", "1.234ml", "1½ kg", "500 millilitres", "1/10000 tsp"]) {
+    assert.equal(metricMeasure(original, true), original);
+  }
+});
+
+test("metric display preserves ranges, packages, qualifiers and compound amounts verbatim", () => {
+  for (const original of [
+    "1–2 tbsp", "1-2 cups", "⅓–½ cup", "1 to 2 cups", "1 (14 oz) can",
+    "2 tbsp, divided", "2 cups plus 1 tbsp", "1 cup (240 ml)", "about 2 cups",
+    "1/0 cup", "to taste", "3 cloves", "2 cans", " 1–2 cups ", "",
+  ]) assert.equal(metricMeasure(original, true), original);
+  assert.equal(metricMeasure(" 1½ cups ", false), " 1½ cups ");
+});
+
+test("recipe drawer renders accurate metric amounts and can show the untouched source measures", () => {
+  const sourceRecipe = { ...recipe, ingredients: [
+    { name: "yogurt", measure: "1½ cups" },
+    { name: "flour", measure: "1¾ cup" },
+    { name: "chile powder", measure: "1–2 tbsp" },
+    { name: "water", measure: "8 fl oz" },
+    { name: "butter", measure: "2 tbsp, divided" },
+  ] };
+  const before = structuredClone(sourceRecipe);
+  const metric = drawer({ recipe: sourceRecipe, metric: true });
+  for (const expected of ["360 ml", "420 ml", "1–2 tbsp", "236.59 ml", "2 tbsp, divided"]) {
+    assert.ok(metric.includes(`<small>${expected}</small>`), expected);
+  }
+  const original = drawer({ recipe: sourceRecipe, metric: false });
+  for (const ingredient of sourceRecipe.ingredients) assert.ok(original.includes(`<small>${ingredient.measure}</small>`), ingredient.measure);
+  assert.deepEqual(sourceRecipe, before);
+});
 
 const groundingResult = {
   recipes: [recipe], generation: "ai", requestQuery: "Rice for dinner",
@@ -69,6 +117,14 @@ test("catalog fallback retains real recipe excerpts and never claims an AI answe
   assert.match(html, /Retrieved recipe excerpt/);
   assert.match(html, /<blockquote>100 g rice<\/blockquote>/);
   assert.doesNotMatch(html, /Cited recipe excerpt|AI answer from retrieved recipes|Meaning, keywords/);
+});
+test("source-note evidence is displayed as the canonical note rather than an ingredient with the same number", () => {
+  const sourceRecipe = { ...recipe, sourceNotes: ["Total time: 25 minutes.", "Protein: 12 g per serving."] };
+  const html = grounding({ recipes: [sourceRecipe], sourceFacts: [], selectedEvidenceByRecipeId: { [recipe.id]: ["N2"] } });
+  assert.match(html, /<blockquote>Protein: 12 g per serving\.<\/blockquote>/);
+  assert.doesNotMatch(html, /<blockquote>to taste salt<\/blockquote>/);
+  const cited = grounding({ recipes: [sourceRecipe], sourceFacts: [{ recipeId: recipe.id, evidenceId: "N1", fact: sourceRecipe.sourceNotes[0] }] });
+  assert.match(cited, /<blockquote>Total time: 25 minutes\.<\/blockquote>/);
 });
 
 test("an unverified AI answer is distinct from a missing source or unavailable provider", () => {
@@ -108,6 +164,35 @@ test("real photos remain optional and coverage uses the same counts in cards and
   assert.doesNotMatch(details, /drawer-hero|No changes suggested yet|changes-panel/);
 });
 
+test("procedural sentences ending in instructions, directions or method stay in one complete cooking method", () => {
+  for (const instruction of ["Cook rice according to package instructions", "Prepare rice according to the directions", "Mix using the folding method"]) {
+    const source = { ...recipe, instructions: ["Boil water.", instruction, "Drain and serve."] };
+    const before = structuredClone(source);
+    const html = drawer({ recipe: source });
+    assert.doesNotMatch(html, /Choose cooking method/);
+    assert.match(html, /3 steps/);
+    for (const step of source.instructions) assert.ok(html.includes(`<p>${step}</p>`), step);
+    assert.deepEqual(source, before);
+  }
+});
+
+test("recognised numbered appliance headings still offer separate cooking methods", () => {
+  const source = { ...recipe, instructions: ["1. Stovetop instructions:", "1. Simmer for 10 minutes.", "2. Oven directions:", "1. Bake for 20 minutes."] };
+  const html = drawer({ recipe: source });
+  assert.match(html, /Choose cooking method/);
+  assert.match(html, />Stovetop<\/button>/);
+  assert.match(html, />Oven<\/button>/);
+  assert.match(html, /<p>Simmer for 10 minutes\.<\/p>/);
+});
+
+test("a standalone Method heading stays separate from its cooking actions", () => {
+  const source = { ...recipe, instructions: ["Method:", "Rinse the rice.", "Simmer for 10 minutes."] };
+  const html = drawer({ recipe: source });
+  assert.match(html, /2 steps/);
+  assert.doesNotMatch(html, /<p>Method:?<\/p>/);
+  assert.match(html, /<p>Rinse the rice\.<\/p>/);
+});
+
 test("planned dinner amounts are primary, overrides are final, and originals start collapsed", () => {
   const meal = createPlannedMeal("2026-10-19", recipe);
   meal.servings = 4;
@@ -131,8 +216,22 @@ test("planned quantities scale once, and recipes with unknown servings stay in b
   meal.batches = 2;
   const html = drawer({ plannedMeal: meal });
   assert.match(html, /2 recipe batches/);
-  assert.match(html, /<small>200 g<\/small>/);
+  assert.match(html, /<small>200 g<span class="amount-basis">Scaled from source<\/span><\/small>/);
   assert.match(html, /<small>100 g<\/small>/);
+});
+
+test("dinner amount editing shows the scaled personal baseline separately from the final override", () => {
+  const meal = createPlannedMeal("2026-10-19", recipe);
+  meal.servings = 1;
+  meal.planningIngredients[0].measure = "300 g";
+  meal.personalAmountIndices = [0];
+  meal.ingredientOverrides = { "0": "175 g" };
+  const html = renderToStaticMarkup(createElement(DinnerAmounts, { meal, patch: noop }));
+  assert.match(html, /Personal amount · scaled for this dinner · Baseline: 150 g/);
+  assert.match(html, /placeholder="150 g"/);
+  assert.match(html, /value="175 g"/);
+  assert.match(html, /Dinner override · final amount for this dinner/);
+  assert.doesNotMatch(html, /87\.5 g/);
 });
 
 test("missing planned amounts remain explicitly unresolved instead of inventing a quantity", () => {

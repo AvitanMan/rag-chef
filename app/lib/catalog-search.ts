@@ -6,7 +6,7 @@ import { listCatalogRecipes, listStoredRecipeEmbeddings } from "./recipe-store";
 import { normalizeRecipeSearch, recipePantryDetails } from "./recipe-browser";
 import { evaluateRecipeConstraints, normalizeConstraints, type RecipeEligibility } from "./recipe-constraints";
 import type { Recipe, RecipeMetadata, RecipeMetadataMap, RecipeSearchOptions } from "./recipe-types";
-import { allocateStockForMeals, mealReadiness, normalizePlanningIngredient, type MealReadiness } from "./quantities";
+import { applyPersonalRecipeAmounts, allocateStockForMeals, mealReadiness, normalizePlanningIngredient, type MealReadiness } from "./quantities";
 
 export type CatalogRetrievalMethod = "precomputed_embeddings" | "lexical_pantry" | "catalog_order" | "empty";
 export type CatalogSearchOutcome = "matches" | "no_match" | "constraints_unsatisfied" | "catalog_empty";
@@ -39,6 +39,7 @@ export interface CatalogSearchResult {
   constraintExcludedCount: number;
   metadataByRecipeId: RecipeMetadataMap;
   embedModel: string;
+  contentHashesByRecipeId?: Record<string, string>;
   warning?: string;
   outcome: CatalogSearchOutcome;
 }
@@ -124,9 +125,9 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
   };
   const bm25 = bm25Scores(recipes.map((recipe) => ({ id: recipe.id, title: recipe.title, ingredients: recipe.ingredients.map((item) => item.name).join(" "), other: [recipe.category, recipe.cuisine, ...recipe.tags].join(" ") })), lexicalQuery);
   const ranked = recipes.map((recipe) => {
-    const readiness = stock ? mealReadiness({ id: `preview:${recipe.id}`, date: stock.targetDate, recipeId: recipe.id, recipe, title: recipe.title,
+    const readiness = stock ? mealReadiness(applyPersonalRecipeAmounts({ id: `preview:${recipe.id}`, date: stock.targetDate, recipeId: recipe.id, recipe, title: recipe.title,
       baseServings: recipe.servings ?? null, servings: recipe.servings ? stock.servings ?? recipe.servings : null, batches: recipe.servings ? 1 : stock.batches ?? 1,
-      ingredientOverrides: {}, planningIngredients: recipe.ingredients.map(normalizePlanningIngredient), locked: false, status: "planned" }, remaining, stock.today) : undefined;
+      ingredientOverrides: {}, planningIngredients: recipe.ingredients.map(normalizePlanningIngredient), locked: false, status: "planned" }, stock.personalRecipeAmounts?.[recipe.id], stock.contentHashesByRecipeId?.[recipe.id]), remaining, stock.today) : undefined;
     const eligibility = evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints);
     const details = recipePantryDetails(recipe, pantry);
     const lexicalScore = 0.6 * lexicalCoverage(lexicalQuery, recipe.title) + 0.4 * lexicalCoverage(lexicalQuery, buildRecipeEmbeddingText(recipe));
@@ -150,13 +151,15 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
 export async function searchRecipeCatalog(options: RecipeSearchOptions, embedModel: string): Promise<CatalogSearchResult> {
   // This loader enforces active recipes and database source approval/permissions.
   const stored = await listCatalogRecipes(1000);
+  const contentHashesByRecipeId = Object.fromEntries(stored.map(item => [item.recipe.id, item.contentHash]));
+  if (options.stockContext) options = { ...options, stockContext: { ...options.stockContext, contentHashesByRecipeId } };
   const requestedFocus = options.recipeId ?? focusedRecipeId(options.query ?? "", stored.map((item) => item.recipe));
   const searchQuery = recipeRetrievalQuery(options.query ?? "", Boolean(requestedFocus));
   const constraints = constraintsForRecipeQuery(options.query ?? "", options.constraints ?? normalizeConstraints({ allergies: options.allergies }), Boolean(requestedFocus));
   const metadataByRecipeId: RecipeMetadataMap = Object.fromEntries(stored.flatMap((item) => item.metadata ? [[item.recipe.id, item.metadata]] : []));
   const evaluated = stored.map(({ recipe }) => ({ recipe, eligibility: evaluateRecipeConstraints(recipe, metadataByRecipeId[recipe.id], constraints) }));
   const eligible = evaluated.filter((item) => item.eligibility.eligible).map((item) => item.recipe);
-  const result: CatalogSearchResult = { recipes: [], ranked: [], method: "empty", outcome: stored.length ? "constraints_unsatisfied" : "catalog_empty", catalogCount: stored.length, embeddingCount: 0, allergyExcludedCount: evaluated.filter((item) => item.eligibility.allergyMatches.length).length, constraintExcludedCount: stored.length - eligible.length, metadataByRecipeId, embedModel };
+  const result: CatalogSearchResult = { recipes: [], ranked: [], method: "empty", outcome: stored.length ? "constraints_unsatisfied" : "catalog_empty", catalogCount: stored.length, embeddingCount: 0, allergyExcludedCount: evaluated.filter((item) => item.eligibility.allergyMatches.length).length, constraintExcludedCount: stored.length - eligible.length, metadataByRecipeId, embedModel, contentHashesByRecipeId };
   const notices = [
     ...(constraints.excludedIngredients?.includes("dairy") ? ["Diet not verified: dairy free. Known dairy ingredient conflicts are excluded; check source ingredients and product labels."] : []),
     ...(constraints.excludedEquipment?.length && stored.some((item) => item.metadata?.equipment == null) ? ["Recipes without reviewed equipment requirements were excluded for this request."] : []),

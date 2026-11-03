@@ -14,7 +14,7 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
   db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
@@ -92,6 +92,19 @@ async function importOne(value) {
   assert.equal(response.status, 200);
   return (await response.json()).results[0];
 }
+
+test("catalog normalization preserves procedural instructions and recognises only explicit method labels", async () => {
+  await importOne(await draft(0));
+  const original = (await store.listCatalogRecipes())[0].recipe;
+  await store.upsertApprovedRecipeSource({ id: "method-fixture", name: "Synthetic methods", url: "https://example.invalid", licenseId: "CC0-1.0", permissionBasis: "Original synthetic test data", approvalStatus: "approved", approvedBy: "Test", allowDisplay: true, allowCache: true, allowIndexText: true, allowEmbed: true });
+  const instructions = ["Boil water.", "Cook rice according to package instructions", "Drain and serve."];
+  const procedure = { ...original, id: "procedure", title: "Procedure", instructions };
+  await store.upsertCatalogRecipe({ sourceId: "method-fixture", recipe: procedure, contentHash: await embeddings.recipeEmbeddingContentHash(procedure), searchText: "Procedure" });
+  assert.deepEqual((await store.listCatalogRecipes()).find(row => row.recipe.title === "Procedure").recipe.instructions, instructions);
+  const methods = { ...original, id: "methods", title: "Methods", instructions: ["Stovetop instructions:", "Simmer for 10 minutes.", "Oven directions:", "Bake for 20 minutes."] };
+  await store.upsertCatalogRecipe({ sourceId: "method-fixture", recipe: methods, contentHash: await embeddings.recipeEmbeddingContentHash(methods), searchText: "Methods" });
+  assert.deepEqual((await store.listCatalogRecipes()).find(row => row.recipe.title === "Methods").recipe.instructions, ["Stovetop", "Simmer for 10 minutes.", "Oven", "Bake for 20 minutes."]);
+});
 
 test("reviewed source notes round-trip separately from directions and ground timing metadata without weakening source checks", async () => {
   const original = await draft(0, { sourceNotes: ["Total time: 25 minutes."] });
@@ -286,6 +299,45 @@ test("cross-origin writes, remote unconfigured admin and oversized batches are r
 function chefRequest(overrides = {}) {
   return new Request("http://localhost:3000/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query: "Test rice", pantry: ["rice"], provider: "ollama", ...overrides }) });
 }
+
+test("catalog hashes and Chef planning use matching personal amounts without altering source answers", async () => {
+  const sourceDraft = await draft(0);
+  const imported = await importOne(sourceDraft);
+  const stored = (await store.listCatalogRecipes())[0];
+  const catalog = await (await catalogRoute.GET()).json();
+  assert.equal(catalog.contentHashesByRecipeId[imported.catalogId], stored.contentHash);
+  const personal = { contentHash: stored.contentHash, referenceServings: 4, amounts: [{ ingredientIndex: 0, originalName: "rice", measure: "300 g" }] };
+  const value = { schemaVersion: 2, pantry: [{ id: "rice-stock", name: "rice", measure: "200 g" }], meals: {}, shoppingChecked: {}, migratedLegacy: true, personalRecipeAmounts: { [imported.catalogId]: personal } };
+  db.prepare("INSERT OR REPLACE INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(value), 5, "2026-11-01T12:00:00Z");
+  const context = { kitchenRevision: 5, recipeId: imported.catalogId, purpose: "planning", targetDate: "2026-11-01", today: "2026-11-01", servings: 2 };
+  const before = modelCalls;
+  const planned = await (await chefRoute.POST(chefRequest({ query: "How much rice do I need?", context }))).json();
+  assert.equal(planned.answerStatus, "answered");
+  assert.equal(planned.planningFacts[0].measure, "150 g");
+  assert.equal(planned.planningFacts[0].basis, "personal_scaled");
+  const original = await (await chefRoute.POST(chefRequest({ query: "How much rice does the original recipe use?", context }))).json();
+  assert.match(original.answer, /1 ½ cups/); assert.doesNotMatch(original.answer, /150|300/);
+  assert.equal(original.planningFacts, undefined); assert.equal(modelCalls, before);
+  const found = await search.searchRecipeCatalog({ recipeId: imported.catalogId, stockContext: { pantry: value.pantry, meals: [], targetDate: context.targetDate, today: context.today, servings: 2, personalRecipeAmounts: value.personalRecipeAmounts } }, "test-embed");
+  assert.equal(found.ranked[0].readiness.coveredCount, 1);
+  assert.equal(found.ranked[0].readiness.personalAmountsApplied, true);
+  assert.equal(found.ranked[0].readiness.reviewCount, 0);
+  const sourceContexts = []; mockChef(sourceContexts);
+  await chefRoute.POST(chefRequest({ query: "What does the source recipe say to do with rice?", context }));
+  assert.ok(sourceContexts.length);
+  assert.equal(sourceContexts[0].savedDinnerAmounts, undefined, "personal calculations never enter source-only model context");
+  const planningContexts = []; mockChef(planningContexts);
+  await chefRoute.POST(chefRequest({ query: "How should I cook this rice?", context }));
+  assert.ok(planningContexts.length);
+  assert.equal(planningContexts[0].savedDinnerAmounts[0].basis, "personal_scaled");
+  assert.equal(planningContexts[0].savedDinnerAmounts[0].measure, "150 g");
+  const changed = await draft(0, { instructions: ["Boil the rice until tender."] });
+  await importOne(changed);
+  const stale = await (await chefRoute.POST(chefRequest({ query: "How much rice do I need?", context }))).json();
+  assert.equal(stale.planningFacts[0].basis, "source_scaled");
+  assert.notEqual(stale.planningFacts[0].measure, "150 g");
+  assert.deepEqual((await kitchen.getKitchenDocument()).state.personalRecipeAmounts, value.personalRecipeAmounts);
+});
 function assertChefEvidence(record, recipe) {
   assert.equal(Object.hasOwn(record, "ingredients"), false);
   assert.equal(Object.hasOwn(record, "instructions"), false);
@@ -404,6 +456,23 @@ test("allergy exclusions apply before top-K selection and generation context", a
   assert.ok(result.warnings.some((warning) => warning.includes("cross-contact")));
 });
 
+test("all 100 persisted allergies reach Chef retrieval and generation without dropping the last exclusion", async () => {
+  await route.POST(req([await draft(0, { title: "Peanut noodles", ingredients: [{ name: "peanuts", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
+  const allergies = [...Array.from({ length: 98 }, (_, index) => `excluded food ${index}`), "x".repeat(120), "peanut"];
+  const cookingProfile = { version: 1, allergies, diet: "No restriction", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"] };
+  const saved = await kitchen.saveKitchenDocument(0, { schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true, cookingProfile });
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: saved.state.cookingProfile, context: { kitchenRevision: saved.revision } }))).json();
+  assert.equal(result.retrieval.allergyExcludedCount, 1);
+  assert.ok(result.recipes.every(recipe => recipe.title !== "Peanut noodles"));
+  assert.deepEqual(contexts[0].profile.allergies, allergies);
+  assert.ok(contexts[0].retrievedRecipes.every(recipe => recipe.title !== "Peanut noodles"));
+  const calls = contexts.length;
+  const rejected = await chefRoute.POST(chefRequest({ query: "Suggest dinner", profile: { allergies: [...allergies, "milk"] } }));
+  assert.equal(rejected.status, 400);
+  assert.equal(contexts.length, calls, "An oversized exclusion list must not trigger generation with a partial profile");
+});
+
 test("diet constraints filter before generation and fallback, allow labeled unknowns, and retain amount context", async () => {
   await route.POST(req([await draft(0, { title: "Chicken rice", ingredients: [{ name: "chicken stock", measure: "1 cup" }] }), await draft(1, { title: "Rice bowl" })]));
   const contexts = []; mockChef(contexts);
@@ -426,7 +495,7 @@ test("compact recipe references hydrate facts, changes, citations and pantry dat
   mockChef(contexts, (answer) => ({ ...answer, answer: "Try Test rice 0 (R1).", sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }, { recipeId: "R1", evidenceId: "S2" }], chefChanges: [{ recipeId: "R1", change: "Use vegetable stock instead of water.", reason: "A proposed savory adaptation, not part of the source." }] }));
   const result = await (await chefRoute.POST(chefRequest({ query: "Could I use stock instead of water in Test rice 0?" }))).json();
   assert.equal(result.generation, "ai");
-  assert.equal(result.answer, "Try Test rice 0.");
+  assert.equal(result.answer, "Suggested changes are below. These are proposals; the original recipe is unchanged.");
   assert.equal(result.sourceFacts[0].recipeId, before.id);
   assert.equal(result.sourceFacts[0].evidenceId, "I1");
   assert.equal(result.sourceFacts[0].fact, "1 ½ cups rice");
@@ -699,7 +768,7 @@ test("explicit named-dish questions keep the right card and complete context; or
   const adapted = await (await chefRoute.POST(chefRequest({ query: "For Zucchini Pasta Bake, can I use oil instead of butter?" }))).json();
   assert.equal(adapted.generation, "ai");
   assert.equal(adapted.recipes[0].title, "Zucchini Pasta Bake");
-  assert.equal(adapted.answer, "Try Zucchini Pasta Bake.");
+  assert.equal(adapted.answer, "Suggested changes are below. These are proposals; the original recipe is unchanged.");
   assert.equal(contexts[0].retrievedRecipes.length, 1);
   assert.equal(contexts[0].adaptationRequested, true);
   const unsolicited = await (await chefRoute.POST(chefRequest({ query: "Recommend Zucchini Pasta Bake" }))).json();
@@ -814,6 +883,23 @@ function metadataRequest(entries, extra = {}) {
   return new Request("http://localhost:3000/api/admin/recipes/metadata", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ entries, ...extra }) });
 }
 
+test("Chef honors an unknown reviewed total even when the original note has a time label", async () => {
+  await importOne(await draft(0, { ingredients: [{ name: "cooked rice", measure: "1 cup" }], instructions: ["Fry the cooked rice."], sourceNotes: ["Time: 20 minutes"] }));
+  const review = await metadataReview();
+  review.metadata.provenance.totalMinutes.evidence = "Cooking rice is an untimed prerequisite; the source label is not a complete total.";
+  assert.equal((await metadataRoute.POST(metadataRequest([review]))).status, 200);
+  const recipe = (await store.listCatalogRecipes())[0].recipe;
+  const before = await kitchen.getKitchenDocument();
+  const response = await chefRoute.POST(chefRequest({ query: "What is the total recipe time?", context: { recipeId: recipe.id } }));
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.answerStatus, "unsupported");
+  assert.match(result.answer, /does not establish a total recipe time/i);
+  assert.equal(result.verification.status, "not_required");
+  assert.deepEqual(await kitchen.getKitchenDocument(), before);
+  assert.deepEqual((await store.listCatalogRecipes())[0].recipe.sourceNotes, ["Time: 20 minutes"]);
+});
+
 test("metadata preview is read-only; imports are idempotent, hash-bound, and preserve recipes, embeddings and saved meals", async () => {
   await importOne(await draft());
   const rawBefore = JSON.stringify(db.prepare("SELECT * FROM recipes").all());
@@ -889,6 +975,43 @@ test("the curated manifest has exactly 30 reviewed main dinners, source attribut
     assert.match(entry.sourceUrl, /^https:\/\/en\.wikibooks\.org\/wiki\/Cookbook:/);
     assert.equal(entry.source.licenseId, "CC-BY-SA-4.0"); assert.ok(entry.source.attributionText);
   }
+});
+
+test("the refreshed dinner review binds original source notes to all 30 mains and withholds incomplete totals", async () => {
+  const original = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v1.json", import.meta.url), "utf8"));
+  const refreshed = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v2.json", import.meta.url), "utf8"));
+  const frozen = JSON.parse(await readFile(new URL("../tools/recipes/fixtures/relevance-catalog.json", import.meta.url), "utf8")).recipes;
+  const recipes = new Map(frozen.map(recipe => [recipe.id, recipe]));
+  assert.deepEqual(refreshed.entries.map(entry => entry.recipeId), original.entries.map(entry => entry.recipeId));
+  assert.equal(refreshed.coreDinnerCount, 30);
+  let verified = 0;
+  for (const entry of refreshed.entries) {
+    const metadata = store.validateRecipeMetadata(entry.metadata);
+    const recipe = { ...recipes.get(entry.recipeId), ...(entry.sourceReview.sourceNotes.length ? { sourceNotes: entry.sourceReview.sourceNotes } : {}) };
+    const captured = embeddings.buildRecipeSearchText(recipe);
+    assert.equal(await embeddings.sha256Hex(captured), metadata.sourceContentHash, `${entry.title}: source hash includes the captured notes`);
+    assert.equal(metadata.coreDinner, true);
+    assert.equal(metadata.dinnerRole, "main");
+    assert.equal(entry.source.licenseId, "CC-BY-SA-4.0");
+    for (const evidence of Object.values(metadata.provenance)) if (evidence.basis === "source") assert.ok(captured.includes(evidence.evidence), entry.title);
+    if (metadata.totalMinutes !== null) {
+      verified++;
+      assert.equal(metadata.provenance.totalMinutes.basis, "source");
+      assert.ok(entry.sourceReview.sourceNotes.includes(metadata.provenance.totalMinutes.evidence));
+    }
+  }
+  assert.equal(verified, 12);
+  const byTitle = new Map(refreshed.entries.map(entry => [entry.title, entry]));
+  assert.equal(byTitle.get("Taco Soup").metadata.totalMinutes, 30, "Source range uses its upper bound");
+  assert.equal(byTitle.get("Baked Ziti").metadata.totalMinutes, 60, "Source range uses its upper bound");
+  assert.equal(byTitle.get("Easy Onion Chicken").metadata.totalMinutes, 60, "Source hours normalize to minutes");
+  for (const title of ["Garlic Parmesan Pasta", "Chicken Fried Rice", "Eggplant Pasta", "Black-Eyed Peas and Kale"]) {
+    const entry = byTitle.get(title);
+    assert.ok(entry.sourceReview.sourceNotes.some(note => note.startsWith("Time:")), title);
+    assert.equal(entry.metadata.totalMinutes, null, `${title}: a time label does not establish a complete total`);
+    assert.equal(entry.metadata.provenance.totalMinutes.basis, "curator_assessment");
+  }
+  assert.equal(byTitle.get("Red Lentil Soup").metadata.totalMinutes, null, "Step times are not complete totals");
 });
 
 test("pinned follow-ups resolve approved source IDs without repeating a global search", async () => {
@@ -1322,7 +1445,8 @@ test("unselected factual prose is verified while discovery prose is server-owned
     };
     const result = await (await chefRoute.POST(chefRequest({ query }))).json();
     const discovery = query.startsWith("Recommend");
-    assert.equal(checks, discovery ? 0 : 1, query); assert.equal(result.answerStatus, discovery ? "answered" : "unverified", query);
+    assert.equal(checks, 0, "Unsupported causal prose is rejected before model verification"); assert.equal(result.answerStatus, discovery ? "answered" : "unverified", query);
+    if (!discovery) assert.equal(result.verification.reason, "unsupported_causal_claim");
     assert.equal(result.verification.status, discovery ? "not_required" : "rejected");
     assert.doesNotMatch(JSON.stringify([result.answer, result.recommendations, result.warnings]), /chlorophyll/);
     assert.ok(result.citations.length, "Original sources remain accessible after withholding an unpinned answer");
@@ -1419,4 +1543,211 @@ test("known source gaps remain deterministic with a cloud provider and every mod
   assert.equal(result.answerStatus, "unsupported");
   assert.equal(result.verification.status, "not_required");
   assert.equal(calls, 0);
+});
+
+test("proposed substitutions cannot introduce active excluded ingredients or diets", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "1 cup" }, { name: "olive oil", measure: "1 tbsp" }] }));
+  const original = (await store.listCatalogRecipes())[0].recipe;
+  for (const [profile, change] of [
+    [{ allergies: ["milk"] }, "Replace the oil with butter."],
+    [{ allergies: ["egg"] }, "Replace the oil with mayonnaise."],
+    [{ allergies: ["peanut"] }, "Add peanut butter."],
+    [{ diet: "Vegan" }, "Replace the oil with ghee."],
+    [{ diet: "Vegetarian" }, "Add chicken stock."],
+  ]) {
+    const contexts = []; mockChef(contexts, answer => ({ ...answer, answer: "Consider the proposed change below.", answerStatus: "answered", recommendations: [], chefChanges: [{ recipeId: "R1", change, reason: "A proposed substitution." }] }));
+    const out = await (await chefRoute.POST(chefRequest({ query: "Could I replace the oil?", context: { recipeId: imported.catalogId }, profile }))).json();
+    assert.equal(out.answerStatus, "unverified", change);
+    assert.deepEqual(out.chefChanges, []); assert.equal(out.verification.reason, "exclusion_conflict");
+    assert.match(out.answer, /withheld.*ingredient requirements/);
+    assert.doesNotMatch(out.answer, /mayonnaise|ghee|chicken stock|peanut butter/);
+    assert.deepEqual((await store.listCatalogRecipes())[0].recipe, original);
+  }
+  const contexts = []; mockChef(contexts, answer => ({ ...answer, chefChanges: [{ recipeId: "R1", change: "Use sunflower oil.", reason: "A proposed alternative." }] }));
+  const allowed = await (await chefRoute.POST(chefRequest({ query: "Could I replace the oil?", context: { recipeId: imported.catalogId }, profile: { allergies: ["milk"] } }))).json();
+  assert.equal(allowed.generation, "ai"); assert.equal(allowed.chefChanges.length, 1);
+});
+
+test("ingredient purpose and quantity requests stay factual and imperative help is not discovery", async () => {
+  const imported = await importOne(await draft(0, { title: "Sugar Rice", ingredients: [{ name: "rice", measure: "1 cup" }, { name: "sugar", measure: "2 tsp" }], instructions: ["Use the sugar to coat the mold."] }));
+  for (const query of ["What is the sugar used for?", "How much sugar does the recipe use?", "List the ingredients", "Tell me the ingredients", "Summarize the method", "For Sugar Rice, find the cooking instructions.", "Do not substitute any ingredients. Explain this recipe."]) {
+    const contexts = []; mockChef(contexts, answer => ({ ...answer, answer: query.includes("much") ? "The source uses 2 tsp sugar." : "Use the sugar to coat the mold.", answerStatus: "answered", recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: query.includes("much") ? "I2" : "S1" }] }));
+    const out = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(out.answerStatus, "answered", query);
+    if (query === "How much sugar does the recipe use?" || query === "What is the sugar used for?") {
+      assert.equal(out.generation, "catalog_fallback"); assert.equal(contexts.length, 0);
+      assert.match(out.answer, query.includes("much") ? /2 tsp sugar/ : /Use the sugar to coat the mold/); continue;
+    }
+    assert.equal(out.generation, "ai", query);
+    assert.equal(contexts[0].responseTask, "factual_answer", query);
+    assert.equal(contexts[0].adaptationRequested, false, query);
+    assert.deepEqual(out.recommendations, []); assert.deepEqual(out.chefChanges, []);
+    assert.doesNotMatch(out.answer, /nutrition|recipe choices/);
+  }
+});
+
+test("canonical source notes are supplied, cited and verified without rewriting their facts", async () => {
+  const notes = ["Total time: 35 minutes.", "Nutrition per serving: 250 calories, 12 g protein."];
+  const imported = await importOne(await draft(0, { sourceNotes: notes }));
+  for (const [query, evidenceId, answer] of [["What is the total time?", "N1", "The total time is 35 minutes."], ["How much protein is in one serving?", "N2", "One serving provides 12 g protein."]]) {
+    const contexts = []; mockChef(contexts, result => ({ ...result, answer, answerStatus: "answered", recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId }] }));
+    const out = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(out.generation, "ai"); assert.equal(out.answerStatus, "answered");
+    assert.equal(out.sourceFacts[0].evidenceId, evidenceId); assert.equal(out.sourceFacts[0].fact, notes[Number(evidenceId.slice(1)) - 1]);
+    assert.ok(contexts[0].retrievedRecipes[0].evidence.some(row => row.evidenceId === evidenceId));
+    assert.equal(contexts[0].retrievedRecipes[0].evidenceIsComplete, true);
+  }
+});
+
+test("step meaning retains the source prohibition and actions without generation", async () => {
+  const direction = "Add cream. Heat thoroughly, but not to boiling.";
+  const imported = await importOne(await draft(0, { instructions: [direction] }));
+  const beforeCalls = modelCalls;
+  const out = await (await chefRoute.POST(chefRequest({ query: "What does this step mean?", context: { purpose: "cooking", recipeId: imported.catalogId, stepEvidenceId: "S1" } }))).json();
+  assert.equal(out.answerStatus, "answered"); assert.ok(out.answer.includes(direction));
+  assert.doesNotMatch(out.answer, /Look for large bubbles/);
+  assert.equal(out.sourceFacts[0].fact, direction);
+  assert.equal(modelCalls, beforeCalls, "Deterministic step explanation needs no model");
+});
+
+
+test("source ingredient quotes preserve fractional amounts, purpose negation and ambiguity", async () => {
+  const direction = "You do not want the sauce to be sweet, just not sour. Add sugar a little at a time.";
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "granulated sugar", measure: "1 ½ tsp" }], instructions: [direction] }));
+  const beforeCalls = modelCalls;
+  for (const query of ["How much sugar does the original recipe use?", "What is the sugar used for in this recipe?", "Why does the source tell me to add sugar?"]) {
+    const out = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: "S1" } }))).json();
+    assert.equal(out.answerStatus, "answered"); assert.equal(out.generation, "catalog_fallback");
+    assert.ok(out.answer.includes(query.startsWith("How") ? "1 ½ tsp granulated sugar" : direction));
+  }
+  assert.equal(modelCalls, beforeCalls);
+  const unfocused = await (await chefRoute.POST(chefRequest({ query: "What is the sugar used for in this recipe?", context: { recipeId: imported.catalogId } }))).json();
+  assert.equal(unfocused.answerStatus, "answered"); assert.ok(unfocused.answer.includes(direction));
+  const helper = await load("chef-planning-answer");
+  const recipe = (await store.listCatalogRecipes())[0].recipe;
+  assert.equal(helper.originalIngredientAnswer({ ...recipe, ingredients: [{ name: "rice vinegar", measure: "1 tbsp" }] }, "How much rice does the original recipe use?"), undefined);
+  assert.equal(helper.originalIngredientAnswer({ ...recipe, ingredients: [{ name: "brown sugar", measure: "1 tsp" }, { name: "white sugar", measure: "2 tsp" }] }, "How much sugar does the recipe use?"), undefined);
+  assert.equal(helper.originalIngredientAnswer(recipe, "How much sugar does the original recipe use, and why?"), undefined);
+  assert.equal(helper.originalIngredientAnswer(recipe, "Why add sugar?", { evidenceId: "S1", number: 1, text: "Add sugar." }), undefined);
+  for (const query of ["Why do I rinse the rice, and why do I use sugar?", "Why rinse the rice; why add sugar?", "Why do I rinse rice and then add sugar?"]) {
+    assert.equal(helper.originalIngredientAnswer(recipe, query, { evidenceId: "S1", number: 1, text: "Add sugar to balance the acidity." }), undefined, query);
+  }
+});
+
+test("missing facts do not discard known parts of compound recipe questions", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "pasta", measure: "400 g" }], instructions: ["Bake at 200°C for 30 minutes until firm."] }));
+  const before = modelCalls;
+  for (const [query, pattern, id] of [
+    ["How many calories per serving, and how long does it bake?", /Bake at 200°C for 30 minutes/, "S1"],
+    ["What is the total time, and how much pasta does the original recipe use?", /Original recipe ingredient: 400 g pasta/, "I1"],
+  ]) {
+    const result = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(result.answerStatus, "answered"); assert.match(result.answer, pattern); assert.match(result.answer, /does not (?:state|establish)/);
+    assert.ok(result.sourceFacts.some(fact => fact.evidenceId === id));
+  }
+  assert.equal(modelCalls, before);
+});
+
+test("missing salt amount and flour tortillas receive honest ingredient-list answers", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "Salt", measure: "" }, { name: "flour tortillas", measure: "8" }], instructions: ["Mix the salt into the filling."] }));
+  const before = modelCalls;
+  for (const query of ["How much salt should I use?", "How much flour does the original recipe use?"]) {
+    const out = await (await chefRoute.POST(chefRequest({ query, context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(out.answerStatus, "unsupported"); assert.match(out.answer, /ingredient list/); assert.ok(out.sourceFacts.length);
+    assert.doesNotMatch(out.answer, /Original recipe ingredient: 8/);
+  }
+  assert.equal(modelCalls, before);
+});
+
+test("provider or verification failure keeps already known parts of a compound question", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "milk", measure: "200 ml" }], instructions: ["Add the milk."] }));
+  for (const failure of ["malformed", "unsupported_cause"]) {
+    mockChef([], out => failure === "malformed" ? { ...out, answer: 42 } : { ...out, answerStatus: "answered", answer: "Adding milk prevents crystallization.", recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: "S1" }] });
+    const result = await (await chefRoute.POST(chefRequest({ query: "How many calories per serving, and how much milk does the original recipe use, and why should I add the milk?", context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(result.answerStatus, failure === "malformed" ? "unsupported" : "unverified");
+    assert.match(result.answer, /Original recipe ingredient: 200 ml milk/); assert.match(result.answer, /does not state.*nutrition/);
+    assert.doesNotMatch(result.answer, /crystallization/); assert.ok(result.sourceFacts.some(fact => fact.evidenceId === "I1" && fact.fact === "200 ml milk"));
+  }
+});
+
+test("an unsupported causal explanation cannot pass even when the model verifier agrees", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "milk", measure: "1 cup" }], instructions: ["Heat thoroughly, but not to boiling."] }));
+  const contexts = []; mockChef(contexts, out => ({ ...out, answerStatus: "answered", answer: "Avoid boiling the milk to prevent curdling.", recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: "S1" }] }));
+  const out = await (await chefRoute.POST(chefRequest({ query: "Explain how heating changes the milk in this step.", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: "S1" } }))).json();
+  assert.equal(out.answerStatus, "unverified"); assert.equal(out.verification.reason, "unsupported_causal_claim");
+  assert.doesNotMatch(JSON.stringify([out.answer, out.warnings, out.chefChanges]), /curdl/);
+  assert.equal(out.sourceFacts[0].fact, "Heat thoroughly, but not to boiling.");
+});
+
+test("a requested vegan replacement may name the removed cheese", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "1 cup" }, { name: "cheese", measure: "100 g" }] }));
+  const contexts = []; mockChef(contexts, out => ({ ...out, answer: "Consider the proposed change below.", answerStatus: "answered", recommendations: [], chefChanges: [{ recipeId: "R1", change: "Replace the cheese with tofu.", reason: "Tofu replaces the removed cheese; this is advisory." }] }));
+  const out = await (await chefRoute.POST(chefRequest({ query: "Make this recipe vegan.", context: { recipeId: imported.catalogId } }))).json();
+  assert.equal(out.generation, "ai"); assert.equal(out.answerStatus, "answered"); assert.equal(out.chefChanges[0].change, "Replace the cheese with tofu.");
+});
+
+test("saved amount plus addition step is answered with both final and source evidence", async () => {
+  const imported = await importOne(await draft(0, { servings: 4, ingredients: [{ name: "pasta", measure: "400 g" }, { name: "milk", measure: "200 ml" }], instructions: ["Combine the eggs, milk, salt, and pepper in a mixing bowl."] }));
+  const recipe = (await store.listCatalogRecipes())[0].recipe;
+  const meal = state.createPlannedMeal("2026-11-01", recipe); meal.servings = 2; meal.ingredientOverrides = { "1": "80 ml" };
+  const value = { schemaVersion: 2, pantry: [], meals: { [meal.date]: meal }, shoppingChecked: {}, migratedLegacy: true };
+  db.prepare("INSERT OR REPLACE INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(value), 5, "2026-11-01T12:00:00Z");
+  const before = modelCalls;
+  const out = await (await chefRoute.POST(chefRequest({ query: "How much milk do I need, and when should I add it?", context: { kitchenRevision: 5, recipeId: imported.catalogId, mealDate: meal.date, mealId: meal.id, today: meal.date } }))).json();
+  assert.equal(out.answerStatus, "answered"); assert.match(out.answer, /80 ml/); assert.match(out.answer, /Combine the eggs, milk/);
+  assert.deepEqual(new Set(out.sourceFacts.map(fact => fact.evidenceId)), new Set(["I2", "S1"]));
+  assert.equal(out.planningFacts[0].basis, "saved_override"); assert.equal(out.planningFacts[0].measure, "80 ml");
+  assert.equal(out.answerKind, undefined, "Mixed quantity/source prose must remain visible in the UI"); assert.equal(modelCalls, before);
+});
+
+test("ordinal followups choose the ordered previous recipe while it remains ambiguous", async () => {
+  const a = await importOne(await draft(0)); const b = await importOne(await draft(1));
+  const contexts = []; mockChef(contexts, out => ({ ...out, answerStatus: "answered", answer: "Cook rice until tender.", recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }] }));
+  const context = { previousRecipeIds: [a.catalogId, b.catalogId] }, history = [{ role: "user", content: "Suggest two dinners." }, { role: "assistant", content: "Here are your choices." }];
+  const second = await (await chefRoute.POST(chefRequest({ query: "What does the second recipe say to do?", context, history }))).json();
+  assert.equal(second.resolvedContext.recipeId, b.catalogId); assert.equal(second.recipes.length, 1); assert.equal(second.answerStatus, "answered");
+  const timed = await (await chefRoute.POST(chefRequest({ query: "How long does the first one take?", context, history }))).json();
+  assert.equal(timed.resolvedContext.recipeId, a.catalogId); assert.equal(timed.answerStatus, "unsupported");
+  assert.match(timed.answer, /does not establish a total recipe time/); assert.equal(timed.timings.generationMs, 0);
+  const unclear = await (await chefRoute.POST(chefRequest({ query: "How long does it take?", context, history }))).json();
+  assert.equal(unclear.answerStatus, "needs_clarification");
+});
+
+test("ingredient-list labels pass without permitting ingredient-backed nutrition tables", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "sugar", measure: "50 g" }], instructions: ["Add the sugar."] }));
+  for (const heading of ["Ingredients", "Nutrition", "Per serving"]) {
+    mockChef([], out => ({ ...out, answerStatus: "answered", answer: `${heading}:\nSugar: 50 g.`, recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: "I1" }] }));
+    const result = await (await chefRoute.POST(chefRequest({ query: "List the ingredients.", context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(result.answerStatus, heading === "Ingredients" ? "answered" : "unverified", heading);
+    if (heading === "Ingredients") assert.equal(result.verification.status, "checked");
+    else assert.doesNotMatch(result.answer, /Sugar: 50 g/);
+  }
+});
+
+test("sequencing words preserve verified cooking commands", async () => {
+  const imported = await importOne(await draft(0, { instructions: ["Keep the sauce warm.", "Stop stirring."] }));
+  for (const [step, answer] of [["S1", "Next, keep the sauce warm."], ["S2", "Now stop stirring."]]) {
+    mockChef([], out => ({ ...out, answerStatus: "answered", answer, recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: step }] }));
+    const result = await (await chefRoute.POST(chefRequest({ query: "What should I do now?", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: step } }))).json();
+    assert.equal(result.answerStatus, "answered", answer); assert.equal(result.answer, answer); assert.equal(result.verification.status, "checked");
+  }
+});
+
+test("a negated edit request keeps an independent exclusion before Chef retrieval", async () => {
+  const excluded = await importOne(await draft(0, { title: "Peanut Rice", ingredients: [{ name: "rice", measure: "100 g" }, { name: "peanuts", measure: "50 g" }] }));
+  const allowed = await importOne(await draft(1, { title: "Plain Rice", ingredients: [{ name: "rice", measure: "100 g" }] }));
+  const contexts = []; mockChef(contexts);
+  const result = await (await chefRoute.POST(chefRequest({ query: "Do not suggest substitutions and avoid peanuts. Recommend rice." }))).json();
+  assert.equal(result.answerStatus, "answered"); assert.ok(result.recipes.some(recipe => recipe.id === allowed.catalogId));
+  assert.ok(!result.recipes.some(recipe => recipe.id === excluded.catalogId));
+  assert.ok(contexts.length); assert.ok(contexts.every(context => context.retrievedRecipes.every(recipe => recipe.title !== "Peanut Rice")));
+});
+
+test("a proposed vegan change cannot hide retained dairy in a removal tail", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "100 g" }, { name: "cheese", measure: "50 g" }, { name: "butter", measure: "20 g" }] }));
+  for (const change of ["Use tofu instead of cheese, leaving the butter unchanged.", "Omit cheese except parmesan."]) {
+    mockChef([], out => ({ ...out, answerStatus: "answered", answer: "Consider this change.", recommendations: [], chefChanges: [{ recipeId: "R1", change, reason: "Proposed adaptation." }] }));
+    const result = await (await chefRoute.POST(chefRequest({ query: "Make this recipe vegan.", context: { recipeId: imported.catalogId } }))).json();
+    assert.equal(result.answerStatus, "unverified", change); assert.equal(result.verification.reason, "exclusion_conflict"); assert.deepEqual(result.chefChanges, []);
+  }
 });

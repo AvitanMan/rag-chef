@@ -7,15 +7,17 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> &
   onCommit: (value: string) => void;
   validate?: (value: string) => string;
   allowEmpty?: boolean;
+  /** Reset a dependent draft when another amount changes its meaning. */
+  resetKey?: string | number;
 };
 
 /** Invalid and intermediate drafts never enter the shared, autosaved kitchen. */
-export function ValidatedInput({ value, onCommit, validate, allowEmpty = false, ...props }: Props) {
+export function ValidatedInput({ value, onCommit, validate, allowEmpty = false, resetKey, ...props }: Props) {
   const saved = String(value);
-  const [edit, setEdit] = useState({ source: saved, draft: saved });
+  const [edit, setEdit] = useState({ source: saved, draft: saved, resetKey });
   const id = useId();
-  if (edit.source !== saved) {
-    setEdit({ source: saved, draft: edit.draft === edit.source || edit.draft === saved ? saved : edit.draft });
+  if (edit.source !== saved || edit.resetKey !== resetKey) {
+    setEdit({ source: saved, draft: edit.resetKey !== resetKey || edit.draft === edit.source || edit.draft === saved ? saved : edit.draft, resetKey });
   }
   function problem(text: string) {
     if (validate) return validate(text);
@@ -31,11 +33,11 @@ export function ValidatedInput({ value, onCommit, validate, allowEmpty = false, 
     <input {...props} value={edit.draft} aria-invalid={Boolean(error)} aria-describedby={error ? id : props["aria-describedby"]}
       onChange={(event) => {
         const draft = event.target.value;
-        setEdit({ source: saved, draft });
+        setEdit({ source: saved, draft, resetKey });
         if (!problem(draft)) onCommit(draft);
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") { event.preventDefault(); setEdit({ source: saved, draft: saved }); }
+        if (event.key === "Escape") { event.preventDefault(); setEdit({ source: saved, draft: saved, resetKey }); }
         if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); }
         props.onKeyDown?.(event);
       }} />

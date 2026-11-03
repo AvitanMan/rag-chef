@@ -15,7 +15,9 @@ def connect(path):
 def fingerprint(path):
     with connect(path) as db:
         digest = hashlib.sha256()
-        tables = db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
+        # D1 advances its internal read bookmark even on SELECT. Compare all
+        # application tables and schemas, excluding that bookkeeping counter.
+        tables = db.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_cf_METADATA' ORDER BY name").fetchall()
         for name, schema in tables:
             digest.update(repr((name, schema)).encode())
             rows = db.execute('SELECT * FROM "' + name.replace('"', '""') + '"').fetchall()

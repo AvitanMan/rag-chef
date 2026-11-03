@@ -1,9 +1,23 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
 import { loadPureRanker } from "../tools/recipes/evaluate-relevance.mjs";
 
 const pure = await loadPureRanker();
 after(pure.dispose);
+// Exercise the query module's direct helper export without expanding the catalog API.
+const queryDirectory = await mkdtemp(join(tmpdir(), "rag-chef-query-intent-"));
+after(() => rm(queryDirectory, { recursive: true, force: true }));
+for (const name of ["recipe-query", "recipe-browser", "recipe-constraints", "recipe-safety", "quantities", "kitchen-types"]) {
+  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
+  await writeFile(join(queryDirectory, `${name}.mjs`), code);
+}
+const { queryRequestsRecipeHelp } = await import(pathToFileURL(join(queryDirectory, "recipe-query.mjs")).href);
 const { recipeQueryIntent, constraintsForRecipeQuery, rankCatalogRecipes, queryRelevanceDecision } = pure.search;
 const constraints = (value) => pure.constraints.normalizeConstraints(value);
 const recipe = (id, title, names) => ({ id, title, ingredients: names.map((name) => ({ name, measure: "1" })), instructions: ["Use the source directions."], tags: [], image: null, category: "Dinner", cuisine: "Test", source: { name: "Test", url: "https://example.com/" }, sourceUrl: "https://example.com/" });
@@ -18,6 +32,112 @@ test("natural dinner questions request recipes without treating source questions
   }
   assert.equal(recipeQueryIntent("What should we cook with eggplant?").topic, "eggplant");
   for (const query of ["What should we make for dinner?", "What's for dinner?", "What should we eat tomorrow?"]) assert.equal(recipeQueryIntent(query).broad, true, query);
+});
+
+test("ingredient and method imperatives request factual help rather than dinner discovery", () => {
+  for (const query of [
+    "List ingredients", "Tell me the ingredients", "Show me its ingredient amounts", "Summarize the method",
+    "Describe this recipe", "Outline the source directions", "Give me the source temperature",
+    "For Tomato Rice, find cooking instructions", "Find the recipe's ingredients", "Find the total time",
+    "What are the ingredients?", "Explain the next step", "Why rinse the rice?",
+  ]) {
+    assert.equal(queryRequestsRecipeHelp(query), true, query);
+    assert.equal(pure.search.queryRequestsRecipes(query), false, query);
+  }
+  for (const query of [
+    "Suggest a dinner", "Find a recipe with cooking instructions", "Recommend Tomato Rice",
+    "What can I cook with rice?", "List three vegetarian recipes", "Find dinner and list its ingredients",
+  ]) assert.equal(queryRequestsRecipeHelp(query), false, query);
+  assert.equal(pure.search.queryRequestsRecipes("Find dinner and list its ingredients"), true);
+});
+
+test("negated changes neither authorize adaptations nor pollute ingredient exclusions", () => {
+  for (const prefix of [
+    "Do not substitute any ingredients", "Don't suggest substitutions", "Don’t suggest any substitutions or replacements",
+    "No substitutions, swaps or adaptations", "Without changing the original directions", "Avoid substitutions",
+    "Do not replace the milk or swap the butter", "Do not double the recipe", "Do not make this vegan",
+    "Do not substitute milk, swap butter or scale the recipe",
+    "I do not want any substitutions", "I am not asking for substitutions", "No need to substitute anything",
+  ]) {
+    const query = `${prefix}. Explain the source method.`;
+    const intent = recipeQueryIntent(query, true);
+    assert.equal(intent.mode, "recommendation", query);
+    assert.deepEqual(intent.excludedIngredients, [], query);
+    assert.deepEqual(intent.adaptationDiets, [], query);
+    assert.equal(pure.search.queryRequestsRecipes(query), false, query);
+    assert.equal(queryRequestsRecipeHelp(query), true, query);
+  }
+  for (const query of ["No substitutions", "Do not suggest a dinner", "Don't list ingredients"]) {
+    assert.equal(queryRequestsRecipeHelp(query), false, query);
+    assert.equal(pure.search.queryRequestsRecipes(query), false, query);
+    assert.deepEqual(recipeQueryIntent(query).excludedIngredients, [], query);
+  }
+  for (const query of [
+    "Don't suggest substitutions, list the ingredients", "Do not substitute ingredients and explain the method",
+  ]) {
+    assert.equal(recipeQueryIntent(query, true).mode, "recommendation", query);
+    assert.equal(queryRequestsRecipeHelp(query), true, query);
+  }
+});
+
+test("negated instructions preserve separate positive adaptations and dinner exclusions", () => {
+  for (const query of [
+    "Do not substitute the milk; halve the salt", "Don't suggest substitutions, but scale this recipe for four",
+    "Do not double the recipe, but replace butter with oil", "Do not substitute the milk. Can I use tofu instead of chicken?",
+    "Do not change the method, but reduce the sugar", "Without changing the directions, can I use oil instead of butter?",
+    "Do not substitute milk, instead halve the salt",
+  ]) assert.equal(recipeQueryIntent(query, true).mode, "adaptation", query);
+  for (const query of [
+    "Suggest rice without tomatoes; do not suggest substitutions",
+    "Don't suggest substitutions, but find rice without tomatoes",
+    "No substitutions and no tomatoes; recommend rice",
+  ]) {
+    const intent = recipeQueryIntent(query);
+    assert.equal(pure.search.queryRequestsRecipes(query), true, query);
+    assert.equal(queryRequestsRecipeHelp(query), false, query);
+    assert.equal(intent.mode, "recommendation", query);
+    assert.deepEqual(intent.excludedIngredients, ["tomatoes"], query);
+    assert.equal(intent.topic, "rice", query);
+  }
+  const saved = constraints({ allergies: ["milk"], diet: "Vegan" });
+  const parsed = constraintsForRecipeQuery("Don't suggest substitutions, but find rice without tomatoes", saved);
+  assert.deepEqual(parsed.allergies, ["milk"]);
+  assert.deepEqual(parsed.diets, ["vegan"]);
+  assert.deepEqual(parsed.excludedIngredients, ["tomatoes"]);
+});
+
+test("independent exclusions after negated recipe edits still reject matching recipes", () => {
+  const allowed = recipe("allowed", "Plain Rice", ["rice"]);
+  for (const [query, excluded, ingredient] of [
+    ["Do not suggest substitutions and avoid peanuts. Recommend rice.", "peanuts", "peanuts"],
+    ["Don't suggest substitutions, and avoid peanuts.", "peanuts", "peanuts"],
+    ["No substitutions and exclude dairy", "dairy", "milk"],
+    ["Do not change the method and don't use milk", "milk", "milk"],
+    ["No substitutions, exclude dairy. Recommend rice.", "dairy", "milk"],
+    ["No substitutions and excluding peanuts. Recommend rice.", "peanuts", "peanuts"],
+    ["No substitutions, and leave out peanuts. Recommend rice.", "peanuts", "peanuts"],
+    ["Do not change the method and do not use milk. Recommend rice.", "milk", "milk"],
+    ["No substitutions and not peanuts. Recommend rice.", "peanuts", "peanuts"],
+    ["No substitutions and without peanuts. Recommend rice.", "peanuts", "peanuts"],
+  ]) {
+    const blocked = recipe("blocked", "Rice With Extras", ["rice", ingredient]);
+    assert.deepEqual(recipeQueryIntent(query).excludedIngredients, [excluded], query);
+    assert.equal(recipeQueryIntent(query).mode, "recommendation", query);
+    const parsed = constraintsForRecipeQuery(query, constraints());
+    assert.equal(pure.constraints.evaluateRecipeConstraints(blocked, undefined, parsed).eligible, false, query);
+    assert.equal(pure.constraints.evaluateRecipeConstraints(allowed, undefined, parsed).eligible, true, query);
+    for (const semantic of [false, true]) {
+      const rows = rankCatalogRecipes([blocked, allowed], { query }, new Map([["blocked", [1, 0]], ["allowed", [0, 1]]]), semantic ? [1, 0] : null);
+      assert.deepEqual(rows.map(row => row.recipe.id), ["allowed"], query);
+    }
+  }
+  const oven = recipe("oven", "Baked Rice", ["rice"]);
+  const metadata = { oven: { diets: {}, equipment: ["Oven"] }, allowed: { diets: {}, equipment: ["Stovetop"] } };
+  for (const query of ["No substitutions and avoid the oven. Recommend rice.", "Do not change the method, and don't use an oven. Recommend rice."]) {
+    assert.deepEqual(recipeQueryIntent(query).excludedIngredients, [], query);
+    assert.deepEqual(recipeQueryIntent(query).excludedEquipment, ["oven"], query);
+    assert.deepEqual(rankCatalogRecipes([oven, allowed], { query }, new Map(), null, metadata).map(row => row.recipe.id), ["allowed"], query);
+  }
 });
 
 test("common dietary wording becomes constraints rather than positive search words", () => {

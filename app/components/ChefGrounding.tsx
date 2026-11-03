@@ -1,5 +1,6 @@
 import type { ChefApiResponse } from "../lib/chef-schema";
 import type { Recipe } from "../lib/recipe-types";
+import { recipeEvidence } from "../lib/chef-context";
 
 type GroundingResult = Pick<ChefApiResponse, "recipes" | "citations" | "sourceFacts" | "generation" | "chefChanges">
   & { answerKind?: ChefApiResponse["answerKind"]; verification?: ChefApiResponse["verification"]; evidenceRetrieval?: ChefApiResponse["evidenceRetrieval"]; retrieval?: Partial<ChefApiResponse["retrieval"]>; requestQuery?: string; selectedEvidenceByRecipeId?: ChefApiResponse["selectedEvidenceByRecipeId"]; resolvedContext?: ChefApiResponse["resolvedContext"]; answerStatus?: ChefApiResponse["answerStatus"] };
@@ -12,9 +13,7 @@ export function recipeEvidenceExcerpt(result: GroundingResult, recipe: Recipe): 
   const selected = result.selectedEvidenceByRecipeId?.[recipe.id] ?? [];
   const preferred = (result.resolvedContext?.recipeId === recipe.id ? result.resolvedContext.stepEvidenceId : undefined)
     ?? selected.find((id) => id.startsWith("S")) ?? selected[0] ?? "I1";
-  const index = Number(preferred.slice(1)) - 1;
-  const ingredient = recipe.ingredients[index];
-  return preferred.startsWith("S") ? recipe.instructions[index] ?? "" : ingredient ? [ingredient.measure, ingredient.name].filter(Boolean).join(" ") : "";
+  return recipeEvidence(recipe).find(item => item.evidenceId === preferred)?.text ?? "";
 }
 
 /** Display completed retrieval and canonical source text, never simulated progress. */
@@ -51,7 +50,7 @@ export function ChefGrounding({ result, openRecipe }: { result: GroundingResult;
         const excerpt = recipeEvidenceExcerpt(result, recipe);
         return <article className="grounding-source" key={recipe.id}>
           <button className="text-button evidence-recipe" aria-label={`Open evidence for ${recipe.title}`} onClick={() => openRecipe(recipe)}>{recipe.title} <span aria-hidden="true">↗</span></button>
-          {evidenceSelection && <small>{result.answerKind === "planning_quantities" ? "Original ingredient evidence" : evidenceSelection.method === "semantic_steps" ? "Steps matched by meaning and wording" : evidenceSelection.method === "lexical_steps" ? "Steps matched by wording" : "Complete recipe evidence"}{!evidenceSelection.complete ? " · Selected excerpts; open the full source for context" : ""}</small>}
+          {evidenceSelection && <small>{result.answerKind === "planning_quantities" ? "Original ingredient evidence" : evidenceSelection.method === "semantic_steps" ? "Recipe excerpts matched by meaning and wording" : evidenceSelection.method === "lexical_steps" ? "Recipe excerpts matched by wording" : "Complete recipe evidence"}{!evidenceSelection.complete ? " · Selected excerpts; open the full source for context" : ""}</small>}
           {excerpt && <><small className="evidence-kind">{facts.length ? "Cited recipe excerpt" : "Retrieved recipe excerpt"}</small><blockquote>{excerpt}</blockquote></>}
           {facts.length > 1 && <details><summary>More excerpts ({facts.length - 1})</summary>{facts.slice(1).map((fact, index) => <blockquote key={`${fact.evidenceId}-${index}`}>{fact.fact}</blockquote>)}</details>}
           <a href={citation.sourceUrl} target={citation.sourceUrl.startsWith("#") ? undefined : "_blank"} rel="noreferrer">{citation.sourceName} · Original source <span aria-hidden="true">↗</span></a>
