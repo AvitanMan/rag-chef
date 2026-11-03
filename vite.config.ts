@@ -23,9 +23,15 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    // Disposable development checks share dependencies, not optimizer caches.
+    cacheDir: process.env.RAG_CHEF_TEST_VITE_CACHE_DIR,
+    server: {
+      // Vite 8's agent-default console forwarding can recursively reject when
+      // its HMR socket is unavailable. Keep errors in the browser console and
+      // Vinext overlay instead of forwarding them through that socket.
+      forwardConsole: false,
+      ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+    },
     plugins: [
       vinext(),
       sites(),

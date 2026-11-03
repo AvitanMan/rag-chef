@@ -36,7 +36,7 @@ test("unknown and estimated recipe times explain empty results and clearing time
   await mockCatalog(page, recipes, { "fixture-tomato-rice": metadata(10, "curator_estimate") });
   await page.goto("/"); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("rice");
-  await page.getByRole("checkbox", { name: "Core dinners", exact: true }).check();
+  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
   await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("30");
   await expect(page.getByText("0 of 1 matching recipes have verified total cooking times.", { exact: true })).toBeVisible();
   await expect(page.getByText("Total cooking times are unknown.", { exact: true })).toBeVisible();
@@ -45,7 +45,7 @@ test("unknown and estimated recipe times explain empty results and clearing time
   await page.getByRole("button", { name: "Clear time limit", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("searchbox", { name: "Search recipes", exact: true })).toHaveValue("rice");
-  await expect(page.getByRole("checkbox", { name: "Core dinners", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Reviewed dinners", exact: true })).toBeChecked();
   await expect(page.locator(".recipe-card")).toHaveCount(1);
   await expect(page.locator(".recipe-card")).toContainText("Tomato Rice");
 });
@@ -64,6 +64,63 @@ test("mixed times count only source totals and distinguish a low limit from an u
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("no such recipe");
   await expect(page.getByText("No recipes match.", { exact: true })).toBeVisible();
   await expect(page.getByText("Verified total times exceed your limit.", { exact: true })).toHaveCount(0);
+});
+
+test("reviewed dinner counts compose with collections, search, time and saved exclusions", async ({ page, request }) => {
+  const recipes = (await catalog(request)).filter(recipe => ["fixture-tomato-rice", "fixture-vegan-beans", "fixture-cheese-pasta", "fixture-eggplant"].includes(recipe.id));
+  const rice = recipes.find(recipe => recipe.id === "fixture-tomato-rice")!;
+  const meal: PlannedMeal = { id: "cooked-rice", date: TODAY, recipeId: rice.id, recipe: rice, title: rice.title, baseServings: 2, servings: 2, batches: 1, ingredientOverrides: {}, locked: false, status: "cooked", completion: { id: "completed-rice", at: `${TODAY}T09:00:00.000Z`, deductions: [] } };
+  await save(request, { ...empty(), meals: { [TODAY]: meal }, favoriteRecipeIds: [rice.id, "fixture-cheese-pasta"] });
+  await mockCatalog(page, recipes, { [rice.id]: metadata(40), "fixture-vegan-beans": metadata(20), "fixture-cheese-pasta": metadata(null) });
+  await page.goto("/"); await navigate(page, "Recipes");
+  const reviewed = page.getByRole("checkbox", { name: "Reviewed dinners", exact: true });
+  const explanation = page.locator("#reviewed-dinners-help");
+  await expect(reviewed).not.toBeChecked();
+  await expect(explanation).toContainText("3 reviewed dinners match these filters.");
+  await expect(page.locator(".recipe-card")).toHaveCount(4);
+  await reviewed.check();
+  await expect(page.locator(".recipe-card")).toHaveCount(3);
+  await page.getByRole("button", { name: "Favorites", exact: true }).click();
+  await expect(explanation).toContainText("2 reviewed dinners match these filters.");
+  await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("30");
+  await expect(explanation).toContainText("0 reviewed dinners match these filters.");
+  await expect(page.getByText("Verified total times exceed your limit.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear time limit", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("rice");
+  await expect(explanation).toContainText("1 reviewed dinner matches these filters.");
+  await navigate(page, "Pantry"); await navigate(page, "Recipes");
+  await expect(reviewed).toBeChecked();
+  await expect(page.locator(".recipe-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await page.getByRole("button", { name: "Cook again", exact: true }).click();
+  await expect(explanation).toContainText("1 reviewed dinner matches these filters.");
+  await expect(page.locator(".recipe-card")).toContainText("Tomato Rice");
+  await page.getByRole("button", { name: "All recipes", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("textbox", { name: "Allergies", exact: true }).fill("cheese");
+  await page.getByRole("textbox", { name: "Allergies", exact: true }).press("Enter");
+  await navigate(page, "Recipes");
+  await expect(explanation).toContainText("2 reviewed dinners match these filters.");
+  await expect(page.locator(".recipe-card")).toHaveCount(2);
+  await narrowScreenshot(page, "reviewed-dinners");
+});
+
+test("reviewed dinner count includes all matches before pagination and excludes unknown reviews", async ({ page, request }) => {
+  const template = (await catalog(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
+  const recipes = Array.from({ length: 35 }, (_, index) => ({ ...template, id: `dinner-${index}`, title: `Dinner ${String(index).padStart(2, "0")}` }));
+  const reviews = Object.fromEntries(recipes.slice(0, 30).map(recipe => [recipe.id, metadata(40)]));
+  await mockCatalog(page, recipes, reviews);
+  await page.goto("/"); await navigate(page, "Recipes");
+  await expect(page.locator("#reviewed-dinners-help")).toContainText("30 reviewed dinners match these filters.");
+  await expect(page.locator(".recipe-card")).toHaveCount(24);
+  await page.getByRole("button", { name: "Show more", exact: true }).click();
+  await expect(page.locator(".recipe-card")).toHaveCount(35);
+  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
+  await expect(page.locator(".recipe-card")).toHaveCount(24);
+  await page.getByRole("button", { name: "Show more", exact: true }).click();
+  await expect(page.locator(".recipe-card")).toHaveCount(30);
+  await expect(page.locator("#reviewed-dinners-help")).toContainText("30 reviewed dinners match these filters.");
+  await expect(page.getByRole("button", { name: "Show more", exact: true })).toHaveCount(0);
 });
 
 test("pantry search and sorting compose with dates, preserve batches, editing, Undo and navigation", async ({ page, request }) => {

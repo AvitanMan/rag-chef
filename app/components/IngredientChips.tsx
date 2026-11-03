@@ -32,7 +32,7 @@ export function IngredientChips({ label, values, onChange }: { label: string; va
   function commitText(text: string) { publish(withDraft(text)); setDraft(""); setEditing(null); }
 
   return <div className="wide ingredient-field" onBlur={(event) => { if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) commit(); }}>
-    <label>{label}<input ref={input} value={draft} placeholder={editing === null ? "Type an ingredient, then Enter or comma" : "Edit ingredient"}
+    <label>{label}<input ref={input} value={draft} placeholder={editing === null ? "Ingredient name" : "Edit ingredient"}
       onChange={(event) => { const text = event.target.value; if (/[,;\n]$/.test(text)) commitText(text); else setDraft(text); }}
       onKeyDown={(event) => {
         if (event.key === "Enter") { event.preventDefault(); commit(); }

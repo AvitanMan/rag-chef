@@ -1,5 +1,6 @@
-import { DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
+import { COOKING_PROFILE_LIMITS, DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
+import { personalAmountInputProblem } from "./quantities";
 
 export const MAX_KITCHEN_BODY_BYTES = 2_000_000;
 const MAX_MEALS = 2_000;
@@ -209,7 +210,7 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
   fields(
     item,
     ["id", "date", "recipeId", "recipe", "title", "baseServings", "servings", "batches", "locked", "status", "ingredientOverrides"],
-    ["completion", "planningIngredients"],
+    ["completion", "planningIngredients", "personalAmountIndices"],
     path,
   );
   string(item.id, `${path}.id`, 200);
@@ -233,6 +234,15 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
       string(entry.name, `${path}.planningIngredients[${index}].name`, 200);
       measure(entry.measure, `${path}.planningIngredients[${index}].measure`);
     });
+  }
+  if (Object.hasOwn(item, "personalAmountIndices")) {
+    const indices = array(item.personalAmountIndices, `${path}.personalAmountIndices`, 200);
+    const ingredients = item.planningIngredients as Recipe["ingredients"] | undefined;
+    if (!ingredients || new Set(indices).size !== indices.length) invalid(path, "has invalid personal amount indices");
+    for (const index of indices) {
+      if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= ingredients.length) invalid(path, "has an invalid personal amount index");
+      if (!ingredients[index].measure.trim() || personalAmountInputProblem(ingredients[index].measure)) invalid(path, "has an invalid captured personal amount");
+    }
   }
   if (item.servings !== null) positiveNumber(item.servings, `${path}.servings`, 10_000);
   if ((item.baseServings === null) !== (item.servings === null)) {
@@ -281,11 +291,11 @@ export function validateCookingProfile(value: unknown): asserts value is Cooking
   fields(profile, ["version", "allergies", "diet", "dislikes", "skillLevel", "budget", "equipment"], [], "cookingProfile");
   if (profile.version !== 1) invalid("cookingProfile.version", "must be 1");
   for (const key of ["allergies", "dislikes", "equipment"] as const) {
-    const values = array(profile[key], `cookingProfile.${key}`, 100);
-    values.forEach(item => string(item, `cookingProfile.${key} item`, 120));
+    const values = array(profile[key], `cookingProfile.${key}`, COOKING_PROFILE_LIMITS.items);
+    values.forEach(item => string(item, `cookingProfile.${key} item`, COOKING_PROFILE_LIMITS.text));
     if (new Set(values).size !== values.length) invalid(`cookingProfile.${key}`, "contains duplicates");
   }
-  for (const key of ["diet", "skillLevel", "budget"] as const) string(profile[key], `cookingProfile.${key}`, 120);
+  for (const key of ["diet", "skillLevel", "budget"] as const) string(profile[key], `cookingProfile.${key}`, COOKING_PROFILE_LIMITS.text);
 }
 
 /** Only migrate recognizable browser preferences; stored kitchen profiles remain authoritative. */
@@ -300,9 +310,34 @@ export function parseLegacyCookingProfile(value: unknown): CookingProfile | null
 
 export function validateKitchenState(value: unknown): asserts value is KitchenState {
   const state = record(value, "state");
-  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles", "favoriteRecipeIds", "cookingProfile"], "state");
+  fields(state, ["schemaVersion", "pantry", "meals", "shoppingChecked", "migratedLegacy"], ["shoppingPurchases", "shoppingCycles", "favoriteRecipeIds", "cookingProfile", "personalRecipeAmounts"], "state");
   if (state.schemaVersion !== 2) invalid("state.schemaVersion", "must be 2");
   boolean(state.migratedLegacy, "state.migratedLegacy");
+  if (Object.hasOwn(state, "personalRecipeAmounts")) {
+    const recipes = record(state.personalRecipeAmounts, "state.personalRecipeAmounts");
+    if (Object.keys(recipes).length > 1000) invalid("state.personalRecipeAmounts", "has too many recipes");
+    for (const [recipeId, value] of Object.entries(recipes)) {
+      string(recipeId, "state.personalRecipeAmounts key", 200);
+      const path = `state.personalRecipeAmounts.${recipeId}`;
+      const personal = record(value, path);
+      fields(personal, ["contentHash", "referenceServings", "amounts"], [], path);
+      if (typeof personal.contentHash !== "string" || !/^[a-f0-9]{64}$/.test(personal.contentHash)) invalid(path, "has an invalid source content hash");
+      if (personal.referenceServings !== null) positiveNumber(personal.referenceServings, `${path}.referenceServings`, 10_000);
+      const amounts = array(personal.amounts, `${path}.amounts`, 200);
+      if (!amounts.length) invalid(path, "must contain a personal amount");
+      const indices = new Set<number>();
+      for (const value of amounts) {
+        const amount = record(value, `${path}.amounts item`);
+        fields(amount, ["ingredientIndex", "originalName", "measure"], [], path);
+        const index = amount.ingredientIndex;
+        if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= 200 || indices.has(index)) invalid(path, "has an invalid or duplicate ingredient index");
+        indices.add(index);
+        string(amount.originalName, `${path}.originalName`, 200);
+        measure(amount.measure, `${path}.measure`);
+        if (!(amount.measure as string).trim() || personalAmountInputProblem(amount.measure as string)) invalid(path, "requires positive measured personal amounts");
+      }
+    }
+  }
   if (Object.hasOwn(state, "cookingProfile")) validateCookingProfile(state.cookingProfile);
   if (Object.hasOwn(state, "favoriteRecipeIds")) {
     const favorites = array(state.favoriteRecipeIds, "state.favoriteRecipeIds", 1000);

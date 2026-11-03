@@ -30,10 +30,10 @@ export function gradeJourneyAnswer({ status, data, expected, catalog, aliases, u
   check("canonical_recipes", recipes.every(recipe => known.has(recipe.id) && isDeepStrictEqual(recipe, known.get(recipe.id))));
   check("valid_references", [...recommendations, ...facts, ...(data.chefChanges ?? []), ...(data.citations ?? [])].every(row => returned.has(row.recipeId)));
   check("exact_selected_quotes", facts.every(fact => {
-    const recipe = known.get(fact.recipeId), match = /^([IS])([1-9]\d*)$/.exec(fact.evidenceId ?? "");
+    const recipe = known.get(fact.recipeId), match = /^([ISN])([1-9]\d*)$/.exec(fact.evidenceId ?? "");
     if (!recipe || !match || !data.selectedEvidenceByRecipeId?.[recipe.id]?.includes(fact.evidenceId)) return false;
     const index = Number(match[2]) - 1, ingredient = recipe.ingredients[index];
-    const text = match[1] === "S" ? recipe.instructions[index] : ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ");
+    const text = match[1] === "S" ? recipe.instructions[index] : match[1] === "N" ? recipe.sourceNotes?.[index] : ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ");
     return typeof text === "string" && text.length > 0 && fact.fact === text;
   }));
   check("source_links_present", [...recommendations, ...facts].every(row => (data.citations ?? []).some(citation => citation.recipeId === row.recipeId)));
@@ -55,6 +55,16 @@ export function gradeJourneyAnswer({ status, data, expected, catalog, aliases, u
     check("distinct_suggestions", new Set(recommendations.map(row => row.recipeId)).size === recommendations.length);
   }
   if (expected.maxRecommendations !== undefined) check("recommendation_limit", recommendations.length <= expected.maxRecommendations, recommendations.length);
+  // Grade discovery against canonical ingredient names, independently of the
+  // app's retriever, model prose, recipe titles, and corpus-specific recipe IDs.
+  for (const pattern of expected.ingredientPatterns ?? []) {
+    const ingredient = new RegExp(pattern, "i");
+    check("ingredient_relevance:" + pattern, recommendations.every(row => {
+      const recipe = known.get(row.recipeId);
+      return recipe?.ingredients.some(item => typeof item.name === "string" && ingredient.test(item.name.normalize("NFKC")));
+    }), recommendations.map(row => ({ recipeId: row.recipeId, ingredients: known.get(row.recipeId)?.ingredients.map(item => item.name) ?? [] })));
+  }
+
   if (expected.calculated) {
     check("calculated_answer", data.answerKind === "planning_quantities" && data.generation === "catalog_fallback");
     check("no_model_calls", data.verification?.status === "not_required" && data.timings?.generationMs === 0 && data.timings?.verificationMs === 0);

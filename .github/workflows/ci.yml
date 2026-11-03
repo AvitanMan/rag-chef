@@ -39,6 +39,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: Desktop and mobile browser checks
         run: pnpm test:e2e
+      - name: Development theme and disconnected HMR
+        run: pnpm test:dev
       - name: Fresh installation without AI
         run: pnpm test:setup
       - name: WebKit and offline app shell

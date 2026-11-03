@@ -125,6 +125,7 @@ pnpm exec playwright install chromium webkit
 pnpm test:e2e
 pnpm test:setup
 pnpm test:smoke
+pnpm test:dev
 # After creating the collector's Python environment:
 pnpm recipes:test
 ```

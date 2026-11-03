@@ -120,6 +120,22 @@ test("source-duration timers pause, reset and keep their remaining time across s
   await expect(cooking.getByRole("timer")).toContainText("10:00");
 });
 
+test("a source time range keeps manual timers available without offering an endpoint as the source duration", async ({ page, request }) => {
+  const recipe = { ...await recipeFixture(request), instructions: ["Simmer between 5 and 10 minutes."] };
+  await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
+  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  await expect(cooking).toContainText("Simmer between 5 and 10 minutes.");
+  await expect(cooking.getByRole("button", { name: /from this step/ })).toHaveCount(0);
+  await cooking.getByRole("button", { name: "Add another timer", exact: true }).click();
+  await expect(cooking.getByRole("button", { name: "Use this step’s duration", exact: true })).toHaveCount(0);
+  await cooking.getByRole("button", { name: "Cancel new timer", exact: true }).click();
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(cooking.getByRole("timer", { name: "Time remaining", exact: true })).toHaveText("05:00");
+  await expect(cooking.getByRole("button", { name: "Pause timer", exact: true })).toBeVisible();
+});
+
 test("custom timer completion survives reload and an old cooking session cannot complete a replacement dinner", async ({ page, request }) => {
   const recipe = await recipeFixture(request);
   const planned = mealFixture(recipe);

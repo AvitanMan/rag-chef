@@ -69,6 +69,179 @@ test("servings allow clear and retype while invalid bounds and overrides stay un
   await override.press("Escape"); await expect(override).toHaveValue("");
 });
 
+test("Chef servings keep an editable draft while saved quantities change only after valid input", async ({ page, request }) => {
+  const source = await recipe(request);
+  await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
+  await page.goto("/");
+  await page.locator(".dinner-context > summary").click();
+  const portions = page.getByRole("spinbutton", { name: "Chef portions", exact: true });
+  await portions.fill(""); await expect(portions).toHaveValue("");
+  expect((await read(request)).state.meals[TODAY].servings).toBe(2);
+  for (const invalid of ["0", "101", "1.5"]) {
+    await portions.fill(invalid);
+    await expect(portions).toHaveAttribute("aria-invalid", "true");
+    expect((await read(request)).state.meals[TODAY].servings).toBe(2);
+  }
+  await portions.fill("6");
+  await expect(portions).toHaveAttribute("aria-invalid", "false");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(6);
+  await page.reload(); await page.locator(".dinner-context > summary").click();
+  await expect(portions).toHaveValue("6");
+});
+
+test("fractional dinner batches stay valid and editable across Plan and both Chef amount fields", async ({ page, request }) => {
+  const source = await recipe(request);
+  delete source.servings;
+  const dinner = { ...meal(source), baseServings: null, servings: null, batches: 1 };
+  await save(request, { ...empty(), meals: { [TODAY]: dinner } });
+  await page.goto("/"); await navigate(page, "Plan");
+  await page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true }).fill("0.5");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.5);
+  await navigate(page, "Chef");
+  await page.getByRole("region", { name: "Chosen dinner", exact: true }).getByText("Adjust amounts", { exact: true }).click();
+  const dinnerAmount = page.getByRole("spinbutton", { name: "Dinner portions", exact: true });
+  await expect(dinnerAmount).toHaveValue("0.5");
+  await expect(dinnerAmount).toHaveAttribute("aria-invalid", "false");
+  await page.locator(".dinner-context > summary").click();
+  const portions = page.getByRole("spinbutton", { name: "Chef portions", exact: true });
+  await portions.fill(""); await expect(portions).toHaveValue("");
+  await portions.fill("0.75");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.75);
+  await expect(dinnerAmount).toHaveValue("0.75");
+  for (const invalid of ["0.1", "20.25"]) {
+    await portions.fill(invalid); await expect(portions).toHaveAttribute("aria-invalid", "true");
+    expect((await read(request)).state.meals[TODAY].batches).toBe(0.75);
+  }
+  await portions.press("Escape"); await expect(portions).toHaveValue("0.75");
+  await dinnerAmount.fill("0.25");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.25);
+  await navigate(page, "Plan");
+  await expect(page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true })).toHaveValue("0.25");
+});
+
+for (const surface of ["Chef", "Plan", "Shopping"]) {
+  test(`yield unit changes preserve dinner quantities in ${surface}`, async ({ page, request }) => {
+    const source = await recipe(request);
+    delete source.servings;
+    source.ingredients = [{ name: "rice", measure: "200 g" }, { name: "tomato", measure: "2" }, { name: "salt", measure: "to taste" }];
+    const dinner = { ...meal(source), baseServings: null, servings: null, batches: 0.5, ingredientOverrides: { "1": "3" } };
+    await save(request, { ...empty(), meals: { [TODAY]: dinner } });
+    await page.goto("/");
+    let editor = page.getByRole("region", { name: "Chosen dinner", exact: true });
+    if (surface === "Chef") await editor.getByText("Adjust amounts", { exact: true }).click();
+    if (surface === "Plan") {
+      await navigate(page, "Plan");
+      editor = page.getByRole("article", { name: "Sun, Oct 25", exact: true });
+      await editor.locator(".meal-review > summary").click();
+    }
+    if (surface === "Shopping") {
+      await navigate(page, "Shopping");
+      await page.getByRole("button", { name: "Review salt for Sun, Oct 25", exact: true }).click();
+      editor = page.getByRole("dialog", { name: "Review dinner amounts", exact: true });
+    }
+    const rice = editor.getByRole("textbox", { name: "rice amount Sun, Oct 25", exact: true });
+    const original = editor.getByRole("spinbutton", { name: "Original servings Sun, Oct 25", exact: true });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("4");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 4, servings: 2, batches: 0.5, ingredientOverrides: { "1": "3" } });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("8");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 8, servings: 4, batches: 0.5 });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    await original.fill("");
+    await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 0.5, ingredientOverrides: { "1": "3" } });
+    await expect(rice).toHaveAttribute("placeholder", "100 g");
+    if (surface === "Shopping") await editor.getByRole("button", { name: "Back to shopping", exact: true }).click();
+    else await navigate(page, "Shopping");
+    await expect(page.getByRole("checkbox", { name: "Bought rice 100 g", exact: true })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Bought tomato 3", exact: true })).toBeVisible();
+    expect((await read(request)).state.meals[TODAY].recipe).toEqual(source);
+  });
+}
+
+test("yield changes keep unsupported portion conversions unsaved and explain how to correct them", async ({ page, request }) => {
+  const source = await recipe(request);
+  delete source.servings;
+  await save(request, { ...empty(), meals: { [TODAY]: { ...meal(source), baseServings: null, servings: null, batches: 0.25 } } });
+  await page.goto("/");
+  const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
+  await dinner.getByText("Adjust amounts", { exact: true }).click();
+  const original = dinner.getByRole("spinbutton", { name: "Original servings Sun, Oct 25", exact: true });
+  const portions = dinner.getByRole("spinbutton", { name: "Dinner portions", exact: true });
+  for (const invalid of ["0", "10001", "1.5", "2", "401"]) {
+    await original.fill(invalid);
+    await expect(original).toHaveAttribute("aria-invalid", "true");
+    expect((await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 0.25 });
+  }
+  await expect(dinner.getByRole("alert")).toContainText("1–100 whole servings");
+  await portions.fill("0.5");
+  await expect(original).toHaveValue(""); await expect(original).toHaveAttribute("aria-invalid", "false");
+  await portions.fill("0.25");
+  await original.pressSequentially("400");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 400, servings: 100, batches: 0.25 });
+  await expect(original).toBeFocused();
+  await expect(portions).toHaveValue("100"); await expect(portions).toHaveAttribute("aria-invalid", "false");
+  const knownSource = { ...source, servings: 49 };
+  await save(request, { ...empty(), meals: { [TODAY]: { ...meal(knownSource), baseServings: 49, servings: 1 } } });
+  await page.reload(); await dinner.getByText("Adjust amounts", { exact: true }).click();
+  await expect(original).toHaveAttribute("aria-invalid", "false");
+  await original.fill("98");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(2);
+  await expect(portions).toHaveValue("2"); await expect(portions).toHaveAttribute("aria-invalid", "false");
+  await original.fill("");
+  await expect(original).toHaveAttribute("aria-invalid", "true");
+  await expect(dinner.getByRole("alert")).toContainText("quarter-batch increments");
+  expect((await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: 98, servings: 2 });
+  await portions.fill("98"); await expect(original).toHaveValue("98"); await original.fill("");
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]).toMatchObject({ baseServings: null, servings: null, batches: 1 });
+});
+
+test("a mobile recipe can be closed directly after scrolling to its source directions", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto("/"); await navigate(page, "Recipes");
+  const trigger = page.getByRole("button", { name: "View Tomato Rice", exact: true });
+  await trigger.focus(); await trigger.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "Tomato Rice", exact: true });
+  await drawer.getByRole("heading", { name: "Source directions", exact: true }).scrollIntoViewIfNeeded();
+  expect(await drawer.locator(".recipe-drawer").evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  const close = drawer.getByRole("button", { name: "Close recipe", exact: true });
+  await expect.poll(() => close.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return box.top >= 0 && box.bottom <= innerHeight && Boolean(hit && element.contains(hit));
+  })).toBe(true);
+  const box = (await close.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(drawer).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+for (const withRemoval of [false, true]) {
+  test(`keyboard focus stays above mobile navigation${withRemoval ? " and removal recovery" : ""}`, async ({ page, request }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "100 g" }] });
+    await page.goto("/");
+    if (withRemoval) {
+      await navigate(page, "Pantry");
+      await page.getByRole("button", { name: "Remove rice", exact: true }).click();
+    }
+    await navigate(page, "Settings");
+    await page.getByRole("textbox", { name: "Allergies", exact: true }).focus();
+    for (let index = 0; index < 12; index++) {
+      await page.keyboard.press("Tab");
+      await expect.poll(() => page.evaluate(() => {
+        const target = document.activeElement as HTMLElement;
+        const box = target.getBoundingClientRect();
+        const overlays = [document.querySelector(".mobile-nav"), document.querySelector(".removal-recovery")]
+          .filter((element): element is Element => Boolean(element?.getClientRects().length));
+        const bottom = Math.min(innerHeight, ...overlays.map(element => element.getBoundingClientRect().top));
+        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return box.top >= 0 && box.bottom <= bottom && Boolean(hit && target.contains(hit));
+      })).toBe(true);
+    }
+  });
+}
+
 test("chip editing and removal handle pointer, Escape and keyboard focus without merging values", async ({ page }) => {
   await page.goto("/"); await navigate(page, "Settings");
   const input = page.getByRole("textbox", { name: "Allergies", exact: true });
@@ -117,20 +290,24 @@ test("choosing an occupied day requires confirmation and cancelling keeps its di
   expect((await read(request)).state.meals[TODAY]).toEqual(meal(source));
 });
 
-test("long pantry removal has visible Undo and preserves later edits", async ({ page, request }) => {
+test("long pantry removal keeps the user's place, visible Undo and later edits", async ({ page, request }) => {
   const pantry = Array.from({ length: 30 }, (_, i) => ({ id: `item-${i}`, name: `ingredient ${i}`, measure: "100 g" }));
   await save(request, { ...empty(), pantry });
   await page.goto("/"); await navigate(page, "Pantry");
-  await page.getByRole("button", { name: "Remove ingredient 0", exact: true }).click();
+  const remove = page.getByRole("button", { name: "Remove ingredient 25", exact: true });
+  await remove.scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => scrollY);
+  await remove.click();
   const recovery = page.getByRole("region", { name: "Recently removed", exact: true });
-  // Removal reveals recovery on the next animation frame; wait for that layout.
+  // The recovery control appears without taking the user away from this row.
   await expect(async () => {
     const box = await recovery.boundingBox();
     expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   }).toPass();
+  expect(Math.abs(await page.evaluate(() => scrollY) - before)).toBeLessThanOrEqual(2);
   await page.getByRole("textbox", { name: "Available ingredient 1", exact: true }).fill("200 g");
   await recovery.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Available ingredient 0", exact: true })).toHaveValue("100 g");
+  await expect(page.getByRole("textbox", { name: "Available ingredient 25", exact: true })).toHaveValue("100 g");
   await expect.poll(async () => (await read(request)).state.pantry.find((r: { id: string }) => r.id === "item-1").measure).toBe("200 g");
 });
 

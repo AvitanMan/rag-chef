@@ -28,11 +28,11 @@ for (const item of cases) {
   const referencesValid = [...(data.recommendations ?? []), ...(data.sourceFacts ?? []), ...(data.chefChanges ?? []), ...(data.citations ?? [])].every((value) => knownIds.has(value.recipeId));
   const evidenceValid = (data.sourceFacts ?? []).every((fact) => {
     const recipe = data.recipes?.find((recipe) => recipe.id === fact.recipeId);
-    const match = fact.evidenceId?.match(/^([IS])([1-9]\d{0,2})$/);
+    const match = fact.evidenceId?.match(/^([ISN])([1-9]\d{0,2})$/);
     if (!recipe || !match) return false;
     const index = Number(match[2]) - 1;
     const ingredient = recipe.ingredients[index];
-    const original = match[1] === "I" ? ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ") : recipe.instructions[index];
+    const original = match[1] === "I" ? ingredient && [ingredient.measure, ingredient.name].filter(Boolean).join(" ") : match[1] === "S" ? recipe.instructions[index] : recipe.sourceNotes?.[index];
     return fact.fact === original;
   });
   const changesMatchRequest = item.adaptation ? data.chefChanges?.length > 0 : data.chefChanges?.length === 0;

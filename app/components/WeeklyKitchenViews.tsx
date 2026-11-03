@@ -7,10 +7,10 @@ import { ValidatedInput } from "./ValidatedInput";
 import { measureInputProblem } from "../lib/kitchen-validation";
 import { Modal } from "./Modal";
 import type { KitchenState, PlannedMeal } from "../lib/kitchen-types";
-import { mealScale } from "../lib/kitchen-types";
+import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
-import { formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
+import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
 import { setShoppingItemBought } from "../lib/shopping-purchases";
 import { ShoppingExport } from "./ShoppingExport";
 
@@ -121,7 +121,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
             {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
             {meal && <>
               <div className="meal-amounts">
-                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" min={1} max={100} step={1} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" min={0.25} max={20} step={0.25} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { batches: Number(value) })} /></label>}
+                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.servings} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.batches} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { batches: Number(value) })} /></label>}
               </div>
               {recipe && meal.status === "planned" && <button className="primary-button" onClick={() => cookMeal(date)} aria-label={`Cook ${meal.title} ${dateLabel(date)}`}>Cook</button>}
               {recipe && <details id={`amounts-${date}`} className="meal-review" open={reviewDate === date} onToggle={(event) => { if (event.currentTarget.open) setReviewDate(date); else setReviewDate((current) => current === date ? null : current); }}><summary>Adjust amounts</summary>
@@ -175,21 +175,47 @@ export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patc
   const date = meal.date;
   const immutable = meal.locked || meal.status === "cooked";
   if (!meal.recipe) return null;
+  const baseline = { ...meal, ingredientOverrides: {} };
+  function yieldChange(baseServings: number | null) {
+    const batches = mealScale(meal);
+    return {
+      baseServings,
+      servings: baseServings ? baseServings * batches : null,
+      batches,
+    };
+  }
+  function yieldProblem(text: string) {
+    const baseServings = text.trim() ? Number(text) : null;
+    if (baseServings !== null && (!Number.isSafeInteger(baseServings) || baseServings < 1 || baseServings > 10_000)) return "Enter a whole source yield from 1 to 10000.";
+    const next = yieldChange(baseServings);
+    const amount = baseServings ? next.servings! : next.batches;
+    const limits = DINNER_AMOUNT_LIMITS[baseServings ? "servings" : "batches"];
+    const steps = (amount - limits.min) / limits.step;
+    const nearest = limits.min + Math.round(steps) * limits.step;
+    if (nearest < limits.min || nearest > limits.max || Math.abs(amount - nearest) > 0.000001) {
+      return baseServings
+        ? "Use a batch size that gives 1–100 whole servings before recording this yield."
+        : "Adjust dinner servings to give 0.25–20 batches in quarter-batch increments before clearing the yield.";
+    }
+    return "";
+  }
   return <section className="dinner-amount-editor">
     {immutable && <p className="quantity-note">This dinner is {meal.status === "cooked" ? "cooked" : "locked"}; its saved amounts cannot be edited.</p>}
-                <label>Original recipe servings (if known)<ValidatedInput type="number" min={1} max={10000} step={1} allowEmpty placeholder="Unknown" aria-label={`Original servings ${dateLabel(date)}`} value={meal.baseServings ?? ""} disabled={Boolean(immutable)} onCommit={(text) => {
+                <label>Original recipe servings (if known)<ValidatedInput type="number" min={1} max={10000} step={1} allowEmpty validate={yieldProblem} resetKey={meal.baseServings ? `servings:${meal.servings}` : `batches:${meal.batches}`} placeholder="Unknown" aria-label={`Original servings ${dateLabel(date)}`} value={meal.baseServings ?? ""} disabled={Boolean(immutable)} onCommit={(text) => {
                   const baseServings = text.trim() ? Number(text) : null;
-                  patch({ baseServings, servings: baseServings ? (meal.servings ?? baseServings) : null });
+                  const next = yieldChange(baseServings);
+                  // Validation permits whole servings and quarter batches; normalize floating-point residue.
+                  patch({ ...next, servings: next.servings === null ? null : Math.round(next.servings), batches: baseServings ? next.batches : Math.round(next.batches / DINNER_AMOUNT_LIMITS.batches.step) * DINNER_AMOUNT_LIMITS.batches.step });
                 }} /></label>
                 <p>{meal.baseServings ? "Amounts scale to your serving count." : "Servings are unknown, so quantities use recipe batches."} Enter a final amount below to correct any ingredient. Source wording stays unchanged.</p>{(meal.planningIngredients ?? meal.recipe!.ingredients).map((ingredient, index) => {
-                const parsed = plannedIngredientMeasure(meal, index, ingredient);
+                const parsed = plannedIngredientMeasure(baseline, index, ingredient);
                 const scaled = parsed ? formatMeasure(parsed.quantity * mealScale(meal), parsed.unit) : ingredient.measure;
-                return <label key={index}>{ingredient.name}<ValidatedInput validate={measureInputProblem} value={meal.ingredientOverrides[String(index)] ?? ""} placeholder={scaled || "Amount needs review"} aria-label={`${ingredient.name} amount ${dateLabel(date)}`} disabled={Boolean(immutable)} onCommit={(value) => {
+                return <label key={index}>{ingredient.name}<small>{mealAmountLabel(baseline, index)} · Baseline: {scaled || "Amount needs review"}</small><ValidatedInput validate={measureInputProblem} value={meal.ingredientOverrides[String(index)] ?? ""} placeholder={scaled || "Amount needs review"} aria-label={`${ingredient.name} amount ${dateLabel(date)}`} disabled={Boolean(immutable)} onCommit={(value) => {
                   const overrides = { ...meal.ingredientOverrides };
                   if (value.trim()) overrides[String(index)] = value;
                   else delete overrides[String(index)];
                   patch({ ingredientOverrides: overrides });
-                }} />{meal.planningIngredients && ingredient.name !== meal.recipe!.ingredients[index].name && <small>Source: {meal.recipe!.ingredients[index].measure} {meal.recipe!.ingredients[index].name}</small>}</label>;
+                }} />{Object.hasOwn(meal.ingredientOverrides, String(index)) && <small>Dinner override · final amount for this dinner</small>}{meal.planningIngredients && ingredient.name !== meal.recipe!.ingredients[index].name && <small>Source: {meal.recipe!.ingredients[index].measure} {meal.recipe!.ingredients[index].name}</small>}</label>;
               })}
   </section>;
 }
