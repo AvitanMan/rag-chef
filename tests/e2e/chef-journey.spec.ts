@@ -302,6 +302,8 @@ test("cooking step help preserves timers, progress and saved kitchen", async ({ 
   await page.getByRole("button", { name: /Cook (?:this )?dinner/, exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  // Only explicit clock advances should consume timer time while Chef requests settle.
+  await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.getByRole("button", { name: /Next step/ }).click();
   await cooking.locator(".cook-help > summary").click();
@@ -391,6 +393,7 @@ test("unplanned cooking help and later Chef questions do not inherit a previousl
   const cooking = page.getByRole("dialog", { name: "Cooking Cheese Pasta", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.locator(".cook-help > summary").click();
   await cooking.getByLabel("Question about this step", { exact: true }).fill("Explain this source step.");
@@ -591,6 +594,7 @@ test("retrying a rejected cooking answer preserves timer, meal scope, and progre
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
   await cooking.getByRole("button", { name: "Start 5 min timer", exact: true }).click();
   await cooking.locator(".cook-help > summary").click();
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
