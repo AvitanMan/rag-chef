@@ -1,7 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { authorizeApplicationRequest, configureHouseholdRuntime } from "../app/lib/household";
+import { authorizeApplicationRequest, configureHouseholdRuntime, hostedMode, requireLocalRequest, secureLanMode } from "../app/lib/household";
 
 interface Env {
   ASSETS: Fetcher;
@@ -44,7 +44,26 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    if (!secureLanMode()) {
+      // Only the unauthenticated standalone HTML shell is available offline.
+      // It contains no kitchen state: private data is fetched separately from
+      // no-store APIs. Revalidate normal browser loads while allowing the
+      // service worker to retain this shell for an explicit offline fallback.
+      if (hostedMode() || request.method !== "GET" || request.headers.has("authorization") || url.pathname !== "/" || url.search || !response.ok || !/^text\/html\b/i.test(response.headers.get("content-type") ?? "")) return response;
+      try { requireLocalRequest(request); } catch { return response; }
+      const shell = new Response(response.body, response);
+      shell.headers.set("Cache-Control", "private, no-cache");
+      return shell;
+    }
+    const protectedResponse = new Response(response.body, response);
+    protectedResponse.headers.set("Cache-Control", "private, no-store");
+    protectedResponse.headers.append("Vary", "Authorization");
+    protectedResponse.headers.set("X-Content-Type-Options", "nosniff");
+    protectedResponse.headers.set("X-Frame-Options", "DENY");
+    protectedResponse.headers.set("Referrer-Policy", "no-referrer");
+    protectedResponse.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    return protectedResponse;
   },
 };
 

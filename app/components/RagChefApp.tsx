@@ -1,12 +1,14 @@
 "use client";
 
+import { randomId } from "../lib/random-id";
+
 import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
 import { PersonalRecipeAmountsEditor } from "./PersonalRecipeAmountsEditor";
 import { compareKitchens } from "../lib/kitchen-recovery";
 import { CatalogSetup } from "./CatalogSetup";
 import { useAppSession } from "../lib/app-session";
 import { householdDate } from "../lib/private-storage";
-import { assistantFetch } from "../lib/browser-ai";
+import { assistantFetch, selectedAIModel, type AISelection } from "../lib/browser-ai";
 import { AIConnections } from "./AIConnections";
 import { HouseholdSettings } from "./HouseholdSettings";
 import { KitchenAssistant, type AssistantPreset } from "./KitchenAssistant";
@@ -65,11 +67,7 @@ function isChefQuestion(text: string): boolean {
 
 type Profile = CookingProfile;
 
-type AISettings = {
-  provider: "ollama" | "openai";
-  ollamaModel: string;
-  openaiModel: string;
-};
+type AISettings = AISelection;
 
 type ChefResponse = {
   answerKind?: ChefApiResponse["answerKind"];
@@ -116,6 +114,7 @@ const DEFAULT_SETTINGS: AISettings = {
   provider: "ollama",
   ollamaModel: "qwen3.5:9b",
   openaiModel: "gpt-5.6-terra",
+  lmstudioModel: "",
 };
 
 const LOCAL_RECIPES: Recipe[] = [
@@ -378,7 +377,8 @@ export default function RagChefApp() {
   const [maxMinutes, setMaxMinutes] = useState("");
   const profile = kitchen.state.cookingProfile ?? DEFAULT_PROFILE;
   const setProfile = (cookingProfile: Profile) => kitchen.update(state => ({ ...state, cookingProfile }));
-  const [settings, setSettings] = useState<AISettings>(DEFAULT_SETTINGS);
+  const configuredSettings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...session.localServer?.aiDefaults }), [session.localServer?.aiDefaults]);
+  const [settings, setSettings] = useState<AISettings>(configuredSettings);
   const [catalogRecipes, setCatalogRecipes] = useState<Recipe[]>([]);
   const [contentHashesByRecipeId, setContentHashesByRecipeId] = useState<Record<string, string>>({});
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
@@ -427,6 +427,7 @@ export default function RagChefApp() {
   const [cookingStorageNotice, setCookingStorageNotice] = useState("");
   const [pendingCookingStart, setPendingCookingStart] = useState<CookingSession | null>(null);
   const [backupExportError, setBackupExportError] = useState("");
+  const connectionRequest = useRef(0);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [connectionDetails, setConnectionDetails] = useState<string[]>([]);
   useEffect(() => () => {
@@ -442,7 +443,7 @@ export default function RagChefApp() {
         if (saved) {
           const state = JSON.parse(saved);
           if (state.settings)
-            setSettings({ ...DEFAULT_SETTINGS, ...state.settings });
+            setSettings({ ...configuredSettings, ...state.settings });
         }
       } catch {
         // A corrupt local draft should never prevent the app from opening.
@@ -456,7 +457,7 @@ export default function RagChefApp() {
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(id);
-  }, [privateStorage]);
+  }, [privateStorage, configuredSettings]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -556,7 +557,7 @@ export default function RagChefApp() {
       navigationSnapshot.current = JSON.stringify(restored);
       if (session.mode === "hosted") {
         try {
-          const id = crypto.randomUUID(); privateTabStorage.setItem(`navigation:${id}`, JSON.stringify(restored));
+          const id = randomId(); privateTabStorage.setItem(`navigation:${id}`, JSON.stringify(restored));
           window.history.replaceState({ ...window.history.state, ragChefNavigation: undefined, ragChefNavigationRef: id }, "");
         } catch { /* Keep navigation usable without writing private data to browser history. */ }
       } else window.history.replaceState({ ...window.history.state, ragChefNavigation: restored }, "");
@@ -582,7 +583,7 @@ export default function RagChefApp() {
     navigationSnapshot.current = serialized;
     if (session.mode === "hosted") {
       try {
-        const id = crypto.randomUUID(); privateTabStorage.setItem(`navigation:${id}`, serialized);
+        const id = randomId(); privateTabStorage.setItem(`navigation:${id}`, serialized);
         window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: undefined, ragChefNavigationRef: id }, "");
       } catch { /* Account storage is optional; the current tab can still navigate. */ }
     } else window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: snapshot }, "");
@@ -685,7 +686,7 @@ export default function RagChefApp() {
     if (pantry.some((item) => canonicalIngredient(item) === canonicalIngredient(next))) {
       setPantryError("That ingredient is already available. Edit its amount in Pantry."); return;
     }
-    kitchen.update((state) => ({ ...state, pantry: [...state.pantry, { id: crypto.randomUUID(), name: next, measure: "" }] }));
+    kitchen.update((state) => ({ ...state, pantry: [...state.pantry, { id: randomId(), name: next, measure: "" }] }));
     setPantryDraft("");
   }
 
@@ -693,7 +694,7 @@ export default function RagChefApp() {
     const item = kitchen.state.pantry.find((stock) => stock.id === id);
     if (!item) return;
     setUndoNotice("");
-    setRemovals((items) => [...items, { id: crypto.randomUUID(), label: `Removed ${item.name}.`, pantry: [item], meals: [] }]);
+    setRemovals((items) => [...items, { id: randomId(), label: `Removed ${item.name}.`, pantry: [item], meals: [] }]);
     kitchen.update((state) => ({ ...state, pantry: state.pantry.filter((stock) => stock.id !== id) }));
   }
 
@@ -701,7 +702,7 @@ export default function RagChefApp() {
     const removed = dates.map((date) => kitchen.state.meals[date]).filter((meal) => meal && !meal.locked && meal.status !== "cooked");
     if (!removed.length) return;
     setUndoNotice("");
-    setRemovals((items) => [...items, { id: crypto.randomUUID(), label: removed.length === 1 ? `Removed ${removed[0].title}.` : `Removed ${removed.length} dinners.`, pantry: [], meals: removed }]);
+    setRemovals((items) => [...items, { id: randomId(), label: removed.length === 1 ? `Removed ${removed[0].title}.` : `Removed ${removed.length} dinners.`, pantry: [], meals: removed }]);
     kitchen.update((state) => ({ ...state, meals: Object.fromEntries(Object.entries(state.meals).filter(([date, meal]) => !dates.includes(date) || meal.locked || meal.status === "cooked")) }));
   }
 
@@ -755,10 +756,7 @@ export default function RagChefApp() {
           profile,
           context, history, refinements: context.recipeId || override?.purpose === "cooking" ? [] : refinementValues,
           provider: settings.provider,
-          model:
-            settings.provider === "ollama"
-              ? settings.ollamaModel
-              : settings.openaiModel,
+          model: selectedAIModel(settings),
         }, { selection: settings, hosted: session.mode === "hosted", storage: privateStorage, signal: controller.signal, fetcher: kitchenFetch });
       const data = await response.json() as ChefResponse & { error?: { code?: string; message?: string } };
       if (requestId !== chefRequest.current.id || controller.signal.aborted) return;
@@ -948,7 +946,7 @@ export default function RagChefApp() {
   function confirmPurchases(drafts: PurchaseDraft[]) {
     const error = purchasePreviewProblem(kitchen.state, week, today, drafts);
     if (error) { setPurchaseNotice(error); return; }
-    const id = crypto.randomUUID(), at = new Date().toISOString();
+    const id = randomId(), at = new Date().toISOString();
     kitchen.update((state) => applyBoughtItems(state, week, today, drafts, id, at));
     setPurchaseItems(null); setPurchaseNotice("Purchase preview applied. Review the added batches below.");
   }
@@ -1014,17 +1012,16 @@ export default function RagChefApp() {
   }
 
   async function testConnection() {
+    const requestId = ++connectionRequest.current;
     setConnectionStatus("Checking…");
     setConnectionDetails([]);
-    const model =
-      settings.provider === "ollama"
-        ? settings.ollamaModel
-        : settings.openaiModel;
+    const model = selectedAIModel(settings);
     try {
       const response = await kitchenFetch(
         `/api/health?provider=${settings.provider}&model=${encodeURIComponent(model)}`,
       );
       const data = await response.json() as { message?: string; capabilities?: Record<string, { ready: boolean; message: string }>; error?: string | { message?: string }; ok?: boolean };
+      if (requestId !== connectionRequest.current) return;
       setConnectionStatus(
         data.message ??
           (typeof data.error === "string" ? data.error : data.error?.message) ??
@@ -1032,7 +1029,7 @@ export default function RagChefApp() {
       );
       setConnectionDetails(["generation", "embeddings", "verification"].flatMap(key => data.capabilities?.[key] ? [data.capabilities[key].message] : []));
     } catch {
-      setConnectionStatus("Could not reach the provider");
+      if (requestId === connectionRequest.current) setConnectionStatus("Could not reach the provider");
     }
   }
 
@@ -1093,7 +1090,7 @@ export default function RagChefApp() {
       meal={completionMeal ?? cookingSession!.plannedMeal!} preview={pendingCompletion?.preview ?? consumptionPreview(completionMeal ?? cookingSession!.plannedMeal!, kitchen.state.pantry, today)} valid={completionValid}
       reviewActualUsage={assistantEnabled && completionMeal ? () => {
         const deductions = consumptionPreview(completionMeal, kitchen.state.pantry, today).deductions;
-        setAssistantPreset({ id: crypto.randomUUID(), label: `Review actual pantry amounts after ${completionMeal.title}`, intent: {
+        setAssistantPreset({ id: randomId(), label: `Review actual pantry amounts after ${completionMeal.title}`, intent: {
           pantry: deductions.flatMap(row => { const stock = kitchen.state.pantry.find(item => item.id === row.pantryId); return stock ? [{ kind: "set" as const, stockId: row.pantryId, name: stock.name, measure: row.after }] : []; }), tastes: [], completion: { date: completionMeal.date, deductStock: false },
         } }); setCompletionDate(null); setCooking(false); setSelectedRecipe(null); setAssistantOpen(true);
       } : undefined}
@@ -1145,17 +1142,17 @@ export default function RagChefApp() {
           {undoNotice && <p role="status">{undoNotice}</p>}
         </section>}
 
-        {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to this Mac."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
+        {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to the server computer."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
         {kitchen.conflict && (session.mode === "hosted" ? <section className="panel conflict-review" role="alert"><h2>The household kitchen changed</h2><p>Your pending edits are preserved. Changes to separate rows will be combined; review rows edited in both places below.</p>{kitchen.conflictRows.length > 0 && <div className="table-scroll"><table><thead><tr><th>Item</th><th>This browser</th><th>Saved household</th></tr></thead><tbody>{kitchen.conflictRows.map(row => <tr key={row.path}><td>{row.path}</td><td>{conflictValue(row.browser)}</td><td>{conflictValue(row.saved)}</td></tr>)}</tbody></table></div>}<div className="modal-actions"><button className="primary-button" onClick={() => kitchen.resolveConflict(false)}>{kitchen.conflictRows.length ? "Use saved values for conflicts" : "Merge kitchen changes"}</button>{kitchen.conflictRows.length > 0 && <button className="secondary-button" onClick={() => kitchen.resolveConflict(true)}>Use my values for conflicts</button>}</div></section> : <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.{JSON.stringify(kitchen.conflict.state?.cookingProfile ?? DEFAULT_PROFILE) !== JSON.stringify(profile) && " Cooking preferences also differ; review allergies and equipment before choosing."}</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>)}
         {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
         {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{[cookingSession.timer, ...(cookingSession.extraTimers ?? [])].some(timer => timer.status === "finished") ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
         {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
         {assistantEnabled && <ChefPlanWorkspace key={`${week}:${today}`} visible={chefPlanOpen} close={() => setChefPlanOpen(false)}
-          week={week} today={today} kitchen={kitchen.state} revision={kitchen.getRevision()} saveState={kitchen.saveState} model={settings.ollamaModel} aiSettings={settings}
+          week={week} today={today} kitchen={kitchen.state} revision={kitchen.getRevision()} saveState={kitchen.saveState} model={selectedAIModel(settings)} aiSettings={settings}
           refreshKitchen={async () => Boolean(await kitchenRef.current.refreshSavedKitchen())}
           applied={async () => {
             const refreshed = await kitchenRef.current.refreshSavedKitchen();
-            setPlanningNotice(refreshed ? "Chef plan saved. Review the weekly shopping list below." : "Chef plan saved on this Mac. Review the kitchen save status before continuing.");
+            setPlanningNotice(refreshed ? "Chef plan saved. Review the weekly shopping list below." : "Chef plan saved on the server computer. Review the kitchen save status before continuing.");
             if (refreshed) setView("plan");
             return Boolean(refreshed);
           }} />}
@@ -1339,7 +1336,7 @@ export default function RagChefApp() {
             profile={profile}
             setProfile={setProfile}
             settings={settings}
-            setSettings={setSettings}
+            setSettings={next => { connectionRequest.current++; setConnectionStatus(""); setConnectionDetails([]); setSettings(next); }}
             connectionStatus={connectionStatus}
             connectionDetails={connectionDetails}
             testConnection={() => void testConnection()}
@@ -1366,7 +1363,7 @@ export default function RagChefApp() {
       </nav>
 
       {pantryPreview && <PantryImportPreview rows={pantryPreview} pantry={kitchen.state.pantry} change={setPantryPreview} close={() => setPantryPreview(null)} disabled={!kitchen.ready || Boolean(kitchen.conflict)} confirm={() => {
-        const additions = pantryPreview.map((row) => ({ id: crypto.randomUUID(), name: row.name.trim().toLowerCase(), measure: row.measure.trim() }));
+        const additions = pantryPreview.map((row) => ({ id: randomId(), name: row.name.trim().toLowerCase(), measure: row.measure.trim() }));
         kitchen.update((state) => pantryInputProblem(additions, state.pantry) ? state : { ...state, pantry: [...state.pantry, ...additions] });
         setPantryPreview(null); setPantryDraft(""); setPantryError("");
       }} />}
@@ -1384,7 +1381,7 @@ export default function RagChefApp() {
       {selectedRecipe && !cooking && (
         <RecipeDrawer
           recipe={selectedRecipe}
-          tasteControls={assistantEnabled ? <div className="taste-feedback" aria-label="Taste preferences"><p>Help the household choose future dinners.</p>{([["cook_again", "Cook again"], ["less_often", "Less often"], ["clear", "Clear my feedback"]] as const).map(([preference, label]) => <button key={preference} className="secondary-button" onClick={() => { setAssistantPreset({ id: crypto.randomUUID(), label: `${label}: ${selectedRecipe.title}`, intent: { pantry: [], tastes: [{ recipeId: selectedRecipe.id, preference }] } }); setSelectedRecipe(null); setAssistantOpen(true); }}>{label}</button>)}{kitchen.state.tastePreferences?.filter(item => item.recipeId === selectedRecipe.id).map(item => <p key={item.memberId}>{item.memberId === (session.user?.id ?? "local-user") ? "You" : (memberNames[item.memberId] ?? "Family member")}: {item.preference === "cook_again" ? "Cook again" : "Less often"}</p>)}</div> : undefined}
+          tasteControls={assistantEnabled ? <div className="taste-feedback" aria-label="Taste preferences"><p>Help the household choose future dinners.</p>{([["cook_again", "Cook again"], ["less_often", "Less often"], ["clear", "Clear my feedback"]] as const).map(([preference, label]) => <button key={preference} className="secondary-button" onClick={() => { setAssistantPreset({ id: randomId(), label: `${label}: ${selectedRecipe.title}`, intent: { pantry: [], tastes: [{ recipeId: selectedRecipe.id, preference }] } }); setSelectedRecipe(null); setAssistantOpen(true); }}>{label}</button>)}{kitchen.state.tastePreferences?.filter(item => item.recipeId === selectedRecipe.id).map(item => <p key={item.memberId}>{item.memberId === (session.user?.id ?? "local-user") ? "You" : (memberNames[item.memberId] ?? "Family member")}: {item.preference === "cook_again" ? "Cook again" : "Less often"}</p>)}</div> : undefined}
           personalAmountsEditor={<PersonalRecipeAmountsEditor
             key={JSON.stringify([selectedRecipe.id, contentHashForRecipe(selectedRecipe), kitchen.state.personalRecipeAmounts?.[selectedRecipe.id]])}
             recipe={selectedRecipe} contentHash={contentHashForRecipe(selectedRecipe)}
@@ -1909,7 +1906,7 @@ function SettingsView({
       </section>
 
       <section className="panel settings-panel wide-panel">
-        <h2>Kitchen backup</h2><p>Plans, pantry amounts, personal recipe amounts, favorites, and cooking preferences save automatically {session.mode === "hosted" ? "to your shared household" : "on this Mac"}.</p>
+        <h2>Kitchen backup</h2><p>Plans, pantry amounts, personal recipe amounts, favorites, and cooking preferences save automatically {session.mode === "hosted" ? "to your shared household" : "on the server computer"}.</p>
         <button className="secondary-button" onClick={exportBackup}>Export backup</button>
         {backupExportError && <p role="alert">{backupExportError}</p>}
         <label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
@@ -1936,14 +1933,23 @@ function SettingsView({
       </section>
 
       {session.mode === "hosted" ? <AIConnections settings={settings} setSettings={setSettings} /> : <section className="panel settings-panel">
-        <div className="section-heading"><div><span className="eyebrow">Cooking assistant</span><h2>AI settings</h2><p>Choose where Chef answers are generated. Recipe search stays local.</p></div></div>
+        <div className="section-heading"><div><span className="eyebrow">Cooking assistant</span><h2>AI settings</h2><p>Choose where Chef answers are generated. Recipe search runs on the server computer.</p></div></div>
         <div className="provider-grid">
-          <button className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} onClick={() => setSettings({ ...settings, provider: "ollama" })}><span className="provider-symbol">OL</span><strong>Ollama</strong><small>Private · runs on this Mac</small></button>
-          <button className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} onClick={() => setSettings({ ...settings, provider: "openai" })}><span className="provider-symbol cloud">OA</span><strong>OpenAI</strong><small>Cloud · API key required</small></button>
+          <button className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} aria-pressed={settings.provider === "ollama"} onClick={() => setSettings({ ...settings, provider: "ollama" })}><span className="provider-symbol">OL</span><strong>Ollama</strong><small>Private · server computer</small></button>
+          <button className={`provider-card ${settings.provider === "lmstudio" ? "selected" : ""}`} aria-pressed={settings.provider === "lmstudio"} onClick={() => setSettings({ ...settings, provider: "lmstudio" })}><span className="provider-symbol">LM</span><strong>LM Studio</strong><small>Private · server computer</small></button>
+          <button className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} aria-pressed={settings.provider === "openai"} onClick={() => setSettings({ ...settings, provider: "openai" })}><span className="provider-symbol cloud">OA</span><strong>OpenAI</strong><small>Cloud · API key required</small></button>
         </div>
-        <label className="model-field">Model<input value={settings.provider === "ollama" ? settings.ollamaModel : settings.openaiModel} onChange={(event) => setSettings(settings.provider === "ollama" ? { ...settings, ollamaModel: event.target.value } : { ...settings, openaiModel: event.target.value })} /></label>
+        <label className="model-field">Model<input value={selectedAIModel(settings)} placeholder={settings.provider === "lmstudio" ? "Model identifier from LM Studio" : undefined} onChange={(event) => setSettings(settings.provider === "ollama" ? { ...settings, ollamaModel: event.target.value } : settings.provider === "lmstudio" ? { ...settings, lmstudioModel: event.target.value } : { ...settings, openaiModel: event.target.value })} /></label>
+        {settings.provider === "lmstudio" && <p className="quantity-note">On the computer serving RAG Chef, load a model in LM Studio and start its server from the Developer tab. Enter its model identifier above. Phones use that computer’s model through RAG Chef; they do not need LM Studio installed.</p>}
         <div className="connection-row"><button className="secondary-button" onClick={testConnection}>Test connection</button><span>{connectionStatus || "Not tested"}</span></div>
         {connectionDetails.length > 0 && <ul aria-label="Chef capabilities">{connectionDetails.map((detail, index) => <li key={index}>{detail}</li>)}</ul>}
+      </section>}
+
+      {session.mode === "local" && Boolean(session.localServer?.origins.length) && <section className="panel settings-panel wide-panel" aria-label="Use your kitchen on other devices">
+        <h2>Open your kitchen on a phone</h2>
+        <p>Connect to the same Wi-Fi and open one of these addresses. All devices share this kitchen and connect to AI through the server computer. Keep that computer running while cooking.</p>
+        {session.localServer!.origins.map(origin => <label key={origin}>Kitchen address<input readOnly value={origin} onFocus={event => event.currentTarget.select()} /></label>)}
+        <p className="quantity-note">{session.localServer?.requiresPassword ? "Your browser will ask for the shared kitchen username and password. People with those credentials can use and change this kitchen. Keep the server connected; offline pages are disabled for password-protected kitchens." : "Anyone who can open these local addresses can use and change this kitchen."}</p>
       </section>}
 
       <section className="panel settings-panel wide-panel">

@@ -49,7 +49,7 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
     request.current.id++; request.current.controller?.abort(); request.current.controller = undefined;
     const timer = window.setTimeout(() => setBusy(current => current === "apply" ? current : ""), 0);
     return () => clearTimeout(timer);
-  }, [aiSettings?.provider, aiSettings?.ollamaModel, aiSettings?.openaiModel]);
+  }, [aiSettings?.provider, aiSettings?.ollamaModel, aiSettings?.openaiModel, aiSettings?.lmstudioModel]);
   const editableIntent: ChefPlanIntent = { ...intent, excludedIngredients: names(excluded), excludedEquipment: names(equipment) };
   const edited = JSON.stringify(editableIntent) !== JSON.stringify(draft ? editableDraftIntent(draft) : initialIntent(week, today));
   const stale = invalidated || Boolean(draft && (draft.kitchenRevision !== revision || draft.intent.today !== today));
@@ -112,7 +112,7 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
       }
       setDraft(null); setIntent(initialIntent(week, today)); setExcluded(""); setEquipment(""); setQuery(""); setInvalidated(false); setNeedsClarification(false);
       const refreshed = await applied(result);
-      setMessage(refreshed ? "Plan saved. Your weekly shopping list is ready." : "Plan saved on this Mac. Review the kitchen save status before making more changes.");
+      setMessage(refreshed ? "Plan saved. Your weekly shopping list is ready." : "Plan saved on the server computer. Review the kitchen save status before making more changes.");
     } catch (cause) {
       setInvalidated(true);
       await refreshKitchen();

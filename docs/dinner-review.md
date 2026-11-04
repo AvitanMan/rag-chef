@@ -1,5 +1,8 @@
 # Reviewed dinner refresh — November 1, 2026
 
+For the 12 additional mains reviewed on November 4, 2026, see the
+[additional-dinner review](additional-dinners.md).
+
 The existing 30 Wikibooks mains were revisited with the current collector. All 30 pages were accessible. Original ingredients, directions and source servings matched the local records; 19 recipes gained original source notes. Metadata was reviewed in full and rebound to the captured content hashes. Source text remains attributed to Wikibooks contributors under CC BY-SA 4.0.
 
 This refresh adds no recipes. In the existing 166-recipe kitchen, verified total-time coverage increases from **3 to 14 recipes**, including **12 of the 30 reviewed mains**. The other two timed recipes are Quick Risotto and Tomato Pasta. These are source statements, not measured cooking trials.

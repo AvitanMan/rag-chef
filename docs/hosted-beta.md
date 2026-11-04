@@ -66,6 +66,21 @@ Local connection settings are saved for this account and browser only. Phones ca
 
 The server prepares bounded inference tasks and validates returned JSON against the original request and canonical sources. Each task is tied to its member, household, connection, revision, evidence/schema hashes, and five-minute expiry. Cancellation invalidates the workflow. A browser can fabricate output, so local evidence checks are labeled **Checked on this device**, never server-attested. They cannot authorize kitchen writes or create source facts.
 
+### Browser LM Studio
+
+On the computer running LM Studio, start its server in the **Developer** tab and
+enable **CORS** in server settings. Keep it bound to loopback. In RAG Chef Settings,
+select **LM Studio**, connect to `http://127.0.0.1:1234`, choose a model, then run
+**Test and save local model**. Allow local-network access if the browser asks.
+
+This browser connection supports an unauthenticated loopback LM Studio server.
+If you require a token, use standalone mode with the server-side `LMSTUDIO_API_KEY`.
+See [LM Studio server settings](https://lmstudio.ai/docs/developer/core/server/settings).
+The connection is stored separately from Ollama for this account and browser.
+Generation and verification run through that browser; the hosted server never
+connects to your computer's loopback endpoint. Browser/HTTPS compatibility still
+needs checking on the deployed origin, as with Ollama.
+
 ### OpenAI
 
 Each member supplies their own key. It is encrypted using AES-GCM with account/provider/version binding; APIs return only configuration status and the last four characters. The application sends requests only to the fixed OpenAI Responses endpoint. Generation and the separate model-assisted evidence check use that same member's key. There is no hosted fallback to `OPENAI_API_KEY` or another member's credentials.

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AppSessionContext, kitchenFetch, type AppSession } from "../lib/app-session";
 import { accountStoragePrefix, browserScope, clearAccountStorage, scopedStorage } from "../lib/private-storage";
 
-export function AppSessionGate({ hosted, children }: { hosted: boolean; children: ReactNode }) {
-  const [session, setSession] = useState<AppSession | null>(hosted ? null : { mode: "local", authenticated: true });
+export function AppSessionGate({ hosted, localServer, children }: { hosted: boolean; localServer?: AppSession["localServer"]; children: ReactNode }) {
+  const [session, setSession] = useState<AppSession | null>(hosted ? null : { mode: "local", authenticated: true, ...(localServer ? { localServer } : {}) });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("Our kitchen");

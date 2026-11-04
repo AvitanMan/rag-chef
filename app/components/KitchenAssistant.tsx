@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import { dateLabel } from "./WeeklyKitchenViews";
-import { assistantFetch, type AISelection } from "../lib/browser-ai";
+import { assistantFetch, aiProviderLabel, selectedAIModel, type AISelection } from "../lib/browser-ai";
 import { useAppSession } from "../lib/app-session";
 import type { AssistantIntent, AssistantResponse, KitchenActionDraft } from "../lib/assistant-types";
 import type { KitchenState } from "../lib/kitchen-types";
@@ -40,7 +40,7 @@ export function KitchenAssistant({ visible, close, week, today, kitchen, revisio
     request.current.id++; request.current.controller?.abort(); request.current.controller = undefined;
     const timer = window.setTimeout(() => setBusy(current => current === "apply" ? current : ""), 0);
     return () => clearTimeout(timer);
-  }, [settings.provider, settings.ollamaModel, settings.openaiModel]);
+  }, [settings.provider, settings.ollamaModel, settings.openaiModel, settings.lmstudioModel]);
   function cancel() { request.current.id++; request.current.controller?.abort(); request.current.controller = undefined; setBusy(""); }
   function discard() { if (applying.current) return; cancel(); setDraft(null); setIntent(empty()); setQuery(""); setError(""); setInvalidated(false); setClarifying(false); setNotice("Draft discarded. Your household has not changed."); }
   async function preview(manual: boolean) {
@@ -77,7 +77,7 @@ export function KitchenAssistant({ visible, close, week, today, kitchen, revisio
   if (!visible) return null;
   return <Modal className="kitchen-modal-backdrop" label="Kitchen assistant" close={() => { if (!applying.current) { cancel(); close(); } }}><section className="panel kitchen-modal chef-plan-workspace assistant-workspace">
     <header className="section-heading"><div><span className="eyebrow">Your kitchen assistant</span><h2>From groceries to dinner</h2><p>Describe what changed or what you want to cook. Review pantry, dinner, and shopping changes together.</p></div><button className="drawer-close" aria-label="Close kitchen assistant" disabled={busy === "apply"} onClick={() => { cancel(); close(); }}>×</button></header>
-    <p className="quantity-note">{settings.provider === "ollama" ? `Ollama · ${settings.ollamaModel}` : `OpenAI · ${settings.openaiModel}`} · Drafts stay in this tab. Applied changes are shared.</p>
+    <p className="quantity-note">{aiProviderLabel(settings.provider)} · {selectedAIModel(settings) || "Choose a model in Settings"} · Drafts stay in this tab. Applied changes are shared.</p>
     <form onSubmit={event => { event.preventDefault(); void preview(Boolean(preset && !draft && query === preset.label)); }}><label>Your request<textarea ref={field} rows={3} maxLength={2000} value={query} onChange={event => setQuery(event.target.value)} placeholder="We bought 500 g rice and 2 onions. Plan three Mediterranean dinners using food that expires soon." /></label><div className="modal-actions"><button className="primary-button" disabled={!ready || !query.trim() || edited}>{preset && !draft && query === preset.label ? "Preview changes" : draft ? "Revise with Chef" : "Ask Chef"}</button><button type="button" className="text-button" onClick={() => setManualOpen(true)}>Use manual controls</button>{busy === "preview" && <button type="button" className="secondary-button" onClick={cancel}>Cancel request</button>}</div></form>
     {saveState !== "saved" && <p role="status">Finish saving or resolve the kitchen conflict before preparing changes.</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {stale && <div className="inline-confirm" role="alert"><span>The shared kitchen changed. Review a recalculated preview before applying.</span><button className="secondary-button" disabled={!ready} onClick={() => void preview(true)}>Recalculate changes</button></div>}

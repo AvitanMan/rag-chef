@@ -32,7 +32,7 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-merge", "private-storage", "app-session"]) {
+for (const name of ["random-id", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-merge", "private-storage", "app-session"]) {
   const source = await readFile(new URL(`../app/lib/${name}.${name === "app-session" ? "tsx" : "ts"}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
@@ -50,9 +50,9 @@ const state = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", me
 const document = (revision = 1, value = state()) => ({ revision, state: value, updatedAt: "2026-10-20T00:00:00.000Z" });
 const cookingProfile = (allergies = ["milk"]) => ({ version: 1, allergies, diet: "Vegan", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Stovetop"] });
 
-async function setup({ cached, blocked = false, fetch, existingLocal, existingSession, hosted = false } = {}) {
+async function setup({ cached, blocked = false, fetch, existingLocal, existingSession, hosted = false, requiresPassword = false, configureBrowser = () => {} } = {}) {
   runtime.reset();
-  AppSessionContext.value = hosted ? { ...localSessionContext, session: { mode: "hosted", authenticated: true, household: { id: "test-home", timezone: "UTC", role: "owner" } } } : localSessionContext;
+  AppSessionContext.value = hosted ? { ...localSessionContext, session: { mode: "hosted", authenticated: true, household: { id: "test-home", timezone: "UTC", role: "owner" } } } : requiresPassword ? { ...localSessionContext, session: { ...localSessionContext.session, localServer: { requiresPassword: true } } } : localSessionContext;
   const timers = new Map();
   let nextTimer = 0;
   const storage = () => ({ values: new Map(), blocked: false, get length() { return this.values.size; }, key(index) { return [...this.values.keys()][index] ?? null; }, getItem(key) { return this.values.get(key) ?? null; }, setItem(key, value) { if (this.blocked) throw new Error("storage full"); this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } });
@@ -64,6 +64,7 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   globalThis.document = { visibilityState: "visible", addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
   globalThis.window = { localStorage: local, sessionStorage: session, dispatchEvent: events.dispatchEvent.bind(events), setTimeout: (fn) => { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
   globalThis.window.setInterval = () => ++nextTimer;
+  configureBrowser();
   let handler = fetch ?? (() => Response.json(document()));
   const calls = [];
   globalThis.fetch = (url, options = {}) => { calls.push({ url, options }); return handler(url, options); };
@@ -366,4 +367,69 @@ test("recoverability follows the current snapshot when both storage destinations
   h.respond((_url, options) => Response.json(document(2, JSON.parse(options.body).state)));
   h.result.retrySave(); await h.pump(); await h.tick();
   assert.equal(h.result.recoverable, true, "a successful server save makes the edited snapshot recoverable");
+});
+
+
+function offlineBrowser(t, serviceWorker, cacheStorage) {
+  const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const savedCaches = Object.getOwnPropertyDescriptor(globalThis, "caches");
+  const savedNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  t.after(() => {
+    if (savedNavigator) Object.defineProperty(globalThis, "navigator", savedNavigator); else delete globalThis.navigator;
+    if (savedCaches) Object.defineProperty(globalThis, "caches", savedCaches); else delete globalThis.caches;
+    if (savedNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = savedNodeEnv;
+  });
+  return () => {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { serviceWorker } });
+    Object.defineProperty(globalThis, "caches", { configurable: true, value: cacheStorage });
+    window.caches = cacheStorage;
+  };
+}
+
+test("password-protected and hosted kitchens remove old offline pages without registering another shell", async t => {
+  for (const mode of ["password", "hosted"]) await t.test(mode, async t => {
+    const removedWorkers = [], removedCaches = [];
+    let registered = false;
+    const configureBrowser = offlineBrowser(t, {
+      getRegistrations: async () => [
+        { active: { scriptURL: "https://ragchef.local:3443/kitchen-sw.js" }, unregister: async () => removedWorkers.push("active") },
+        { waiting: { scriptURL: "https://ragchef.local:3443/kitchen-sw.js" }, unregister: async () => removedWorkers.push("waiting") },
+        { active: { scriptURL: "https://ragchef.local:3443/unrelated.js" }, unregister: async () => removedWorkers.push("unrelated") },
+      ],
+      register: async () => { registered = true; throw new Error("Protected shells must not register."); },
+    }, { keys: async () => ["rag-chef-shell-v3", "rag-chef-shell-v4", "unrelated-cache"], delete: async key => removedCaches.push(key) });
+    const h = await setup({ hosted: mode === "hosted", requiresPassword: mode === "password", configureBrowser });
+    assert.equal(h.result.ready, true);
+    assert.equal(registered, false);
+    assert.deepEqual(removedWorkers, ["active", "waiting"]);
+    assert.deepEqual(removedCaches, ["rag-chef-shell-v3", "rag-chef-shell-v4"]);
+  });
+});
+
+test("denied offline-cache cleanup does not break a password-protected kitchen", async t => {
+  let registered = false;
+  const configureBrowser = offlineBrowser(t, {
+    getRegistrations: async () => { throw new Error("Browser policy denied worker access."); },
+    register: async () => { registered = true; },
+  }, { keys: async () => { throw new Error("Browser policy denied cache access."); } });
+  const h = await setup({ requiresPassword: true, configureBrowser });
+  assert.equal(h.result.ready, true);
+  assert.equal(registered, false);
+  assert.deepEqual(h.result.state, state());
+});
+
+test("standalone kitchens without a password keep the production offline shell", async t => {
+  const messages = [];
+  let registered;
+  const registration = { active: { postMessage: message => messages.push(message) }, unregister: async () => { throw new Error("Ordinary local shells should remain registered."); } };
+  const configureBrowser = offlineBrowser(t, {
+    register: async url => { registered = url; return registration; },
+    ready: Promise.resolve(registration),
+  }, { keys: async () => { throw new Error("Ordinary local shells should not be cleared."); } });
+  await setup({ configureBrowser });
+  assert.equal(registered, "/kitchen-sw.js");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "CACHE_SHELL");
+  assert.ok(messages[0].urls.includes("/"));
 });

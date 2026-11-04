@@ -1,0 +1,951 @@
+{
+  "schemaVersion": 1,
+  "description": "November 4, 2026 review of 12 additional Wikibooks mains. Original source text is collected separately. Review is bound to captured source content and is not allergy or nutritional certification.",
+  "coreDinnerCount": 12,
+  "reviewedAt": "2026-11-04T10:08:22.369Z",
+  "entries": [
+    {
+      "recipeId": "wikibooks:abc432b1efdfd6de2286570d3c5a07852cf59a70178aa2a0e411d703eb555009",
+      "title": "Beef Stir-Fry",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Beef_Stir-Fry",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "1ca4299427cc85978220cf41dd958db8c61057305b505baaf4df40f78a301c17",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Beef Stir-Fry as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains beef and honey. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains beef. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Uses soy sauce; a wheat-free product is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. Soy sauce, sesame and peanut oil are listed. Source servings are explicit; no complete total is stated."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 2"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. Soy sauce, sesame and peanut oil are listed. Source servings are explicit; no complete total is stated."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "Soy sauce, sesame and peanut oil are listed. Source servings are explicit; no complete total is stated.",
+        "amountReviewCount": 5
+      }
+    },
+    {
+      "recipeId": "wikibooks:3dbbdb9ac8fa960a8bd3eee50a4f14c4b88be90b2d1d944e94fff8dc59c96355",
+      "title": "Chicken Cacciatore",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chicken_Cacciatore",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "eefe1404a00f7a7b151195a04cdc9b926e0c154b62f758e53fdbf72e6cdb07ad",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Slow cooker"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Chicken Cacciatore as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Prepared gravy browner and broth are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The 3–4 or 6–8 hours are cooking ranges, not a complete total including preparation."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Slow cooker. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The 3–4 or 6–8 hours are cooking ranges, not a complete total including preparation."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The 3–4 or 6–8 hours are cooking ranges, not a complete total including preparation.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:e072e74f58a88b86f184c08643df6aa2b416e4a600ef23c79db35dfc531aa435",
+      "title": "Chicken Tagine with Lemon and Olives",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chicken_Tagine_with_Lemon_and_Olives",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e12996ee40a53f78e98d0fd7d45243c178b2c325594b8ee5aa738a631b8c2ae6",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": 105,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Chicken Tagine with Lemon and Olives as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken and chicken broth. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken and chicken broth. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains all-purpose flour. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "source",
+            "evidence": "Time: 15 minutes active 13⁄4 hours total"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The source explicitly states a 1¾-hour total; its 30-minute marinade and 1-hour simmer are included."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: 15 minutes active 1¾ hours total"
+        ],
+        "decision": "The source explicitly states a 1¾-hour total; its 30-minute marinade and 1-hour simmer are included.",
+        "amountReviewCount": 1
+      }
+    },
+    {
+      "recipeId": "wikibooks:4b3d501ecf7787f90fedcda2dff1829536dce5221e5dacbc19a05590f70895fb",
+      "title": "Koshary (Egyptian Pasta Salad with Rice and Lentils)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Koshary_%28Egyptian_Pasta_Salad_with_Rice_and_Lentils%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "7fb9b19178356baf8cb1fa78f3b9d716876828e7ad8259e29b43ebb58256f4bd",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Koshary (Egyptian Pasta Salad with Rice and Lentils) as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Macaroni may contain egg; the source does not identify its composition. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains macaroni. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. Dried chickpeas and lentils may need overnight soaking. Whether chickpeas are dry or prepared is not fixed in the ingredients."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 7"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. Dried chickpeas and lentils may need overnight soaking. Whether chickpeas are dry or prepared is not fixed in the ingredients."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "Dried chickpeas and lentils may need overnight soaking. Whether chickpeas are dry or prepared is not fixed in the ingredients.",
+        "amountReviewCount": 0
+      }
+    },
+    {
+      "recipeId": "wikibooks:487ad6a9f502db6d329def3e4935d39ecebd4399c2c2440ea037a6d1a46e3844",
+      "title": "Matar Paneer",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Matar_Paneer",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "174b049d965fd573db5b658cfc608124d44286fc67465bb8ece56da3a433787c",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": 40,
+        "equipment": [
+          "Stovetop",
+          "Blender"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Matar Paneer as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains paneer. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Prepared ginger-garlic paste and spices are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "source",
+            "evidence": "Time: 40 min"
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop, Blender. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 3"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The source states a 40-minute total and requires a blender."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: 40 min"
+        ],
+        "decision": "The source states a 40-minute total and requires a blender.",
+        "amountReviewCount": 3
+      }
+    },
+    {
+      "recipeId": "wikibooks:11ee193a21b5c4d48503087f3b35d7af657d46dc2b4837bb97b35cab6baa010d",
+      "title": "Moqueca de Peixe (Brazilian Seafood Stew)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Moqueca_de_Peixe_%28Brazilian_Seafood_Stew%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "ab774bc92b7d8d0ba72feeb2dd2636b8222bed43242b625f58a70d0c284895fe",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Moqueca de Peixe (Brazilian Seafood Stew) as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains fish. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains fish. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify its ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The method requires at least one hour of marinating; white rice is a serving accompaniment outside the ingredient list."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 5"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The method requires at least one hour of marinating; white rice is a serving accompaniment outside the ingredient list."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The method requires at least one hour of marinating; white rice is a serving accompaniment outside the ingredient list.",
+        "amountReviewCount": 3
+      }
+    },
+    {
+      "recipeId": "wikibooks:c0d8aeca1ff903dc23c8e2c395f8c7af4e199d0fc09f549f42307ad58896a6f5",
+      "title": "Shakshuka I",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Shakshuka_I",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "7477f2450e058ed33940c4253b482bfb64804e334bbe423d1b9db42ed288e09c",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Shakshuka I as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains eggs. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify its ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. A light main. The source does not state servings or a complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. A light main. The source does not state servings or a complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "A light main. The source does not state servings or a complete total.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:cf402df6a40e601b7114952856edcd07de16cbd8bcc0037731ce0385edee866b",
+      "title": "Tofu Saltado",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Tofu_Saltado",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "917020d2398f586aecfc521935ad9bff317ff70053839d903535b4ce160e8b20",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "unknown",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Tofu Saltado as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The composition of the prepared crispy chilli is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The composition of the prepared crispy chilli is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Uses soy sauce; a wheat-free product is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. Prepared crispy chilli can vary by product; its ingredients need checking. No source servings or complete total are stated."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. Prepared crispy chilli can vary by product; its ingredients need checking. No source servings or complete total are stated."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "Prepared crispy chilli can vary by product; its ingredients need checking. No source servings or complete total are stated.",
+        "amountReviewCount": 0
+      }
+    },
+    {
+      "recipeId": "wikibooks:31ca4aea147dbe70e3bf864ee67ba0848ea73e64a937bcc39008ed4a7c01293d",
+      "title": "Tofu and Couscous",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Tofu_and_Couscous",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "662a8551595c09f74a0e3c5259058d46744ebaa52a12c67793806488c5bf6d9e",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Tofu and Couscous as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The listed tofu, couscous, vegetables and oil contain no named animal ingredients. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains couscous. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. A light main. The source does not state servings or a complete total; seasonings are left to taste."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. A light main. The source does not state servings or a complete total; seasonings are left to taste."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "A light main. The source does not state servings or a complete total; seasonings are left to taste.",
+        "amountReviewCount": 0
+      }
+    },
+    {
+      "recipeId": "wikibooks:0265bbe35c96e905e69904b5d4b623e80e78502e66d90ab37177426b67547ae7",
+      "title": "Tofu in Spiced Coconut Sauce",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Tofu_in_Spiced_Coconut_Sauce",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "a5057683be463c0bdee924fb0ca73bf4852cacccd1649e6cc9812b6137086f2b",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Tofu in Spiced Coconut Sauce as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains sour cream and yogurt, with optional butter. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Prepared ingredients are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source yield is a range, and toasted almonds and a rice accompaniment are required or suggested outside the preparation; the stated 60-minute total is not promoted."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The source yield is a range, and toasted almonds and a rice accompaniment are required or suggested outside the preparation; the stated 60-minute total is not promoted."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: 60 minutes"
+        ],
+        "decision": "The source yield is a range, and toasted almonds and a rice accompaniment are required or suggested outside the preparation; the stated 60-minute total is not promoted.",
+        "amountReviewCount": 4
+      }
+    },
+    {
+      "recipeId": "wikibooks:c57f8fa04a8306f870995e5e3816615ef86bd552aad25cdec9f3cc4a6b15248a",
+      "title": "Yetsom Shiro (Ethiopian Vegan Chickpea Stew)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Yetsom_Shiro_%28Ethiopian_Vegan_Chickpea_Stew%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "69d5f62ed32716d7a7a25520cd96050839fa7b223a497cf372999c4713a091b0",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Yetsom Shiro (Ethiopian Vegan Chickpea Stew) as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The source calls it vegan and lists vegetable broth or water, chickpea flour, oil and seasonings. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the source ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Prepared spice blends and the injera accompaniment are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source yield is a range. Injera or rice is a serving accompaniment outside the ingredient list."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The source yield is a range. Injera or rice is a serving accompaniment outside the ingredient list."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source yield is a range. Injera or rice is a serving accompaniment outside the ingredient list.",
+        "amountReviewCount": 3
+      }
+    },
+    {
+      "recipeId": "wikibooks:e9641a88698ee07aa4c580ff1ae8a357a431695cd73db4246c84d1ffd2878bc3",
+      "title": "Zambian Fish Stew",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Zambian_Fish_Stew",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "05e3e74bafbd951f1a341651ee3e000e0c6aef0541dee3ca840caf65ba03e639",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a dinner or light main based on the captured source; this does not certify nutritional completeness."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source describes or prepares Zambian Fish Stew as a main dish or light main."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains fish and fish stock. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains fish and fish stock. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify its ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The stated 15–20 minutes is a simmering step, not a total recipe time."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils and optional equipment are excluded."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and method. Ambiguous amounts and alternative products are preserved rather than inferred. The stated 15–20 minutes is a simmering step, not a total recipe time."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T10:08:22.369Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The stated 15–20 minutes is a simmering step, not a total recipe time.",
+        "amountReviewCount": 1
+      }
+    }
+  ]
+}

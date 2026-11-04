@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "../lib/random-id";
+
 /* eslint-disable @next/next/no-img-element -- Source recipe images are dynamic. */
 
 import { useEffect, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
@@ -148,7 +150,7 @@ export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, r
   const bought = items.filter((item) => checked[item.key]);
   const reviewCount = items.filter((item) => item.needsReview).length;
   const renderItem = (item: ShoppingItem) => <div className={`shopping-item ${checked[item.key] ? "checked" : ""}`} key={item.key}>
-        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = crypto.randomUUID(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
+        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = randomId(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
         <div className="shopping-detail">
           {item.preparationNote && <small>{item.preparationNote}</small>}
           {item.needsReview && <><b>{item.preparationNote ? "Review preparation" : "Review amount"}</b><div>{item.mealDates.map((date) => <button className="text-button" key={date} aria-label={`Review ${item.name} for ${dateLabel(date)}`} onClick={() => reviewMeal(date)}>Review {dateLabel(date)}</button>)}</div></>}

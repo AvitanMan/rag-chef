@@ -42,7 +42,7 @@ export interface ChefPlanDraft {
   unresolved: string[];
   warnings: string[];
   reviewHash: string;
-  interpretation: "ollama" | "openai" | "manual" | "rules";
+  interpretation: "ollama" | "openai" | "lmstudio" | "manual" | "rules";
   timings?: { totalMs: number };
 }
 export interface ChefPlanCatalog {

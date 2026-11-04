@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAppSession } from "../lib/app-session";
-import { listLocalModels, LOCAL_AI_KEY, localOllamaEndpoint, readLocalAI, testLocalModel, type AISelection } from "../lib/browser-ai";
+import { aiProviderLabel, selectedAIModel, listLocalModels, LOCAL_AI_KEY, LOCAL_LMSTUDIO_AI_KEY, localOllamaEndpoint, localLMStudioEndpoint, readLocalAI, testLocalModel, type AISelection } from "../lib/browser-ai";
+
+type LocalProvider = "ollama" | "lmstudio";
 
 export function AIConnections({ settings, setSettings }: { settings: AISelection; setSettings: (next: AISelection) => void }) {
   const { local: storage, fetch: kitchenFetch } = useAppSession();
-  const [endpoint, setEndpoint] = useState("http://127.0.0.1:11434");
-  const [models, setModels] = useState<string[]>([]);
+  const [endpoints, setEndpoints] = useState({ ollama: "http://127.0.0.1:11434", lmstudio: "http://127.0.0.1:1234" });
+  const [localModels, setLocalModels] = useState<Record<LocalProvider, string[]>>({ ollama: [], lmstudio: [] });
   const [key, setKey] = useState("");
   const [configured, setConfigured] = useState(false);
   const [lastFour, setLastFour] = useState("");
@@ -15,10 +17,24 @@ export function AIConnections({ settings, setSettings }: { settings: AISelection
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const localProvider: LocalProvider = settings.provider === "lmstudio" ? "lmstudio" : "ollama";
+  const localLabel = aiProviderLabel(localProvider);
+  const endpoint = endpoints[localProvider];
+  const models = localModels[localProvider];
+  const model = selectedAIModel(settings);
+  const storageKey = localProvider === "lmstudio" ? LOCAL_LMSTUDIO_AI_KEY : LOCAL_AI_KEY;
+  function setLocalModel(value: string) {
+    setSettings(localProvider === "lmstudio" ? { ...settings, lmstudioModel: value } : { ...settings, ollamaModel: value });
+  }
+  function chooseProvider(provider: AISelection["provider"]) {
+    controller.current?.abort(); setBusy(false); setNotice(""); setError("");
+    setSettings({ ...settings, provider });
+  }
   useEffect(() => {
-    const current = new AbortController(); controller.current = current;
+    const current = new AbortController();
     void (async () => {
-      const local = readLocalAI(storage); if (local) setEndpoint(local.endpoint);
+      const ollama = readLocalAI(storage, "ollama"), lmstudio = readLocalAI(storage, "lmstudio");
+      setEndpoints(previous => ({ ollama: ollama?.endpoint ?? previous.ollama, lmstudio: lmstudio?.endpoint ?? previous.lmstudio }));
       try {
         const response = await kitchenFetch("/api/ai/connections/openai", { signal: current.signal });
         const result = await response.json() as { error?: { message?: string }; openai?: { configured?: boolean; lastFour?: string } };
@@ -42,15 +58,29 @@ export function AIConnections({ settings, setSettings }: { settings: AISelection
   }
   return <section className="panel settings-panel wide-panel" aria-label="Your AI connections">
     <div className="section-heading"><div><span className="eyebrow">Your AI</span><h2>Connect your assistant</h2><p>Connections belong to you. Family members use their own models or keys.</p></div></div>
-    <div className="provider-grid"><button type="button" className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} aria-pressed={settings.provider === "ollama"} onClick={() => setSettings({ ...settings, provider: "ollama" })}><strong>Local Ollama</strong><small>This computer · no API key</small></button><button type="button" className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} aria-pressed={settings.provider === "openai"} onClick={() => setSettings({ ...settings, provider: "openai" })}><strong>OpenAI</strong><small>Your key · usage billed to you</small></button></div>
-    <p className="quantity-note">Active: {settings.provider === "ollama" ? `Local Ollama · ${settings.ollamaModel}` : `OpenAI · ${settings.openaiModel}`}. Chef never switches providers automatically.</p>
-    {settings.provider === "ollama" ? <>
-      <p>Use desktop Chrome or Edge on the computer running Ollama. Connect grants this site access to your local model; nothing is installed by RAG Chef.</p>
-      <details><summary>Allow this website in Ollama</summary><p>Set <code>OLLAMA_ORIGINS</code> to <code>{typeof window !== "undefined" ? window.location.origin : "this website’s HTTPS origin"}</code>, then restart Ollama. Keep its default loopback binding. Allow local-network access when your browser asks.</p><a href="https://docs.ollama.com/faq" target="_blank" rel="noreferrer">Ollama setup instructions</a></details>
-      <label>Ollama on this computer<input value={endpoint} onChange={event => setEndpoint(event.target.value)} spellCheck={false} /></label>
-      <div className="modal-actions"><button className="secondary-button" disabled={busy} onClick={() => void run(async signal => { const found = await listLocalModels(endpoint, signal); setModels(found); if (found.length && !found.includes(settings.ollamaModel)) setSettings({ ...settings, ollamaModel: found[0] }); setNotice(found.length ? "Connected. Choose a model, then test and save it." : "Ollama is running but has no installed models. Install a model in Ollama, then connect again."); })}>Connect to Ollama</button></div>
-      <label>Local model{models.length ? <select value={settings.ollamaModel} onChange={event => setSettings({ ...settings, ollamaModel: event.target.value })}>{models.map(model => <option key={model}>{model}</option>)}</select> : <input value={settings.ollamaModel} onChange={event => setSettings({ ...settings, ollamaModel: event.target.value })} />}</label>
-      <div className="modal-actions"><button className="primary-button" disabled={busy} onClick={() => void run(async signal => { await testLocalModel(endpoint, settings.ollamaModel, signal); storage.setItem(LOCAL_AI_KEY, JSON.stringify({ endpoint: localOllamaEndpoint(endpoint), model: settings.ollamaModel, origin: window.location.origin, testedAt: new Date().toISOString() })); setNotice("Local model tested and saved for this browser. Keep Ollama running while using Chef."); })}>Test and save local model</button><button className="text-button" disabled={busy} onClick={() => { storage.removeItem(LOCAL_AI_KEY); setNotice("Local connection forgotten in this browser."); }}>Forget connection</button></div>
+    <div className="provider-grid">
+      <button type="button" className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} aria-pressed={settings.provider === "ollama"} onClick={() => chooseProvider("ollama")}><strong>Local Ollama</strong><small>This computer · no API key</small></button>
+      <button type="button" className={`provider-card ${settings.provider === "lmstudio" ? "selected" : ""}`} aria-pressed={settings.provider === "lmstudio"} onClick={() => chooseProvider("lmstudio")}><strong>LM Studio</strong><small>This computer · local model</small></button>
+      <button type="button" className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} aria-pressed={settings.provider === "openai"} onClick={() => chooseProvider("openai")}><strong>OpenAI</strong><small>Your key · usage billed to you</small></button>
+    </div>
+    <p className="quantity-note">Active: {aiProviderLabel(settings.provider)} · {model || "Choose a model below"}. Chef never switches providers automatically.</p>
+    {settings.provider !== "openai" ? <>
+      <p>Use desktop Chrome or Edge on the computer running {localLabel}. Connect grants this site access to your local model; nothing is installed by RAG Chef.</p>
+      {localProvider === "ollama" ? <details><summary>Allow this website in Ollama</summary><p>Set <code>OLLAMA_ORIGINS</code> to <code>{typeof window !== "undefined" ? window.location.origin : "this website’s HTTPS origin"}</code>, then restart Ollama. Keep its default loopback binding. Allow local-network access when your browser asks.</p><a href="https://docs.ollama.com/faq" target="_blank" rel="noreferrer">Ollama setup instructions</a></details>
+        : <details><summary>Set up LM Studio for this browser</summary><p>Load a model that supports structured output. In the Developer tab, start the server and enable CORS in server settings. Keep “Serve on Local Network” off and allow local-network access when your browser asks. This browser connection supports a local server with “Require Authentication” off.</p><a href="https://lmstudio.ai/docs/developer/core/server/settings" target="_blank" rel="noreferrer">LM Studio server settings</a></details>}
+      <label>{localLabel} on this computer<input value={endpoint} disabled={busy} onChange={event => { setEndpoints(previous => ({ ...previous, [localProvider]: event.target.value })); setLocalModels(previous => ({ ...previous, [localProvider]: [] })); }} spellCheck={false} /></label>
+      <div className="modal-actions"><button className="secondary-button" disabled={busy} onClick={() => void run(async signal => {
+        const found = await listLocalModels(endpoint, signal, localProvider); signal.throwIfAborted();
+        setLocalModels(previous => ({ ...previous, [localProvider]: found }));
+        if (found.length && !found.includes(model)) setLocalModel(found[0]);
+        setNotice(found.length ? "Connected. Choose a model, then test and save it." : `${localLabel} is running but has no available models. Load a model, then connect again.`);
+      })}>Connect to {localLabel}</button></div>
+      <label>Local model{models.length ? <select value={model} disabled={busy} onChange={event => setLocalModel(event.target.value)}>{models.map(name => <option key={name}>{name}</option>)}</select> : <input value={model} disabled={busy} placeholder={localProvider === "lmstudio" ? "Model identifier from LM Studio" : undefined} onChange={event => setLocalModel(event.target.value)} />}</label>
+      <div className="modal-actions"><button className="primary-button" disabled={busy || !model.trim()} onClick={() => void run(async signal => {
+        await testLocalModel(endpoint, model, signal, localProvider); signal.throwIfAborted();
+        storage.setItem(storageKey, JSON.stringify({ endpoint: localProvider === "lmstudio" ? localLMStudioEndpoint(endpoint) : localOllamaEndpoint(endpoint), model, origin: window.location.origin, testedAt: new Date().toISOString() }));
+        setNotice(`Local model tested and saved for this browser. Keep ${localLabel} running while using Chef.`);
+      })}>Test and save local model</button><button className="text-button" disabled={busy} onClick={() => { storage.removeItem(storageKey); setNotice(`${localLabel} connection forgotten in this browser.`); }}>Forget connection</button></div>
     </> : <>
       <p>{configured ? `Your encrypted key is saved${lastFour ? ` (ending ${lastFour})` : ""}.` : "Add your own OpenAI API key."} Your selected kitchen context is sent to OpenAI when you ask Chef.</p>
       <label>{configured ? "Replace API key" : "OpenAI API key"}<input type="password" autoComplete="off" value={key} spellCheck={false} onChange={event => setKey(event.target.value)} placeholder="Your personal API key" /></label>

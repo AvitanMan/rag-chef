@@ -201,6 +201,110 @@ copy `.env.example` there instead when configuring that mode. Both local files
 are ignored. Maintenance scripts read exported shell variables rather than
 automatically loading either file.
 
+#### Use LM Studio
+
+1. Download a model in LM Studio and start the server in its **Developer** tab.
+2. In RAG Chef **Settings**, select **LM Studio** and enter its exact model identifier.
+3. Use **Test connection**, then ask Chef or prepare an assistant/meal-plan draft.
+
+The standalone app connects to `http://127.0.0.1:1234/v1` by default. Override
+`LMSTUDIO_BASE_URL` and `LMSTUDIO_MODEL` in your local environment file if needed.
+The endpoint must be on loopback. If LM Studio requires authentication, set
+`LMSTUDIO_API_KEY` server-side. Restart the app after changing environment values.
+Choose a model that passes the structured JSON output check; model capabilities
+vary. See [LM Studio structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
+
+Chef generation and verification use LM Studio together. Ollama embeddings are
+independent, so keyword/pantry search still works when Ollama is stopped.
+For hosted accounts, use the browser setup in [hosted beta setup](hosted-beta.md#browser-lm-studio).
+
+### Use from a phone on your local network
+
+For HTTPS, a friendly local name, and a shared password, run this on the computer
+that stores the kitchen and runs LM Studio or Ollama:
+
+```bash
+pnpm start:secure
+# Optional private interface, name, or port:
+pnpm start:secure --host 192.168.1.20 --name ragchef.local --port 3443
+# Direct Node equivalent:
+node tools/secure-local-server.mjs
+```
+
+The command builds the current app and serves **https://ragchef.local:3443** on
+the selected private network interface. On macOS it advertises `ragchef.local`
+using Bonjour/mDNS without renaming the computer. It also prints an HTTPS IP
+address that matches the certificate. OpenSSL is required for local certificate
+creation. Other operating systems can use the IP URL or configure local DNS.
+
+The first launch creates a local certificate authority and random login under
+`.wrangler/local-https/`. The directory is private to your OS account and ignored
+by Git. The launcher does not install system certificates or change a phone's
+trust settings automatically.
+
+1. Transfer **only `root-ca.cer`** to the phone through a trusted channel, such as
+   AirDrop for an iPhone or a USB file transfer for Android.
+2. Install the certificate. On **iPhone**, install the downloaded profile in
+   Settings, then enable **RAG Chef Local CA** under **General → About →
+   Certificate Trust Settings**. Apple requires this additional trust step for
+   manually installed certificates. [Apple instructions](https://support.apple.com/en-gb/102390).
+   On **Android**, use the system's **Install a certificate → CA certificate**
+   setting; its location varies by Android version and manufacturer. Follow the
+   phone's certificate-management prompts.
+3. Open the HTTPS link on the same Wi-Fi. The browser asks for a username and
+   password; find both in `.wrangler/local-https/credentials.json` on the server.
+   Do not put credentials into URLs. The server receives only a password hash
+   through its configuration, and never returns login details to the app.
+
+Do not transfer `root-ca-key.pem` or `server-key.pem`. The public certificate's
+SHA-256 fingerprint is printed by the launcher so it can be compared before
+trusting it. Trust is specific to this CA; remove it from the phone when you no
+longer use this kitchen. Server certificates renew as needed without replacing
+the CA, so normal renewals do not require repeating phone setup. A changed IP
+needs a server restart so the certificate and advertised address can be updated.
+
+The protected app requires HTTPS, the exact configured hostname/IP, and the
+shared login. Requests that modify state also require the matching Origin.
+Hosted Google sign-in stays separate. Authenticated app pages use `no-store`, and
+protected mode disables the offline shell. Browser storage still retains local
+kitchen drafts on devices you have authorized.
+
+All authorized devices share this kitchen with edit access; the shared password
+is not a separate account for each family member. You can set a custom username
+and password in the private `credentials.json` file, then restart the secure
+server. New setups still generate a random password. To revoke a password, stop
+the secure server, remove **only** `credentials.json`, and restart it. A new
+password is generated; devices must sign in again. Keep the CA and its key.
+
+AI requests go from the phone to RAG Chef, then to the model on the server computer.
+Leave LM Studio/Ollama on loopback; model CORS is unnecessary for this mode.
+Select **LM Studio** and its model identifier in Settings. To set defaults for
+new browsers, put these values in `.dev.vars` before launching:
+
+```dotenv
+RAG_CHEF_AI_PROVIDER=lmstudio
+LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LMSTUDIO_MODEL=your-installed-model-id
+```
+
+Use **Settings → Open your kitchen on a phone** to find the current links.
+Keep the terminal and computer running; Ctrl+C stops the server and Bonjour
+advertisement. Do not run the older unprotected LAN server alongside it: that
+would still expose the same kitchen without the password. No router port
+forwarding or public tunnel is needed.
+
+If the name does not resolve, try the printed HTTPS IP URL. Both devices must
+be on the same network; guest Wi-Fi may isolate devices or block mDNS. Allow
+incoming traffic through the computer's firewall if prompted. A certificate
+warning means trust/name/validity still needs fixing; using HTTP is not a fix
+for a protected connection.
+
+For an intentionally unprotected trusted-network session, `pnpm start:lan`
+retains the previous HTTP mode on port 3000. It gives every reachable device
+shared edit access and does not require a password. Ordinary `pnpm dev` and
+`pnpm start` keep their existing loopback defaults. Use the separate localhost admin workflow for catalog imports; the shared
+HTTPS password does not grant catalog-administrator access.
+
 ### Production-style local preview
 
 ```bash
@@ -218,7 +322,7 @@ disposable copies and leave this preview and its database untouched.
 
 Open **Plan with Chef** from Chef or Weekly Plan. Ask for several dinners,
 portions, exclusions, or a priority such as using food due soon. The assistant
-uses the configured local Ollama model to interpret your request. The application
+uses the selected AI provider to interpret your request. The application
 selects approved recipes and calculates stock coverage and shopping requirements.
 
 Review the dates, portions or recipe batches, dietary requirements, exclusions,
@@ -469,7 +573,7 @@ material and correct recipe. Generic nonfactual discovery prose may have no
 support refs; factual questions still require positive source support. The
 verifier cannot rewrite an answer or turn kitchen facts into original quotes.
 
-Verification uses the same selected provider as generation. Ollama checks run locally; OpenAI checks use the same personal or standalone server key and add a separate billed API request. Hosted browser checks are labeled **Checked on this device**; the server still independently validates source identities and calculations. See [hosted beta setup](hosted-beta.md) for account and connection configuration. The check has a 30-second timeout for multi-recipe
+Verification uses the same selected provider as generation. Ollama and LM Studio checks run locally; OpenAI checks use the same personal or standalone server key and add a separate billed API request. Hosted browser checks are labeled **Checked on this device**; the server still independently validates source identities and calculations. See [hosted beta setup](hosted-beta.md) for account and connection configuration. The check has a 30-second timeout for multi-recipe
 answers and no automatic repair attempt. Rejected or unavailable checks withhold
 the answer, retain source access and offer **Retry answer** or **Retry step
 answer**. **Answer evidence checked** describes a model-assisted review, not a

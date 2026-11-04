@@ -14,7 +14,7 @@ async function prepareAssistant(request: Request, resume: AiResume | undefined, 
     if (context.mode === "hosted" && !context.assistantEnabled) throw new PlanHttpError("The household assistant has not been enabled for this beta.", "assistant_disabled", 403);
     const input = await readPlanRequest(request);
     if (Object.keys(input).some(key => !["query", "intent", "week", "today", "kitchenRevision", "previousDraft", "ai", "provider", "model"].includes(key)) || typeof input.week !== "string" || typeof input.today !== "string" || !Number.isSafeInteger(input.kitchenRevision) || Number(input.kitchenRevision) < 0) throw new PlanHttpError("Choose a planning week and saved kitchen revision.", "invalid_request", 400);
-    if (input.provider !== undefined && !["ollama", "openai"].includes(String(input.provider)) || input.model !== undefined && (typeof input.model !== "string" || !/^[\w./:-]{1,120}$/.test(input.model))) throw new PlanHttpError("Choose a supported AI provider and model.", "invalid_request", 400);
+    if (input.provider !== undefined && !["ollama", "openai", "lmstudio"].includes(String(input.provider)) || input.model !== undefined && (typeof input.model !== "string" || !/^[\w./:-]{1,120}$/.test(input.model))) throw new PlanHttpError("Choose a supported AI provider and model.", "invalid_request", 400);
     const today = context.mode === "hosted" ? assistantToday(context.timezone) : input.today;
     if (input.today !== today) throw new PlanHttpError(`The household date is ${today}. Refresh the kitchen before preparing a draft.`, "action_changed", 409);
     const document = await getKitchenDocument(context);

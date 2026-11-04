@@ -1,8 +1,12 @@
 import { cp, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { request as httpsRequest } from "node:https";
+import { ensureLocalTLS } from "../local-tls.mjs";
+import { localCredentials } from "../secure-local-server.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
+import { tmpdir, networkInterfaces } from "node:os";
+import { privateAddresses, selectLocalAddress } from "../local-server.mjs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fixtureSql } from "./fixtures.mjs";
@@ -12,7 +16,10 @@ import { localOllamaBaseUrl } from "./local-ollama.mjs";
 import { hostedFixtureSql, HOSTED_TEST_SECRET, HOSTED_TEST_ENCRYPTION_KEY } from "./hosted-fixtures.mjs";
 
 const mode = process.argv[2];
-if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys", "planning", "hosted", "hosted-dev"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, journeys, planning, hosted, or hosted-dev.");
+if (!["integration", "e2e", "setup", "smoke", "dev", "chef", "journeys", "planning", "hosted", "hosted-dev", "lan", "secure-lan"].includes(mode)) throw new Error("Choose integration, e2e, setup, smoke, dev, chef, journeys, planning, hosted, hosted-dev, lan, or secure-lan.");
+const secureRun = mode === "secure-lan";
+const lanRun = mode === "lan" || secureRun;
+const serverHost = lanRun ? selectLocalAddress(privateAddresses(networkInterfaces())).address : "127.0.0.1";
 const hostedRun = ["hosted", "hosted-dev"].includes(mode);
 const devRuntime = ["dev", "hosted-dev"].includes(mode);
 const journeyOptions = mode === "journeys" ? parseJourneyOptions(process.argv.slice(3)) : undefined;
@@ -29,6 +36,7 @@ const children = new Set();
 let stub;
 let cleaning;
 let originalSnapshot;
+let secureTLS, secureLogin;
 function localSnapshot(operation) {
   const result = spawnSync("python3", [join(root, "tools/testing/snapshot-local-catalog.py"), operation, root, state], { encoding: "utf8", env });
   if (result.status !== 0) throw new Error(result.stderr?.trim() || "Local catalog snapshot requires Python 3.");
@@ -52,6 +60,8 @@ const env = {
   MINIFLARE_REGISTRY_PATH: join(directory, "registry"),
   RAG_CHEF_TEST_ARTIFACTS: artifacts,
   RAG_CHEF_TEST_STATE_DIR: state,
+  ...(lanRun ? { RAG_CHEF_LAN_TEST: "1" } : {}),
+  ...(secureRun ? { RAG_CHEF_SECURE_LAN_TEST: "1" } : {}),
   ...(mode === "setup" ? { RAG_CHEF_SETUP_TEST: "1" } : {}),
 };
 
@@ -88,18 +98,29 @@ async function launch(label, args, { wait = true } = {}) {
 
 async function freePort(excluded = []) {
   const socket = createServer();
-  await new Promise((accept, reject) => { socket.once("error", reject); socket.listen(0, "127.0.0.1", accept); });
+  await new Promise((accept, reject) => { socket.once("error", reject); socket.listen(0, serverHost, accept); });
   const port = socket.address().port;
   await new Promise((accept) => socket.close(accept));
   if (port === 3000 || excluded.includes(port)) return freePort(excluded);
   return port;
 }
 
+async function probeServer(baseURL, servername) {
+  if (!secureRun) return (await fetch(`${baseURL}${hostedRun ? "/api/session" : "/api/recipes/catalog"}`, { signal: AbortSignal.timeout(1000) })).ok;
+  return new Promise((accept, reject) => {
+    const request = httpsRequest(`${baseURL}/api/session`, { ca: secureTLS.ca, auth: `chef:${secureLogin.password}`, timeout: 1000, ...(servername ? { servername, headers: { host: `${servername}:${new URL(baseURL).port}` } } : {}) }, response => {
+      response.resume(); accept(response.statusCode === 200);
+    });
+    request.on("timeout", () => request.destroy(new Error("Server probe timed out")));
+    request.on("error", reject); request.end();
+  });
+}
+
 async function waitForServer(baseURL, child) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error("Disposable preview stopped; see preview.log.");
-    try { const response = await fetch(`${baseURL}${hostedRun ? "/api/session" : "/api/recipes/catalog"}`, { signal: AbortSignal.timeout(1000) }); if (response.ok) return; } catch { /* Starting up. */ }
+    try { if (await probeServer(baseURL)) return; } catch { /* Starting up. */ }
     await new Promise((accept) => setTimeout(accept, 200));
   }
   throw new Error("Disposable preview did not become ready; see preview.log.");
@@ -146,13 +167,26 @@ try {
       await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
     }
     const port = hostedPort ?? await freePort();
+    const protocol = secureRun ? "https" : "http";
+    const friendlyURL = `https://ragchef.local:${port}`;
+    let secureVars = {};
+    if (secureRun) {
+      const tls = await ensureLocalTLS({ directory: join(directory, "tls"), name: "ragchef.local", address: serverHost });
+      secureTLS = { ...tls, ca: await readFile(tls.caCert) };
+      const credentials = await localCredentials(join(directory, "tls"));
+      secureLogin = JSON.parse(await readFile(credentials.path, "utf8"));
+      secureVars = { RAG_CHEF_LAN_AUTH: "1", RAG_CHEF_LAN_PASSWORD_SHA256: credentials.hash };
+      Object.assign(env, { RAG_CHEF_TEST_LAN_PASSWORD: secureLogin.password, RAG_CHEF_TEST_FRIENDLY_URL: friendlyURL, RAG_CHEF_TEST_LAN_ADDRESS: serverHost });
+    }
+    const lanVars = lanRun ? { RAG_CHEF_LAN_ORIGINS: `${secureRun ? `${friendlyURL},` : ""}${protocol}://${serverHost}:${port}`, OLLAMA_CHAT_MODEL: "test-model", ...secureVars } : {};
     const inspectorPort = await freePort([port]);
-    env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
+    env.RAG_CHEF_TEST_BASE_URL = `${protocol}://${serverHost}:${port}`;
     const previewArgs = devRuntime
       ? ["node_modules/vinext/dist/cli.js", "dev", "--hostname", "127.0.0.1", "--port", String(port)]
-      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort), "--var", `OLLAMA_BASE_URL:${ollamaURL}`, ...Object.entries(hostedVars).flatMap(([key,value]) => ["--var", `${key}:${value}`])];
+      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--persist-to", state, "--ip", serverHost, "--port", String(port), "--inspector-ip", "127.0.0.1", "--inspector-port", String(inspectorPort), ...(secureRun ? ["--local-protocol", "https", "--upstream-protocol", "https", "--https-key-path", secureTLS.key, "--https-cert-path", secureTLS.cert] : []), "--var", `OLLAMA_BASE_URL:${ollamaURL}`, ...Object.entries({ ...hostedVars, ...lanVars }).flatMap(([key,value]) => ["--var", `${key}:${value}`])];
     const preview = await launch("preview", previewArgs, { wait: false });
     await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
+    if (secureRun && !await probeServer(env.RAG_CHEF_TEST_BASE_URL, "ragchef.local")) throw new Error("Friendly HTTPS identity or authenticated session probe failed.");
     if (["chef", "journeys", "planning"].includes(mode)) {
       const indexed = await fetch(`${env.RAG_CHEF_TEST_BASE_URL}/api/admin/catalog`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ embeddingsOnly: true }), signal: AbortSignal.timeout(300_000) });
       if (!indexed.ok || !(await indexed.json()).ok) throw new Error("Disposable fixture embedding refresh failed.");
@@ -170,7 +204,7 @@ try {
       console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
       if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
       const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...(hostedRun ? ["tests/e2e/hosted.spec.ts"] : []), ...process.argv.slice(3)]);
+      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...(hostedRun ? ["tests/e2e/hosted.spec.ts"] : secureRun ? ["tests/e2e/secure-lan.spec.ts"] : lanRun ? ["tests/e2e/lan.spec.ts"] : []), ...process.argv.slice(3)]);
       console.log("Isolated browser checks passed.");
     }
   }

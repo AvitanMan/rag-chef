@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "../lib/random-id";
+
 import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -52,7 +54,7 @@ function ExtraCookingTimers({ session, now, onChange, sourceSeconds }: { session
       if (timers.length >= MAX_COOKING_TIMERS - 1) { setError("Remove a timer before adding another."); return; }
       try {
         const timer = timerAction({ ...session.timer, status: "idle" }, "start", Date.now(), parseTimerDuration(minutes, seconds) * 1000);
-        onChange({ ...session, extraTimers: [...timers, { ...timer, id: crypto.randomUUID(), label: label.trim() }] });
+        onChange({ ...session, extraTimers: [...timers, { ...timer, id: randomId(), label: label.trim() }] });
         setLabel(""); setAdding(false); setError("");
       } catch (error) { setError(error instanceof Error ? error.message : "Choose a valid duration."); }
     }}>

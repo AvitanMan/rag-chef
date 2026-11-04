@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 const directory = await mkdtemp(join(tmpdir(), "jff-chef-context-"));
+await symlink(resolve("node_modules"), join(directory, "node_modules"));
 after(() => rm(directory, { recursive: true, force: true }));
 for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
@@ -250,4 +251,17 @@ test("plain-English meaning requests explain the prohibited boiling state withou
   assert.doesNotMatch(focusedCookingMeaningAnswer(conditional, "Explain this step simply.", cookingTechniqueGuides(conditional.text, "Explain this step simply.")), /says to avoid boiling/);
   const positive = { ...step, text: "Do not drain the beans, but bring to a boil." };
   assert.doesNotMatch(focusedCookingMeaningAnswer(positive, "Explain this step simply.", cookingTechniqueGuides(positive.text, "Explain this step simply.")), /says to avoid boiling/);
+});
+
+test("recipe and meal fingerprints stay identical on HTTP LAN browsers without SubtleCrypto", async () => {
+  const { chefMealHash } = await load("chef-context");
+  const meal = { id: "meal", recipeId: recipe.id, recipe, servings: 2, baseServings: 2, batches: 1 };
+  const expectedRecipe = await chefRecipeHash(recipe), expectedMeal = await chefMealHash(meal);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: {} });
+  try {
+    assert.equal(await chefRecipeHash(recipe), expectedRecipe);
+    assert.equal(await chefMealHash(meal), expectedMeal);
+    assert.notEqual(await chefRecipeHash({ ...recipe, title: "Changed 🍚" }), expectedRecipe);
+  } finally { Object.defineProperty(globalThis, "crypto", descriptor); }
 });

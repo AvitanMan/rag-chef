@@ -1,10 +1,12 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { AISelection } from "./browser-ai";
 import { scopedStorage } from "./private-storage";
 
 export type AppSession = {
   mode: "local" | "hosted";
+  localServer?: { origins: string[]; aiDefaults: AISelection; requiresPassword?: boolean };
   authenticated: boolean;
   user?: { id: string; name: string; email: string };
   household?: { id: string; name: string; role: "owner" | "member"; timezone: string; assistantEnabled: boolean };

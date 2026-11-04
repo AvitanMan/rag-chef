@@ -1,6 +1,7 @@
 import { partialRecipeAnswer } from "@/app/lib/chef-question-plan";
-import { requireHousehold, HouseholdAuthError, householdError } from "@/app/lib/household";
+import { requireHousehold, HouseholdAuthError, householdError, householdSetting } from "@/app/lib/household";
 import { AiTaskRequired, AiError, createAiWorkflow, aiWorkflowResponse, type AiResume, type StructuredInference } from "@/app/lib/ai-inference";
+import { runLMStudioInference } from "@/app/lib/lmstudio";
 import { runOpenAIInference } from "@/app/lib/ai-connections";
 import { DEFAULT_COOKING_PROFILE } from "@/app/lib/kitchen-types";
 import { isPlanningQuantityQuestion, planningQuantityAnswer, originalIngredientAnswer, planningIngredientStepAnswer } from "@/app/lib/chef-planning-answer";
@@ -130,11 +131,11 @@ async function executeChefRequest(request: Request, resume?: AiResume): Promise<
     input.context = { ...input.context, kitchenRevision: authoritativeKitchen!.revision };
   }
   const workflow = authoritativeKitchen ? await createAiWorkflow(request, householdContext, { operation: "chef", input: rawInput, kitchenRevision: authoritativeKitchen.revision }, resume) : undefined;
-  if (workflow) input.provider = workflow.provider === "openai" ? "openai" : "ollama";
+  if (workflow) input.provider = workflow.provider === "openai" ? "openai" : workflow.provider === "browser_lmstudio" || workflow.provider === "server_lmstudio" ? "lmstudio" : "ollama";
   // Discovery chips belong to dinner search, not help for an already chosen meal.
   if (input.context?.recipeId || input.context?.purpose === "cooking") input.refinements = [];
   const model = workflow?.model ?? resolveChatModel(input.provider, input.model);
-  const cloudVerifier: StructuredInference | undefined = !workflow && input.provider === "openai" ? inference => runOpenAIInference({ apiKey: env("OPENAI_API_KEY"), model }, model, inference, request.signal) : undefined;
+  const selectedInference: StructuredInference | undefined = workflow?.infer ?? (input.provider === "lmstudio" ? inference => runLMStudioInference(model, inference, request.signal) : input.provider === "openai" ? inference => runOpenAIInference({ apiKey: env("OPENAI_API_KEY"), model }, model, inference, request.signal) : undefined);
   const embedModel = env("OLLAMA_EMBED_MODEL", DEFAULT_OLLAMA_EMBED_MODEL);
   let retrieval: RetrievalResult;
   const preWarnings: string[] = [];
@@ -308,7 +309,7 @@ async function executeChefRequest(request: Request, resume?: AiResume): Promise<
         try {
           const generationStarted = performance.now();
           try {
-            generated = workflow ? validateStructuredAnswer(await workflow.infer({ operation: "chef_answer", schema: generationSchema, messages: [{ role: "system", content: `${CHEF_SYSTEM_PROMPT}\n\n${COOKING_STEP_RULES}` }, { role: "user", content: prompt }], maxOutputTokens: 2500 }), references) : input.provider === "openai" ? await generateWithOpenAI(model, prompt, references, generationSchema, request.signal) : await generateWithOllama(model, prompt, references, generationSchema, request.signal);
+            generated = workflow || input.provider === "lmstudio" ? validateStructuredAnswer(await selectedInference!({ operation: "chef_answer", schema: generationSchema, messages: [{ role: "system", content: `${CHEF_SYSTEM_PROMPT}\n\n${COOKING_STEP_RULES}` }, { role: "user", content: prompt }], maxOutputTokens: 2500 }), references) : input.provider === "openai" ? await generateWithOpenAI(model, prompt, references, generationSchema, request.signal) : await generateWithOllama(model, prompt, references, generationSchema, request.signal);
           } finally { generationMs += Math.round(performance.now() - generationStarted); }
           draftAnswer = generated.answer;
           if (!allowChanges && generated.chefChanges.length) invalidGeneratedOutput();
@@ -369,9 +370,9 @@ async function executeChefRequest(request: Request, resume?: AiResume): Promise<
               sourceFocus: dinner?.recipeId ? { recipeId: dinner.recipeId, stepEvidenceId: stepFocus?.evidenceId ?? dinner.stepEvidenceId, ...(stepFocus ? { stepText: stepFocus.text, question: input.query } : {}), quantityBasis: planningAmounts ? "final_dinner" : "original_recipe" } : undefined,
               techniqueGuidance: cookingRecipe ? techniqueGuides.map(guide => ({ recipeId: cookingRecipe.id, term: guide.term, explanation: guide.explanation })) : [],
               kitchenByRecipe: Object.fromEntries(ranked.map(item => [item.recipe.id, { pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients, requirements: { diet: input.profile.diet, equipment: input.profile.equipment }, eligibility: { eligible: item.eligibility.eligible, dietUnknowns: item.eligibility.dietUnknowns, dietConflicts: item.eligibility.dietConflicts, equipmentMissing: item.eligibility.equipmentMissing }, ...(item.readiness ? { readiness: item.readiness } : {}) }])),
-              planningAmounts, signal: request.signal, infer: workflow?.infer ?? cloudVerifier,
+              planningAmounts, signal: request.signal, infer: selectedInference,
             });
-            verification = { ...checked.verification, method: workflow?.provider === "browser_ollama" ? "device_model" : input.provider === "openai" ? "openai_model" : "local_model" }; verificationMs += checked.milliseconds;
+            verification = { ...checked.verification, method: (workflow?.provider === "browser_ollama" || workflow?.provider === "browser_lmstudio") ? "device_model" : input.provider === "openai" ? "openai_model" : "local_model" }; verificationMs += checked.milliseconds;
             if (verification.status !== "checked") throw new ProviderError("The answer could not be checked against its evidence.", 502, verification.status === "rejected" ? "unsupported_claim" : "verification_unavailable");
             if (checked.sourceFacts.length) generated.sourceFacts = checked.sourceFacts;
           }
@@ -384,7 +385,7 @@ async function executeChefRequest(request: Request, resume?: AiResume): Promise<
           }
           break;
         } catch (error) {
-          if (attempt === 0 && draftAnswer !== undefined && input.provider === "ollama" && stepFocus && factualQuestion && !request.signal.aborted
+          if (attempt === 0 && draftAnswer !== undefined && (input.provider === "ollama" || input.provider === "lmstudio") && stepFocus && factualQuestion && !request.signal.aborted
             && error instanceof ProviderError && error.code === "unsupported_claim") {
             prompt = buildPrompt(draftAnswer);
             promptBytes = new TextEncoder().encode(prompt).length;
@@ -887,6 +888,11 @@ function retrievalMetadata(result: RetrievalResult, embedModel: string): ChefApi
 
 function resolveChatModel(provider: ChefProvider, requested?: string): string {
   if (requested) return requested;
+  if (provider === "lmstudio") {
+    // Inference validates the model only when needed, preserving source answers
+    // and catalog fallbacks while LM Studio is unconfigured.
+    return householdSetting("LMSTUDIO_MODEL");
+  }
   return provider === "openai"
     ? env("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
     : env("OLLAMA_CHAT_MODEL", DEFAULT_OLLAMA_CHAT_MODEL);

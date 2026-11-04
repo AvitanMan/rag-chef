@@ -20,6 +20,8 @@ export async function saveKitchenDocument(revision,state,context,options={}){con
 `);
 for(const [name,suffix]of [['prepare',''],['apply','/apply']])await writeFile(join(dir,`${name}.mjs`),compile(await readFile(new URL(`../app/api/assistant${suffix}/route.ts`,import.meta.url),'utf8')));
 const {POST:prepare}=await import(pathToFileURL(join(dir,'prepare.mjs'))),{POST:apply}=await import(pathToFileURL(join(dir,'apply.mjs')));
+await writeFile(join(dir,'app-session.mjs'),`export const kitchenFetch=(...args)=>globalThis.fetch(...args);`);
+const {assistantFetch}=await import(pathToFileURL(join(dir,'browser-ai.mjs')));
 const {EMPTY_KITCHEN}=await import(pathToFileURL(join(dir,'kitchen-types.mjs')));
 const {defaultPlanIntent}=await import(pathToFileURL(join(dir,'chef-plan-intent.mjs')));
 const recipe={id:'rice',title:'Rice',servings:2,category:'Dinner',cuisine:'Home',source:{name:'Original',url:'https://example.com'},sourceUrl:'https://example.com',image:null,tags:[],ingredients:[{name:'rice',measure:'200 g'}],instructions:['Cook from the original directions.']};
@@ -33,6 +35,24 @@ test('compound preview writes nothing; concurrent Apply saves once and returns a
   const responses=await Promise.all([apply(request({draft})),apply(request({draft}))]);assert.ok(responses.every(row=>row.status===200));
   const results=await Promise.all(responses.map(row=>row.json()));assert.equal(results.filter(row=>row.alreadyApplied).length,1);assert.equal(globalThis.assistantApi.writes,1);
   assert.equal(results[0].receipt.memberId,'alice');assert.equal(globalThis.assistantApi.documents.a.state.pantry[0].measure,'500 g');assert.deepEqual(globalThis.assistantApi.documents.b,before.b);
+});
+
+test('unconfigured LM Studio permits manual pantry and taste previews without allowing invalid inference settings',async()=>{
+  reset();
+  const before=structuredClone(globalThis.assistantApi.documents);
+  const options={hosted:false,selection:{provider:'lmstudio',lmstudioModel:'',ollamaModel:'',openaiModel:''},storage:{getItem(){throw new Error('Unexpected model connection lookup');}},fetcher:async(url,init)=>prepare(new Request(new URL(url,'http://localhost:3000'),init))};
+  const pantry=await assistantFetch('/api/assistant',input(),options);
+  assert.equal(pantry.status,200);
+  assert.equal((await pantry.json()).draft.pantryChanges[0].after.measure,'500 g');
+  const tastes=await assistantFetch('/api/assistant',{...input(),intent:{pantry:[],tastes:[{recipeId:'rice',preference:'cook_again'}]}},options);
+  assert.equal(tastes.status,200);
+  assert.equal((await tastes.json()).draft.tasteChanges.length,1);
+  const inference=await assistantFetch('/api/assistant',{...input(),intent:undefined,query:'Add 500 g rice'},options);
+  assert.equal(inference.status,400);
+  assert.equal((await inference.json()).error.code,'invalid_request');
+  const invalidManual=await assistantFetch('/api/assistant',{...input(),intent:{pantry:[{kind:'invent_stock'}]}},options);
+  assert.equal(invalidManual.status,400);
+  assert.deepEqual(globalThis.assistantApi.documents,before);assert.equal(globalThis.assistantApi.writes,0);
 });
 
 test('cross-household/member replay, stale sources/revisions, and cross-origin requests never write',async()=>{

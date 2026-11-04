@@ -28,7 +28,7 @@ export async function decryptAiCredential(cipherText: string, iv: string, userId
 async function rowFor(context: HouseholdContext): Promise<ConnectionRow | null> { return (await householdDb()).prepare("SELECT * FROM ai_connections WHERE user_id = ? AND provider = 'openai'").bind(context.userId).first<ConnectionRow>(); }
 export async function redactedAiConnections(context: HouseholdContext) {
   const row = await rowFor(context);
-  return { openai: { configured: Boolean(row), model: row?.model ?? "gpt-4.1-mini", ...(row ? { lastFour: row.last_four, updatedAt: row.updated_at } : {}) }, availableProviders: ["openai", "browser_ollama"] };
+  return { openai: { configured: Boolean(row), model: row?.model ?? "gpt-4.1-mini", ...(row ? { lastFour: row.last_four, updatedAt: row.updated_at } : {}) }, availableProviders: ["openai", "browser_ollama", "browser_lmstudio"] };
 }
 export async function saveOpenAIConnection(context: HouseholdContext, apiKey: unknown, model: unknown) {
   if (typeof apiKey !== "string" || !/^sk-[A-Za-z0-9_-]{20,509}$/.test(apiKey) || model !== undefined && (typeof model !== "string" || !/^[\w.:-]{1,120}$/.test(model))) throw new Error("Enter a valid OpenAI API key and model.");

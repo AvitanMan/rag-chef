@@ -30,8 +30,53 @@ export function householdSetting(name: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 export function hostedMode(): boolean { return householdSetting("RAG_CHEF_HOSTED") === "1"; }
+export function secureLanMode(): boolean { return !hostedMode() && householdSetting("RAG_CHEF_LAN_AUTH") === "1"; }
+
+/** Exact private IPv4 origins or HTTPS mDNS names only. Never trust forwarded
+ * headers, wildcard bind addresses, or the client's supplied Origin as a host. */
+export function standaloneLanOrigins(value: string): string[] {
+  return [...new Set(value.split(",").flatMap(entry => {
+    const match = entry.trim().match(/^(https?):\/\/([^/:]+):([1-9]\d{0,4})$/i);
+    if (!match || Number(match[3]) > 65535) return [];
+    const hostname = match[2].toLowerCase();
+    if (match[1].toLowerCase() === "https" && hostname.length <= 253 && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+local$/.test(hostname)) return [new URL(entry.trim()).origin];
+    const octets = hostname.split(".");
+    if (octets.length !== 4 || octets.some(part => !/^(?:0|[1-9]\d{0,2})$/.test(part) || Number(part) > 255)) return [];
+    const [first, second] = octets.map(Number);
+    if (!(first === 10 || first === 172 && second >= 16 && second <= 31 || first === 192 && second === 168)) return [];
+    return [new URL(entry.trim()).origin];
+  }))];
+}
+
 export function requireLocalRequest(request: Request): void {
-  if (!hostedMode() && !["localhost", "127.0.0.1", "[::1]"].includes(new URL(request.url).hostname)) throw new HouseholdAuthError("HOSTED_NOT_CONFIGURED", "Shared access requires configured hosted sign-in. Standalone kitchens are available only on loopback addresses.", 503);
+  if (hostedMode()) return;
+  const url = new URL(request.url);
+  if (secureLanMode() && url.protocol !== "https:") throw new HouseholdAuthError("LAN_HTTPS_REQUIRED", "Open this kitchen using its configured HTTPS address.");
+  const allowed = standaloneLanOrigins(householdSetting("RAG_CHEF_LAN_ORIGINS")).includes(url.origin);
+  if (!allowed && (secureLanMode() || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
+    throw new HouseholdAuthError("HOSTED_NOT_CONFIGURED", "Standalone kitchens require loopback access or an explicitly configured private LAN origin in RAG_CHEF_LAN_ORIGINS. Public access requires hosted sign-in.", 503);
+  }
+}
+
+/** Basic credentials are verified only over HTTPS; the stored setting is a
+ * SHA-256 hash of username:password, never the reusable password itself. */
+export async function requireSecureLanAccess(request: Request): Promise<void> {
+  if (!secureLanMode()) return;
+  const expected = householdSetting("RAG_CHEF_LAN_PASSWORD_SHA256").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) throw new HouseholdAuthError("LAN_AUTH_NOT_CONFIGURED", "Secure local access is not configured. Restart using the secure local launcher.", 503);
+  requireLocalRequest(request);
+  const denied = () => { throw new HouseholdAuthError("LAN_SIGN_IN_REQUIRED", "Enter the kitchen username and password.", 401); };
+  const authorization = request.headers.get("authorization") ?? "";
+  const match = authorization.length <= 1024 ? authorization.match(/^Basic ([A-Za-z0-9+/]+={0,2})$/i) : null;
+  if (!match || match[1].length % 4 !== 0) return denied();
+  let credentials: string;
+  try { credentials = atob(match[1]); } catch { return denied(); }
+  if (!/^[A-Za-z0-9_-]{1,64}:[\x21-\x7e]{6,128}$/.test(credentials) || btoa(credentials) !== match[1]) return denied();
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(credentials)));
+  // Both values have fixed length, and every byte participates in the comparison.
+  let difference = 0;
+  for (let index = 0; index < digest.length; index++) difference |= digest[index] ^ parseInt(expected.slice(index * 2, index * 2 + 2), 16);
+  if (difference !== 0) denied();
 }
 export async function householdDb(): Promise<D1Database> {
   const binding = runtimeBindings?.DB ?? ((await import("cloudflare:workers")).env as unknown as Bindings).DB;
@@ -50,7 +95,7 @@ export function emailAllowed(email: string, key: string): boolean {
 export function requireSameOrigin(request: Request): void {
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return;
   const origin = request.headers.get("origin");
-  if ((origin && origin !== new URL(request.url).origin) || request.headers.get("sec-fetch-site") === "cross-site" || (hostedMode() && !origin)) {
+  if ((origin && origin !== new URL(request.url).origin) || request.headers.get("sec-fetch-site") === "cross-site" || ((hostedMode() || secureLanMode()) && !origin)) {
     throw new HouseholdAuthError("CROSS_ORIGIN_WRITE", "A same-origin request is required.");
   }
 }
@@ -59,7 +104,7 @@ export function requireOwner(context: HouseholdContext): void {
 }
 export function householdError(error: unknown): Response {
   const known = error instanceof HouseholdAuthError;
-  return Response.json({ error: { code: known ? error.code : "HOUSEHOLD_UNAVAILABLE", message: known ? error.message : "The household is temporarily unavailable." } }, { status: known ? error.status : 503, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ error: { code: known ? error.code : "HOUSEHOLD_UNAVAILABLE", message: known ? error.message : "The household is temporarily unavailable." } }, { status: known ? error.status : 503, headers: { "Cache-Control": "no-store", ...(known && error.code === "LAN_SIGN_IN_REQUIRED" ? { "WWW-Authenticate": 'Basic realm="RAG Chef", charset="UTF-8"' } : {}) } });
 }
 
 export async function requireIdentity(request: Request) {
@@ -78,7 +123,7 @@ export async function membershipFor(userId: string): Promise<Membership | null> 
 }
 export async function requireHousehold(request: Request): Promise<HouseholdContext> {
   await initializeHouseholdRuntime();
-  if (!hostedMode()) { if (request) { requireLocalRequest(request); requireSameOrigin(request); } return localHousehold(); }
+  if (!hostedMode()) { if (request) { await requireSecureLanAccess(request); requireLocalRequest(request); requireSameOrigin(request); } return localHousehold(); }
   requireSameOrigin(request);
   const session = await requireIdentity(request);
   const membership = await membershipFor(session.user.id);
@@ -104,8 +149,9 @@ export function isPlatformAdminRequest(request: Request): boolean { return platf
 export async function authorizeApplicationRequest(request: Request): Promise<Response | null> {
   try {
     await initializeHouseholdRuntime();
+    await requireSecureLanAccess(request);
     const path = new URL(request.url).pathname;
-    if (!path.startsWith("/api/")) return null;
+    if (!path.startsWith("/api/")) { if (secureLanMode()) requireSameOrigin(request); return null; }
     requireSameOrigin(request);
     if (!hostedMode()) { if (!path.startsWith("/api/admin/")) requireLocalRequest(request); return null; }
     const { validateHostedConfiguration } = await import("./auth");

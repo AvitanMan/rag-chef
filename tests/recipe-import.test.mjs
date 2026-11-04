@@ -15,7 +15,7 @@ for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filt
 }
 await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
 await writeFile(join(dir, "auth.mjs"), "export async function getAuth() { return { api: { getSession: async () => globalThis.recipeImportSession ?? null } }; }");
-const modules = ["household", "ai-inference", "ai-connections", "demo-recipes", "recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
+const modules = ["random-id", "household", "ai-inference", "ai-connections", "lmstudio", "demo-recipes", "recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
 const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
 files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
 files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
@@ -1859,4 +1859,76 @@ test("a proposed vegan change cannot hide retained dairy in a removal tail", asy
     const result = await (await chefRoute.POST(chefRequest({ query: "Make this recipe vegan.", context: { recipeId: imported.catalogId } }))).json();
     assert.equal(result.answerStatus, "unverified", change); assert.equal(result.verification.reason, "exclusion_conflict"); assert.deepEqual(result.chefChanges, []);
   }
+});
+
+test("LM Studio Chef answers source and planning quantities without a configured model", async () => {
+  const imported = await importOne(await draft(0, { ingredients: [{ name: "rice", measure: "400 g" }] }));
+  const oldModel = env.LMSTUDIO_MODEL;
+  env.LMSTUDIO_MODEL = "";
+  try {
+    const value = { schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true };
+    db.prepare("INSERT OR REPLACE INTO kitchen_state VALUES (?, ?, ?, ?)").run("local-household", JSON.stringify(value), 1, "2026-11-04T12:00:00Z");
+    const context = { kitchenRevision: 1, recipeId: imported.catalogId, purpose: "planning", targetDate: "2026-11-04", today: "2026-11-04", servings: 2 };
+    const before = modelCalls;
+    for (const model of [undefined, ""]) {
+      const originalResponse = await chefRoute.POST(chefRequest({ provider: "lmstudio", model, query: "How much rice does the original recipe use?", context }));
+      assert.equal(originalResponse.status, 200);
+      const original = await originalResponse.json();
+      assert.equal(original.answerStatus, "answered"); assert.match(original.answer, /400 g/);
+      assert.equal(original.sourceFacts[0].recipeId, imported.catalogId);
+      const plannedResponse = await chefRoute.POST(chefRequest({ provider: "lmstudio", model, query: "How much rice do I need?", context }));
+      assert.equal(plannedResponse.status, 200);
+      const planned = await plannedResponse.json();
+      assert.equal(planned.answerStatus, "answered"); assert.equal(planned.planningFacts[0].measure, "200 g");
+      assert.equal(planned.planningFacts[0].basis, "source_scaled");
+    }
+    assert.equal(modelCalls, before, "Deterministic answers do not contact an AI provider");
+  } finally { if (oldModel === undefined) delete env.LMSTUDIO_MODEL; else env.LMSTUDIO_MODEL = oldModel; }
+});
+
+test("LM Studio Chef keeps catalog suggestions available when no valid model is configured", async () => {
+  const imported = await importOne(await draft());
+  const oldModel = env.LMSTUDIO_MODEL;
+  const calls = [];
+  globalThis.fetch = async url => { calls.push(String(url)); throw new Error("Local retrieval embeddings unavailable"); };
+  try {
+    for (const model of ["", "invalid model"]) {
+      env.LMSTUDIO_MODEL = model;
+      const response = await chefRoute.POST(chefRequest({ provider: "lmstudio", query: "Test rice 0" }));
+      assert.equal(response.status, 200);
+      const result = await response.json();
+      assert.equal(result.provider, "lmstudio"); assert.equal(result.generation, "catalog_fallback");
+      assert.equal(result.recommendations[0].recipeId, imported.catalogId);
+      assert.ok(result.warnings.some(warning => warning.includes("The AI provider is unavailable")));
+    }
+    assert.ok(calls.every(url => url.endsWith("/api/embed")), "Missing or invalid models cannot trigger chat inference or switch providers");
+  } finally { if (oldModel === undefined) delete env.LMSTUDIO_MODEL; else env.LMSTUDIO_MODEL = oldModel; }
+});
+
+test("LM Studio Chef verifies with the selected model and withholds when that verifier is unavailable", async () => {
+  const imported = await importOne(await draft());
+  const old = Object.fromEntries(["LMSTUDIO_BASE_URL", "LMSTUDIO_API_KEY"].map(key => [key, process.env[key]]));
+  Object.assign(process.env, { LMSTUDIO_BASE_URL: "http://127.0.0.1:1234/v1", LMSTUDIO_API_KEY: "" });
+  try {
+    for (const unavailable of [false, true]) {
+      const calls = [];
+      globalThis.fetch = async (url, options) => {
+        calls.push(String(url)); assert.equal(url, "http://127.0.0.1:1234/v1/chat/completions");
+        const body = JSON.parse(options.body); assert.equal(body.model, "studio-chef-model");
+        let answer;
+        if (body.response_format.json_schema.schema.properties.sentences) {
+          if (unavailable) return Response.json({ error: "model unavailable" }, { status: 503 });
+          const verification = JSON.parse(body.messages[1].content);
+          const ref = verification.evidence.find(item => item.evidenceId === "S2").ref;
+          answer = { sentences: verification.sentences.map(sentence => ({ id: sentence.id, verdict: "supported", supportRefs: [ref] })) };
+        } else answer = { answer: "Cook rice until tender.", answerStatus: "answered", sourceFacts: [{ recipeId: "R1", evidenceId: "S2" }], recommendations: [], chefChanges: [], warnings: [] };
+        return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer) } }] });
+      };
+      const response = await chefRoute.POST(chefRequest({ provider: "lmstudio", model: "studio-chef-model", query: "Explain this source step.", context: { recipeId: imported.catalogId } }));
+      const result = await response.json(); assert.equal(response.status, 200); assert.equal(result.provider, "lmstudio"); assert.equal(calls.length, 2);
+      assert.equal(result.verification.status, unavailable ? "unavailable" : "checked");
+      if (unavailable) { assert.notEqual(result.generation, "ai"); assert.notEqual(result.answer, "Cook rice until tender."); }
+      else { assert.equal(result.generation, "ai"); assert.equal(result.verification.method, "local_model"); }
+    }
+  } finally { for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
 });

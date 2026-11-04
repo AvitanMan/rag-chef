@@ -7,7 +7,7 @@ export const DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text";
 export const DEFAULT_OPENAI_MODEL = "gpt-5.6-terra";
 export const MAX_CHEF_REFINEMENT_LENGTH = 200;
 
-export type ChefProvider = "ollama" | "openai";
+export type ChefProvider = "ollama" | "openai" | "lmstudio";
 
 export type PantryItem = {
   name: string;
@@ -321,8 +321,8 @@ function parseProvider(value: unknown): ChefProvider {
   if (value === undefined || value === null || value === "") {
     return DEFAULT_CHEF_PROVIDER;
   }
-  if (value === "ollama" || value === "openai") return value;
-  throw new ChefValidationError('provider must be either "ollama" or "openai".');
+  if (value === "ollama" || value === "openai" || value === "lmstudio") return value;
+  throw new ChefValidationError('provider must be "ollama", "openai", or "lmstudio".');
 }
 
 function parsePantry(value: unknown): PantryItem[] {

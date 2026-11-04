@@ -77,3 +77,22 @@ test('legacy plan Apply captures catalog revision before loading and passes it t
     if(changed){assert.equal((await response.json()).error.code,'catalog_changed');assert.equal(globalThis.planApiTest.document.revision,1);}
   }
 });
+
+test("standalone planner honors LM Studio selection and only prepares a read-only draft", async () => {
+  reset(); const original = globalThis.fetch;
+  const { configureHouseholdRuntime } = await import(pathToFileURL(join(dir, "household-real.mjs")));
+  configureHouseholdRuntime({ RAG_CHEF_HOSTED: "0", LMSTUDIO_BASE_URL: "http://127.0.0.1:1234/v1", LMSTUDIO_API_KEY: "" });
+  let calls = 0;
+  globalThis.fetch = async (url, options) => {
+    calls++; assert.equal(url, "http://127.0.0.1:1234/v1/chat/completions");
+    const body = JSON.parse(options.body); assert.equal(body.model, "planner-studio-model");
+    const generated = { count: null, servings: null, batches: null, dates: [], excludedIngredients: [], diets: [], excludedEquipment: [], maxTotalMinutes: null, priority: null, allowRepeats: null, evidence: Object.fromEntries(["count", "servings", "batches", "excludedIngredients", "diets", "excludedEquipment", "maxTotalMinutes", "priority", "allowRepeats"].map(key => [key, ""])) };
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(generated) } }] });
+  };
+  try {
+    const response = await preview(request({ ...input(), intent: undefined, query: "Plan two dinners", provider: "lmstudio", model: "planner-studio-model" }));
+    assert.equal(response.status, 200); const { draft } = await response.json();
+    assert.equal(draft.interpretation, "lmstudio"); assert.equal(draft.changes.length, 2);
+    assert.equal(calls, 1); assert.equal(globalThis.planApiTest.writes, 0);
+  } finally { globalThis.fetch = original; configureHouseholdRuntime({ RAG_CHEF_HOSTED: "0" }); }
+});

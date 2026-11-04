@@ -1,3 +1,4 @@
+import { runLMStudioInference } from "./lmstudio";
 import type { HouseholdContext } from "./household";
 import { householdDb, householdSetting, HouseholdAuthError, householdError, validateHouseholdContext } from "./household";
 import { getKitchenDocument } from "./kitchen-store";
@@ -6,9 +7,9 @@ import { DEFAULT_OLLAMA_CHAT_MODEL, DEFAULT_OPENAI_MODEL } from "./chef-schema";
 
 export type StructuredInferenceRequest = { operation: string; schema: Record<string, unknown>; messages: Array<{ role: "system" | "user" | "assistant"; content: string }>; maxOutputTokens?: number };
 export type StructuredInference = (request: StructuredInferenceRequest) => Promise<unknown>;
-export type AiProviderSelection = { provider: "openai" | "browser_ollama"; model?: string };
+export type AiProviderSelection = { provider: "openai" | "browser_ollama" | "browser_lmstudio"; model?: string };
 export type AiResume = { workflowId: string; transcript: Array<{ requestHash: string; rawOutput: string }> };
-export type AiModelTask = { taskId: string; token: string; operation: string; model: string; expiresAt: string; ollamaRequest: { model: string; messages: StructuredInferenceRequest["messages"]; format: Record<string, unknown>; stream: false; think: false; options: { temperature: number; num_predict: number } } };
+export type AiModelTask = { provider: "browser_ollama" | "browser_lmstudio"; taskId: string; token: string; operation: string; model: string; expiresAt: string; ollamaRequest: { model: string; messages: StructuredInferenceRequest["messages"]; format: Record<string, unknown>; stream: false; think: false; options: { temperature: number; num_predict: number } } };
 export class AiError extends Error { constructor(message: string, public code = "ai_unavailable", public status = 503) { super(message); this.name = "AiError"; } }
 export class AiTaskRequired extends Error { constructor(public task: AiModelTask) { super("Continue this request with the local model on your device."); this.name = "AiTaskRequired"; } }
 export const aiJson = (value: unknown, status = 200) => Response.json(value, { status, headers: { "cache-control": "no-store" } });
@@ -21,28 +22,29 @@ export async function aiHash(value: string): Promise<string> { return [...new Ui
 const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical((value as Record<string, unknown>)[key])])) : value;
 const randomToken = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 export function parseAiSelection(value: unknown): AiProviderSelection {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AiError("Choose your personal OpenAI connection or this device's Ollama model.", "ai_connection_required", 400);
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AiError("Choose your personal OpenAI connection or this device's Ollama or LM Studio model.", "ai_connection_required", 400);
   const row = value as Record<string, unknown>;
-  if (Object.keys(row).some(key => !["provider", "model"].includes(key)) || !["openai", "browser_ollama"].includes(String(row.provider)) || row.model !== undefined && (typeof row.model !== "string" || !/^[\w./:-]{1,120}$/.test(row.model))) throw new AiError("Choose a valid AI connection and model.", "invalid_ai_connection", 400);
+  if (Object.keys(row).some(key => !["provider", "model"].includes(key)) || !["openai", "browser_ollama", "browser_lmstudio"].includes(String(row.provider)) || row.model !== undefined && (typeof row.model !== "string" || !/^[\w./:-]{1,120}$/.test(row.model))) throw new AiError("Choose a valid AI connection and model.", "invalid_ai_connection", 400);
   return row as AiProviderSelection;
 }
-export async function createAiWorkflow(request: Request, context: HouseholdContext, descriptor: { operation: "assistant" | "chef" | "plan"; input: Record<string, unknown>; kitchenRevision: number }, resume?: AiResume): Promise<{ infer: StructuredInference; provider: AiProviderSelection["provider"] | "server_ollama"; model: string }> {
+export async function createAiWorkflow(request: Request, context: HouseholdContext, descriptor: { operation: "assistant" | "chef" | "plan"; input: Record<string, unknown>; kitchenRevision: number }, resume?: AiResume): Promise<{ infer: StructuredInference; provider: AiProviderSelection["provider"] | "server_ollama" | "server_lmstudio"; model: string }> {
   if (context.mode === "hosted" && !context.assistantEnabled) throw new AiError("The household assistant is not enabled for this beta.", "assistant_disabled", 403);
   // Standalone mode retains its existing server-local configuration. This path
   // is never available to a hosted household or a browser task continuation.
   if (context.mode === "local" && descriptor.input.ai === undefined && !resume) {
     const provider = descriptor.input.provider ?? "ollama";
-    if (provider !== "ollama" && provider !== "openai") throw new AiError("Choose Ollama or OpenAI.", "invalid_ai_connection", 400);
-    const model = descriptor.input.model ?? (householdSetting(provider === "openai" ? "OPENAI_MODEL" : "OLLAMA_CHAT_MODEL") || (provider === "openai" ? DEFAULT_OPENAI_MODEL : DEFAULT_OLLAMA_CHAT_MODEL));
-    if (typeof model !== "string" || !/^[\w./:-]{1,120}$/.test(model)) throw new AiError("Choose a valid model.", "invalid_ai_connection", 400);
+    if (provider !== "ollama" && provider !== "openai" && provider !== "lmstudio") throw new AiError("Choose Ollama, LM Studio, or OpenAI.", "invalid_ai_connection", 400);
+    const model = descriptor.input.model ?? (householdSetting(provider === "openai" ? "OPENAI_MODEL" : provider === "lmstudio" ? "LMSTUDIO_MODEL" : "OLLAMA_CHAT_MODEL") || (provider === "openai" ? DEFAULT_OPENAI_MODEL : provider === "lmstudio" ? "" : DEFAULT_OLLAMA_CHAT_MODEL));
+    if (typeof model !== "string" || !/^[\w./:-]{1,120}$/.test(model)) throw new AiError(provider === "lmstudio" ? "Choose the model identifier shown in LM Studio or configure LMSTUDIO_MODEL." : "Choose a valid model.", "invalid_ai_connection", 400);
     const apiKey = householdSetting("OPENAI_API_KEY");
     if (provider === "openai" && !apiKey) throw new AiError("Configure OPENAI_API_KEY for this standalone installation.", "ai_connection_required", 400);
     let calls = 0;
-    return { provider: provider === "openai" ? "openai" : "server_ollama", model, infer: async inference => {
+    return { provider: provider === "openai" ? "openai" : provider === "lmstudio" ? "server_lmstudio" : "server_ollama", model, infer: async inference => {
       if (++calls > 6) throw new AiError("Split this request into smaller requests.", "task_limit", 400);
       try {
         let value: unknown;
         if (provider === "openai") value = await runOpenAIInference({ apiKey, model }, model, inference, request.signal);
+        else if (provider === "lmstudio") value = await runLMStudioInference(model, inference, request.signal);
         else {
           const baseUrl = householdSetting("OLLAMA_BASE_URL") || "http://127.0.0.1:11434", url = new URL(baseUrl);
           if (!["http:", "https:"].includes(url.protocol) || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.username || url.password) throw new Error("Use a loopback Ollama address.");
@@ -58,13 +60,14 @@ export async function createAiWorkflow(request: Request, context: HouseholdConte
   }
   const selection = parseAiSelection(descriptor.input.ai);
   const connection = selection.provider === "openai" ? await readOpenAIConnection(context) : undefined;
-  const model = selection.model ?? connection?.model ?? "qwen3.5:9b";
+  const model = selection.model ?? connection?.model ?? (selection.provider === "browser_lmstudio" ? "" : DEFAULT_OLLAMA_CHAT_MODEL);
+  if (!model) throw new AiError("Choose and test a model in LM Studio settings first.", "invalid_ai_connection", 400);
   if (selection.provider === "openai" && !connection) throw new AiError("Add your own OpenAI API key in AI connections.", "ai_connection_required", 400);
   let phase = 0;
   const infer: StructuredInference = async inference => {
     if (phase >= 6) throw new AiError("This request needs too many model steps. Split it into smaller requests.", "task_limit", 400);
     if (request.signal.aborted) throw new AiError("Request cancelled.", "cancelled", 499);
-    const requestHash = await aiHash(JSON.stringify(canonical({ version: 1, actor: context.userId, household: context.householdId, revision: descriptor.kitchenRevision, model, inference })));
+    const requestHash = await aiHash(JSON.stringify(canonical({ version: 1, actor: context.userId, household: context.householdId, revision: descriptor.kitchenRevision, provider: selection.provider, model, inference })));
     if (selection.provider === "openai") {
       await validateHouseholdContext(context);
       const current = await readOpenAIConnection(context);
@@ -84,7 +87,7 @@ export async function createAiWorkflow(request: Request, context: HouseholdConte
     const workflowId = resume?.workflowId ?? crypto.randomUUID();
     if (resume && await db.prepare("SELECT id FROM ai_model_tasks WHERE workflow_id = ? AND actor_id = ? AND household_id = ? AND status = 'cancelled' LIMIT 1").bind(workflowId, context.userId, context.householdId).first()) throw new AiError("Request cancelled.", "cancelled", 409);
     const taskId = crypto.randomUUID(), token = randomToken(), expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
-    const task: AiModelTask = { taskId, token, operation: inference.operation, model, expiresAt, ollamaRequest: { model, messages: inference.messages, format: inference.schema, stream: false, think: false, options: { temperature: 0, num_predict: inference.maxOutputTokens ?? 1400 } } };
+    const task: AiModelTask = { provider: selection.provider, taskId, token, operation: inference.operation, model, expiresAt, ollamaRequest: { model, messages: inference.messages, format: inference.schema, stream: false, think: false, options: { temperature: 0, num_predict: inference.maxOutputTokens ?? 1400 } } };
     // Delete expired private task context opportunistically; it is never kitchen state.
     await db.prepare("DELETE FROM ai_model_tasks WHERE expires_at < ?").bind(new Date().toISOString()).run();
     const created = await db.prepare("INSERT INTO ai_model_tasks (id, workflow_id, actor_id, household_id, operation, token_hash, request_hash, kitchen_revision, input_json, transcript_json, status, expires_at, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE NOT EXISTS (SELECT 1 FROM ai_model_tasks WHERE workflow_id=? AND status='cancelled') RETURNING id").bind(taskId, workflowId, context.userId, context.householdId, descriptor.operation, await aiHash(token), requestHash, descriptor.kitchenRevision, JSON.stringify(descriptor.input), JSON.stringify(resume?.transcript ?? []), expiresAt, new Date().toISOString(), workflowId).first();

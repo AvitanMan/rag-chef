@@ -67,6 +67,23 @@ Known allergy, diet, equipment, and ingredient conflicts are filtered before
 ranking. Unknown suitability and quantities stay visible for review. These
 checks do not certify allergy safety or cross-contact conditions.
 
+## Use from your phone
+
+Run **`pnpm start:secure`** on the computer that runs your AI model. It builds
+and starts a password-protected HTTPS kitchen at **`https://ragchef.local:3443`**.
+Connect your phone to the same Wi-Fi. On macOS, the friendly name is announced
+automatically; an HTTPS IP fallback is printed too.
+
+On first use, transfer `.wrangler/local-https/root-ca.cer` to your phone and trust
+that public certificate. The username and randomly generated password are in
+`.wrangler/local-https/credentials.json`. These local files are ignored by Git;
+private keys stay on the server. [Certificate setup and LAN troubleshooting](docs/guide.md#use-from-a-phone-on-your-local-network).
+
+Keep the computer and model running. The phone uses the computer's AI and shared
+kitchen; it does not need LM Studio or Ollama installed. Choose the provider in
+Settings, or set `RAG_CHEF_AI_PROVIDER` and the model in `.dev.vars` for new browsers.
+The older `pnpm start:lan` mode remains available for explicitly unprotected HTTP.
+
 ## Optional AI
 
 For local generation and semantic search, install and run Ollama, then pull:
@@ -78,6 +95,8 @@ ollama pull nomic-embed-text
 
 Use **Settings → Test connection** to check generation, search, and answer
 verification separately. Missing embeddings keep lexical/pantry search usable.
+**LM Studio** is also supported for Chef answers, kitchen assistant drafts, and meal planning. Start its local server, choose **Settings → LM Studio**, and enter the model identifier shown in LM Studio. Generation and answer verification both use that model. Semantic embeddings remain a separate Ollama option; lexical/pantry search works without them.
+
 OpenAI generation is optional. Source-answer verification uses the same selected provider, so OpenAI does not require Ollama. Its separate verification request is also billed to your key. Hosted accounts configure their personal connection in Settings; the server never falls back to a platform key.
 
 [Configuration and model setup](docs/guide.md#enable-local-ai) explains local
@@ -101,8 +120,8 @@ flowchart LR
 ```
 
 React/Next.js-compatible app code runs through **Vinext/Vite** and Cloudflare's
-local runtime. **Drizzle** manages D1 migrations. **Ollama** supplies local models;
-OpenAI is an optional generation provider. No separate vector database is needed.
+local runtime. **Drizzle** manages D1 migrations. **Ollama** or **LM Studio** supplies local generation;
+OpenAI is an optional cloud provider. No separate vector database is needed.
 Original recipe text, selected evidence, calculated amounts, and suggested
 adaptations remain distinct; suggestions never silently rewrite saved meals.
 

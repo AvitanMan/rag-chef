@@ -254,3 +254,70 @@ test('recovering an older private draft preserves newer independent household st
   await expect.poll(async () => (await document(context.request)).state.pantry.map((row: { name: string; measure: string }) => `${row.name}:${row.measure}`).sort()).toEqual(['beans:2 kg', 'rice:500 g']);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), cacheKey)).toEqual(recovered);
 });
+
+test('LM Studio browser connection prepares a real assistant draft without changing the kitchen', async ({ page, context }, info) => {
+  const ownerId = `owner-${info.project.name}`;
+  const model = 'test/lmstudio-model';
+  await login(context, ownerId);
+  let session = await (await context.request.get('/api/session')).json();
+  if (!session.household) {
+    expect((await context.request.post('/api/household', { headers, data: { name: `LM Studio ${info.project.name}`, timezone: 'UTC' } })).status()).toBe(201);
+    session = await (await context.request.get('/api/session')).json();
+  }
+  expect((await context.request.patch('/api/household', { headers, data: { assistantEnabled: true } })).status()).toBe(200);
+  const prefix = `rag-chef-account:${encodeURIComponent(ownerId)}:${encodeURIComponent(session.household.id)}:`;
+  const calls: Array<Record<string, unknown>> = [];
+  const rawOutput = { pantry: [{ kind: 'add', name: 'rice', stockId: null, measure: '2 kg', useBy: null, useBySpecified: false, evidence: 'Add 2 kg rice' }], tastes: [], planningQuery: null, completion: null, clarification: null };
+  await page.route('http://127.0.0.1:1234/v1/**', async route => {
+    const request = route.request();
+    expect(request.headers().authorization).toBeUndefined();
+    expect(request.headers().cookie).toBeUndefined();
+    if (request.url().endsWith('/models')) {
+      await route.fulfill({ json: { data: [{ id: model }] } });
+      return;
+    }
+    expect(request.url()).toBe('http://127.0.0.1:1234/v1/chat/completions');
+    const body = request.postDataJSON(); calls.push(body);
+    expect(body).toMatchObject({ model, stream: false, response_format: { type: 'json_schema', json_schema: { strict: true } } });
+    expect(body.format).toBeUndefined();
+    const isTest = Boolean(body.response_format.json_schema.schema.properties.ready);
+    await route.fulfill({ json: { choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(isTest ? { ready: true } : rawOutput) } }] } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const connections = page.getByRole('region', { name: 'Your AI connections' });
+  await connections.locator('.provider-card').filter({ hasText: 'LM Studio' }).click();
+  await expect(connections.getByRole('textbox', { name: 'LM Studio on this computer', exact: true })).toHaveValue('http://127.0.0.1:1234');
+  await connections.getByRole('button', { name: 'Connect to LM Studio', exact: true }).click();
+  await expect(connections.getByRole('combobox', { name: 'Local model', exact: true })).toHaveValue(model);
+  await connections.getByRole('button', { name: 'Test and save local model', exact: true }).click();
+  await expect(connections.getByRole('status')).toContainText('Keep LM Studio running');
+  const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), prefix + 'rag-chef-lmstudio-ai-v1');
+  expect(saved).toMatchObject({ endpoint: 'http://127.0.0.1:1234', model, origin: baseURL });
+  await page.screenshot({ path: info.outputPath('lmstudio-browser-connection.png'), fullPage: true });
+  await connections.locator('.provider-card').filter({ hasText: 'Local Ollama' }).click();
+  await expect(connections.getByRole('textbox', { name: 'Ollama on this computer', exact: true })).toHaveValue('http://127.0.0.1:11434');
+  await connections.locator('.provider-card').filter({ hasText: 'LM Studio' }).click();
+  await expect(connections.getByRole('combobox', { name: 'Local model', exact: true })).toHaveValue(model);
+
+  await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Plan/ }).filter({ visible: true }).first().click();
+  await page.getByRole('button', { name: 'Kitchen assistant', exact: true }).click();
+  const assistant = page.getByRole('dialog', { name: 'Kitchen assistant', exact: true });
+  await assistant.getByRole('textbox', { name: 'Your request', exact: true }).fill('Add 2 kg rice');
+  await expect(assistant.getByRole('button', { name: 'Ask Chef', exact: true })).toBeEnabled();
+  const before = await document(context.request);
+  const prepared = page.waitForResponse(response => new URL(response.url()).pathname === '/api/assistant' && response.request().method() === 'POST');
+  await assistant.getByRole('button', { name: 'Ask Chef', exact: true }).click();
+  const response = await prepared;
+  expect(response.status()).toBe(202);
+  expect(response.request().postDataJSON().ai).toEqual({ provider: 'browser_lmstudio', model });
+  expect((await response.json()).task.provider).toBe('browser_lmstudio');
+  await expect(assistant.getByRole('region', { name: 'Proposed kitchen changes' })).toContainText('rice');
+  await expect(assistant.getByRole('button', { name: 'Apply changes', exact: true })).toBeEnabled();
+  expect(calls).toHaveLength(2);
+  expect(await document(context.request)).toEqual(before);
+  await page.getByRole('button', { name: 'Close kitchen assistant', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await connections.getByRole('button', { name: 'Forget connection', exact: true }).click();
+  expect(await page.evaluate(key => localStorage.getItem(key), prefix + 'rag-chef-lmstudio-ai-v1')).toBeNull();
+});

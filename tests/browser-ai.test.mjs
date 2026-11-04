@@ -12,7 +12,7 @@ after(async () => { if (priorWindow === undefined) delete globalThis.window; els
 const source = await readFile(new URL("../app/lib/browser-ai.ts", import.meta.url), "utf8");
 await writeFile(join(dir, "browser-ai.mjs"), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace('"./app-session"', '"./app-session.mjs"'));
 await writeFile(join(dir, "app-session.mjs"), "export const kitchenFetch = (...args) => globalThis.fetch(...args);");
-const { assistantFetch, listLocalModels, localOllamaEndpoint, readLocalAI, LOCAL_AI_KEY } = await import(pathToFileURL(join(dir, "browser-ai.mjs")));
+const { assistantFetch, listLocalModels, localOllamaEndpoint, readLocalAI, testLocalModel, localLMStudioEndpoint, LOCAL_LMSTUDIO_AI_KEY, LOCAL_AI_KEY } = await import(pathToFileURL(join(dir, "browser-ai.mjs")));
 class MemoryStorage { values = new Map(); get length() { return this.values.size; } key(index) { return [...this.values.keys()][index] ?? null; } getItem(key) { return this.values.get(key) ?? null; } setItem(key,value) { this.values.set(key,String(value)); } removeItem(key) { this.values.delete(key); } clear() { this.values.clear(); } }
 const selection = { provider: "ollama", ollamaModel: "test-model", openaiModel: "test-openai" };
 const configured = () => { const storage = new MemoryStorage(); storage.setItem(LOCAL_AI_KEY, JSON.stringify({ endpoint: "http://127.0.0.1:11434", model: selection.ollamaModel, origin: window.location.origin, testedAt: new Date().toISOString() })); return storage; };
@@ -38,6 +38,19 @@ test("manual previews need no model connection and standalone requests preserve 
   assert.equal(requests[1].body.provider, "openai"); assert.equal(requests[1].body.model, "test-openai"); assert.equal(requests[1].body.ai, undefined);
   await assistantFetch("/api/chef", { provider: "ollama", model: "existing-model" }, { selection, hosted: false, storage, fetcher });
   assert.equal(requests[2].body.model, "existing-model");
+});
+
+test("manual assistant and planner previews omit incomplete AI settings in local and hosted kitchens", async () => {
+  const storage = { getItem() { throw new Error("Manual previews must not read model connections"); } };
+  for (const hosted of [false, true]) for (const url of ["/api/assistant", "/api/chef/plan"]) {
+    const intent = { pantry: [] };
+    let sent;
+    await assistantFetch(url, { intent, model: "", provider: "lmstudio", ai: { provider: "browser_lmstudio", model: "" } }, {
+      hosted, storage, selection: { ...selection, provider: "lmstudio", lmstudioModel: "" },
+      fetcher: async (_url, options) => { sent = JSON.parse(options.body); return Response.json({ draft: {} }); },
+    });
+    assert.deepEqual(sent, { intent }, `${url}, hosted=${hosted}`);
+  }
 });
 
 test("browser phases use the injected account fetcher for server traffic and omit credentials locally", async () => {
@@ -125,5 +138,95 @@ test("unsupported permission queries preserve normal connections without account
   } finally {
     globalThis.fetch = originalFetch;
     if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor); else delete globalThis.navigator;
+  }
+});
+
+const lmSelection = { ...selection, provider: "lmstudio", lmstudioModel: "test-model" };
+const lmConfigured = () => { const storage = configured(); storage.setItem(LOCAL_LMSTUDIO_AI_KEY, JSON.stringify({ endpoint: "http://127.0.0.1:1234/v1", model: "test-model", origin: window.location.origin, testedAt: new Date().toISOString() })); return storage; };
+const lmOutput = (content = '{"ok":true}', finish_reason = "stop") => Response.json({ choices: [{ finish_reason, message: { content } }] });
+
+test("LM Studio connections are separate and accept only loopback API roots", () => {
+  assert.equal(localLMStudioEndpoint("http://localhost:1234/v1/"), "http://localhost:1234");
+  for (const endpoint of ["http://remote.example:1234/v1", "http://localhost:1234/v1/chat/completions", "http://user:key@localhost:1234", "http://localhost:1234/v1?key=x"]) assert.throws(() => localLMStudioEndpoint(endpoint));
+  const storage = lmConfigured();
+  assert.equal(readLocalAI(storage, "lmstudio").endpoint, "http://127.0.0.1:1234");
+  assert.equal(readLocalAI(storage).endpoint, "http://127.0.0.1:11434");
+  storage.removeItem(LOCAL_LMSTUDIO_AI_KEY);
+  assert.equal(readLocalAI(storage, "lmstudio"), null);
+});
+
+test("LM Studio discovery and test use the compatible API and reject non-schema output", async () => {
+  const original = globalThis.fetch; const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url, options });
+    if (url.endsWith("/models")) return Response.json({ data: [{ id: "test-model" }, { id: "test-model" }, { id: "" }, null] });
+    return lmOutput('{"ready":true}');
+  };
+  try {
+    assert.deepEqual(await listLocalModels("http://localhost:1234/v1", undefined, "lmstudio"), ["test-model"]);
+    await testLocalModel("http://localhost:1234", "test-model", undefined, "lmstudio");
+    assert.equal(requests[0].url, "http://localhost:1234/v1/models");
+    assert.equal(requests[1].url, "http://localhost:1234/v1/chat/completions");
+    assert.equal(JSON.parse(requests[1].options.body).response_format.json_schema.strict, true);
+    for (const raw of ['{"ready":false}', '{"ready":true,"extra":1}', 'not json']) {
+      globalThis.fetch = async () => lmOutput(raw);
+      await assert.rejects(testLocalModel("http://localhost:1234", "test-model", undefined, "lmstudio"), /structured-output check/);
+    }
+    globalThis.fetch = async () => Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"ready":true}', refusal: "Unable to answer" } }] });
+    await assert.rejects(testLocalModel("http://localhost:1234", "test-model", undefined, "lmstudio"), /incomplete answer/);
+    globalThis.fetch = async () => lmOutput('{"ready":true}', "length");
+    await assert.rejects(testLocalModel("http://localhost:1234", "test-model", undefined, "lmstudio"), /incomplete answer/);
+  } finally { globalThis.fetch = original; }
+});
+
+test("LM Studio hosted generation and verification translate validated tasks without cloud credentials", async () => {
+  const original = globalThis.fetch, local = [], server = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "http://127.0.0.1:1234/v1/chat/completions");
+    assert.equal(options.credentials, "omit"); assert.equal(options.redirect, "error");
+    assert.deepEqual(Object.keys(options.headers), ["Content-Type"]);
+    local.push(JSON.parse(options.body)); return lmOutput();
+  };
+  let phase = 0;
+  const fetcher = async (url, options) => {
+    server.push({ url, body: JSON.parse(options.body) });
+    if (++phase <= 2) return taskResponse({ ...task(phase), provider: "browser_lmstudio", operation: phase === 1 ? "chef_answer" : "verify_claims" });
+    return Response.json({ verified: true });
+  };
+  try {
+    const result = await assistantFetch("/api/chef", { query: "Explain this step" }, { selection: lmSelection, hosted: true, storage: lmConfigured(), fetcher });
+    assert.deepEqual(await result.json(), { verified: true });
+    assert.equal(server[0].body.ai.provider, "browser_lmstudio");
+    assert.equal(local.length, 2);
+    for (const body of local) {
+      assert.equal(body.model, "test-model"); assert.equal(body.max_tokens, 100);
+      assert.deepEqual(body.response_format.json_schema.schema, task().ollamaRequest.format);
+      assert.equal(body.think, undefined); assert.equal(body.options, undefined);
+    }
+    assert.equal(server[2].body.rawOutput, '{"ok":true}');
+  } finally { globalThis.fetch = original; }
+});
+
+test("LM Studio rejects provider mismatches and cancels on connection changes or truncated output", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const scenario of ["mismatch", "missing-provider", "changed", "truncated"]) {
+      const storage = lmConfigured(), calls = []; let localCalls = 0;
+      globalThis.fetch = async () => { localCalls++; if (scenario === "changed") storage.removeItem(LOCAL_LMSTUDIO_AI_KEY); return lmOutput('{"ok":true}', scenario === "truncated" ? "length" : "stop"); };
+      const value = { ...task(), provider: scenario === "mismatch" ? "browser_ollama" : "browser_lmstudio" };
+      if (scenario === "missing-provider") delete value.provider;
+      const fetcher = async (url, options) => { calls.push({ url, method: options.method }); return options.method === "DELETE" ? Response.json({ cancelled: true }) : taskResponse(value); };
+      await assert.rejects(assistantFetch("/api/chef", { query: "Explain" }, { selection: lmSelection, hosted: true, storage, fetcher }), /expired or is invalid|connection changed|incomplete answer/);
+      assert.equal(localCalls, ["mismatch", "missing-provider"].includes(scenario) ? 0 : 1);
+      assert.ok(calls.some(call => call.method === "DELETE")); assert.ok(!calls.some(call => call.url.endsWith("/result")));
+    }
+  } finally { globalThis.fetch = original; }
+});
+
+test("standalone assistant and planner carry the selected LM Studio model", async () => {
+  for (const url of ["/api/assistant", "/api/chef/plan"]) {
+    await assistantFetch(url, { query: "Plan dinner", model: "old-ollama-model" }, { selection: lmSelection, hosted: false, storage: new MemoryStorage(), fetcher: async (_url, options) => {
+      const body = JSON.parse(options.body); assert.equal(body.provider, "lmstudio"); assert.equal(body.model, "test-model"); assert.equal(body.ai, undefined); return Response.json({});
+    } });
   }
 });

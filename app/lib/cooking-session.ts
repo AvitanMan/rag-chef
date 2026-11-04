@@ -1,3 +1,4 @@
+import { randomId } from "./random-id";
 import type { PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validation";
@@ -100,7 +101,7 @@ export function timerAction(timer: CookingTimer, action: "start" | "pause" | "re
 }
 
 export function createCookingSession(recipe: Recipe, instructions: string[], method: string, plannedMeal?: PlannedMeal): CookingSession {
-  return { version: 1, id: crypto.randomUUID(), recipe: structuredClone(recipe),
+  return { version: 1, id: randomId(), recipe: structuredClone(recipe),
     ...(plannedMeal?.status === "planned" ? { plannedMeal: structuredClone(plannedMeal) } : {}),
     instructions: [...instructions], method, step: 0, soundEnabled: false,
     timer: { durationMs: 300_000, remainingMs: 300_000, endAt: null, status: "idle" } };

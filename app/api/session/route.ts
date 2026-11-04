@@ -1,4 +1,9 @@
 import { sessionResponse } from "@/app/lib/household-management";
-import { householdError, initializeHouseholdRuntime } from "@/app/lib/household";
+import { householdError, initializeHouseholdRuntime, requireSecureLanAccess } from "@/app/lib/household";
+import { publicLocalServerConfig } from "@/app/lib/local-server-config";
 export const dynamic = "force-dynamic";
-export async function GET(request: Request): Promise<Response> { try { await initializeHouseholdRuntime(); return await sessionResponse(request); } catch (error) { return householdError(error); } }
+export async function GET(request: Request): Promise<Response> { try { await initializeHouseholdRuntime(); await requireSecureLanAccess(request); const response = await sessionResponse(request);
+  const localServer = publicLocalServerConfig();
+  if (!localServer || !response.ok) return response;
+  const session = await response.json() as Record<string, unknown>;
+  return Response.json({ ...session, localServer }, { headers: { "Cache-Control": "no-store" } }); } catch (error) { return householdError(error); } }

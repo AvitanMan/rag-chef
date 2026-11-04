@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "./random-id";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mergeKitchenDraft } from "./kitchen-merge";
 import { useAppSession } from "./app-session";
@@ -15,7 +17,8 @@ export type KitchenSaveState = "loading" | "pending" | "saving" | "saved" | "off
 export function useKitchen(fallbackRecipes: Recipe[]) {
   const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch } = useAppSession();
   const hosted = session.mode === "hosted";
-  const savedLocation = hosted ? "the shared kitchen" : "this Mac";
+  const requiresPassword = Boolean(session.localServer?.requiresPassword);
+  const savedLocation = hosted ? "the shared kitchen" : "the server computer";
   const [state, setState] = useState<KitchenState>(EMPTY_KITCHEN);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("Loading your kitchen…");
@@ -79,7 +82,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       return false;
     }
     try {
-      const id = `${KITCHEN_CACHE_KEY}:draft:${crypto.randomUUID()}`;
+      const id = `${KITCHEN_CACHE_KEY}:draft:${randomId()}`;
       privateStorage.setItem(id, JSON.stringify({ revision: revision.current, state: latest.current, base: baseSnapshot.current, dirty: true, reason, updatedAt: new Date().toISOString() }));
       return true;
     } catch {
@@ -95,7 +98,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       let cached: ReturnType<typeof parseCachedKitchen> = null;
       let legacy: Record<string, unknown> | null = null;
       // Initialize recovery before parsing older data, which may be damaged.
-      draftKey.current = `${KITCHEN_CACHE_KEY}:draft:${crypto.randomUUID()}`;
+      draftKey.current = `${KITCHEN_CACHE_KEY}:draft:${randomId()}`;
       try {
         const previousDraftKey = privateTabStorage.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`);
         // A fresh key on each page load also isolates duplicated browser tabs.
@@ -264,20 +267,36 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   }, [refreshRecovery]);
 
   useEffect(() => {
-    if (hosted) {
-      // The local offline shell can contain private navigation HTML. Hosted
-      // mode never registers it, and upgrades remove old shell caches.
-      if ("serviceWorker" in navigator) void navigator.serviceWorker.getRegistrations().then(rows => Promise.all(rows.filter(row => row.active?.scriptURL.endsWith("/kitchen-sw.js")).map(row => row.unregister())));
-      if ("caches" in window) void caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith("rag-chef-shell-")).map(key => caches.delete(key))));
+    if (hosted || requiresPassword) {
+      // Authenticated kitchens must not retain navigation HTML in the offline
+      // shell. Remove older registrations and caches without blocking drafts.
+      void (async () => {
+        try {
+          if (!("serviceWorker" in navigator)) return;
+          const rows = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(rows.filter(row => [row.active, row.waiting, row.installing].some(worker => worker?.scriptURL.endsWith("/kitchen-sw.js"))).map(row => row.unregister()));
+        } catch { /* Browser policy can deny worker cleanup; do not register a new shell. */ }
+      })();
+      void (async () => {
+        try {
+          if (!("caches" in window)) return;
+          const keys = await caches.keys();
+          await Promise.all(keys.filter(key => key.startsWith("rag-chef-shell-")).map(key => caches.delete(key)));
+        } catch { /* Private browsing can deny cache access; drafts remain available. */ }
+      })();
       return;
     }
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
-    void navigator.serviceWorker.register("/kitchen-sw.js").then(async () => {
+    let cancelled = false;
+    void navigator.serviceWorker.register("/kitchen-sw.js").then(async registered => {
+      if (cancelled) { await registered.unregister(); return; }
       const registration = await navigator.serviceWorker.ready;
+      if (cancelled) { await registration.unregister(); return; }
       const urls = ["/", ...performance.getEntriesByType("resource").map((entry) => entry.name)];
       registration.active?.postMessage({ type: "CACHE_SHELL", urls });
     }).catch(() => { /* D1 and browser drafts still work without an offline shell. */ });
-  }, [hosted]);
+    return () => { cancelled = true; };
+  }, [hosted, requiresPassword]);
 
   const update = useCallback((change: (current: KitchenState) => KitchenState) => {
     setState((current) => {

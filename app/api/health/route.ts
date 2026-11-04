@@ -4,8 +4,9 @@ import {
   type ChefProvider,
 } from "@/app/lib/chef-schema";
 
+import { checkLMStudioReadiness } from "@/app/lib/lmstudio";
 import { checkOllamaReadiness, verificationCapability } from "@/app/lib/provider-readiness";
-import { hostedMode, requireHousehold, householdError, initializeHouseholdRuntime, requireLocalRequest } from "@/app/lib/household";
+import { hostedMode, requireHousehold, householdError, initializeHouseholdRuntime, requireLocalRequest, requireSecureLanAccess, householdSetting } from "@/app/lib/household";
 import { redactedAiConnections } from "@/app/lib/ai-connections";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const HEALTH_TIMEOUT_MS = 5_000;
@@ -20,7 +21,7 @@ type ProviderHealth = {
 
 export async function GET(request: Request): Promise<Response> {
   await initializeHouseholdRuntime();
-  try { requireLocalRequest(request); } catch (error) { return householdError(error); }
+  try { await requireSecureLanAccess(request); requireLocalRequest(request); } catch (error) { return householdError(error); }
   if (hostedMode()) {
     try {
       const context = await requireHousehold(request), connections = await redactedAiConnections(context);
@@ -33,13 +34,14 @@ export async function GET(request: Request): Promise<Response> {
   if (
     requestedProvider &&
     requestedProvider !== "ollama" &&
-    requestedProvider !== "openai"
+    requestedProvider !== "openai" &&
+    requestedProvider !== "lmstudio"
   ) {
     return Response.json(
       {
         error: {
           code: "invalid_provider",
-          message: 'provider must be either "ollama" or "openai".',
+          message: 'provider must be "ollama", "openai", or "lmstudio".',
         },
       },
       { status: 400, headers: { "cache-control": "no-store" } },
@@ -58,24 +60,27 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const [ollama, openai] = await Promise.all([
+  const [ollama, openai, lmstudio] = await Promise.all([
     checkOllamaReadiness(requestedProvider === "ollama" ? requestedModel : "", request.signal),
     checkOpenAI(requestedProvider === "openai" ? requestedModel : ""),
+    requestedProvider === "lmstudio" || householdSetting("LMSTUDIO_MODEL")
+      ? checkLMStudioReadiness(requestedProvider === "lmstudio" ? requestedModel : "", request.signal)
+      : Promise.resolve({ ok: false, configured: false, reachable: false, model: "", message: "Select LM Studio and enter its model identifier to check the connection." }),
   ]);
   const requested = requestedProvider as ChefProvider | null;
   const selected = requested ?? DEFAULT_CHEF_PROVIDER;
-  const selectedGeneration = selected === "ollama" ? ollama : openai;
-  const verification = selected === "openai" ? { ready: openai.ok, model: openai.model, message: "Answer verification uses your OpenAI connection." } : verificationCapability(ollama);
+  const selectedGeneration = selected === "ollama" ? ollama : selected === "lmstudio" ? lmstudio : openai;
+  const verification = selected === "lmstudio" ? { ready: lmstudio.ok, model: lmstudio.model, message: "Answer verification uses your selected LM Studio model." } : selected === "openai" ? { ready: openai.ok, model: openai.model, message: "Answer verification uses your OpenAI connection." } : verificationCapability(ollama);
   const capabilities = {
     generation: { ready: selectedGeneration.ok, model: selectedGeneration.model, message: selectedGeneration.message },
     embeddings: { ready: ollama.embedModelInstalled, model: ollama.embedModel, message: ollama.embedModelInstalled
       ? "Semantic recipe search is ready." : "Semantic search is unavailable; recipe search still works with words and pantry matches." },
     verification,
   };
-  const requestedOk = (requested ? selectedGeneration.ok : ollama.ok || openai.ok) && verification.ready;
+  const requestedOk = (requested ? selectedGeneration.ok : ollama.ok || openai.ok || lmstudio.ok) && verification.ready;
   const message = !selectedGeneration.ok ? selectedGeneration.message
     : !verification.ready ? `${selected === "openai" ? "OpenAI generation" : "Generation"} is available. ${verification.message} Browsing and calculated dinner amounts still work.`
-    : selected === "openai" ? "Chef generation and answer verification are ready through OpenAI." : "Chef generation and local answer verification are ready.";
+    : selected === "lmstudio" ? "Chef generation and answer verification are ready through LM Studio." : selected === "openai" ? "Chef generation and answer verification are ready through OpenAI." : "Chef generation and local answer verification are ready.";
 
   return Response.json(
     {
@@ -85,7 +90,7 @@ export async function GET(request: Request): Promise<Response> {
       ...(!requestedOk ? { error: message } : {}),
       defaultProvider: DEFAULT_CHEF_PROVIDER,
       requestedProvider: requested,
-      providers: { ollama, openai },
+      providers: { ollama, openai, lmstudio },
       capabilities,
       checkedAt: new Date().toISOString(),
     },
