@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
@@ -80,6 +81,8 @@ test("Back and Forward close pantry import and purchase previews", async ({ page
   await request.put("/api/kitchen", { data: { revision: current.revision, state } });
   await page.clock.install({ time: new Date("2026-11-01T12:00:00+02:00") });
   await openChef(page); await navigate(page, "Recipes"); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 300 g\nbeans: 400 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Review pantry ingredients", exact: true })).toBeVisible();

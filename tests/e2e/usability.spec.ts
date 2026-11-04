@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors, revealPlanControls } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
@@ -39,17 +40,23 @@ test.beforeEach(async ({ page, request }) => {
 test("invalid pantry drafts do not block valid edits and correction saves", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "100 g" }, { id: "beans", name: "beans", measure: "400 g" }] });
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   const rice = page.getByRole("textbox", { name: "Available rice", exact: true });
+  await revealPantryEditors(page);
   await rice.fill("-2 g");
   await expect(rice).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toContainText("Not saved: Amount");
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("500 g");
   await expect.poll(async () => (await read(request)).state.pantry.map((r: { measure: string }) => r.measure)).toEqual(["100 g", "500 g"]);
+  await revealPantryEditors(page);
   await rice.fill("1/0 cup"); await expect(rice).toHaveAttribute("aria-invalid", "true");
+  await revealPantryEditors(page);
   await rice.fill("300 g");
   await expect.poll(async () => (await read(request)).state.pantry[0].measure).toBe("300 g");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.reload(); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await expect(rice).toHaveValue("300 g");
 });
 
@@ -58,6 +65,7 @@ test("servings allow clear and retype while invalid bounds and overrides stay un
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
   await openChef(page);
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   const servings = page.getByRole("spinbutton", { name: "Servings Sun, Oct 25", exact: true });
   await servings.fill(""); await expect(servings).toHaveValue("");
   await servings.fill("101"); await expect(servings).toHaveAttribute("aria-invalid", "true");
@@ -100,6 +108,7 @@ test("fractional dinner batches stay valid and editable across Plan and both Che
   const dinner = { ...meal(source), baseServings: null, servings: null, batches: 1 };
   await save(request, { ...empty(), meals: { [TODAY]: dinner } });
   await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true }).fill("0.5");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.5);
   await navigate(page, "Chef");
@@ -121,6 +130,7 @@ test("fractional dinner batches stay valid and editable across Plan and both Che
   await dinnerAmount.fill("0.25");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.25);
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await expect(page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true })).toHaveValue("0.25");
 });
 
@@ -137,6 +147,7 @@ for (const surface of ["Chef", "Plan", "Shopping"]) {
     if (surface === "Plan") {
       await navigate(page, "Plan");
       editor = page.getByRole("article", { name: "Sun, Oct 25", exact: true });
+      await revealPlanControls(page);
       await editor.locator(".meal-review > summary").click();
     }
     if (surface === "Shopping") {
@@ -228,6 +239,7 @@ for (const withRemoval of [false, true]) {
     await openChef(page);
     if (withRemoval) {
       await navigate(page, "Pantry");
+      await revealPantryEditors(page);
       await page.getByRole("button", { name: "Remove rice", exact: true }).click();
     }
     await navigate(page, "Settings");
@@ -302,9 +314,11 @@ test("long pantry removal keeps the user's place, visible Undo and later edits",
   const pantry = Array.from({ length: 30 }, (_, i) => ({ id: `item-${i}`, name: `ingredient ${i}`, measure: "100 g" }));
   await save(request, { ...empty(), pantry });
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   const remove = page.getByRole("button", { name: "Remove ingredient 25", exact: true });
   await remove.scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => scrollY);
+  const headerHeight = await page.locator(".topbar").evaluate(element => element.getBoundingClientRect().height);
   await remove.click();
   const recovery = page.getByRole("region", { name: "Recently removed", exact: true });
   // The recovery control appears without taking the user away from this row.
@@ -312,9 +326,13 @@ test("long pantry removal keeps the user's place, visible Undo and later edits",
     const box = await recovery.boundingBox();
     expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   }).toPass();
+  // Saved → Saving must not wrap the toolbar onto another line.
+  expect(await page.locator(".topbar").evaluate(element => element.getBoundingClientRect().height)).toBe(headerHeight);
   expect(Math.abs(await page.evaluate(() => scrollY) - before)).toBeLessThanOrEqual(2);
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available ingredient 1", exact: true }).fill("200 g");
   await recovery.getByRole("button", { name: "Undo", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available ingredient 25", exact: true })).toHaveValue("100 g");
   await expect.poll(async () => (await read(request)).state.pantry.find((r: { id: string }) => r.id === "item-1").measure).toBe("200 g");
 });
@@ -338,6 +356,8 @@ test("Today is immediately actionable and saving reveals and focuses the new din
 for (const count of [1, 18, 50]) {
   test(`${count}-row import keeps actions visible, including while editing the last row`, async ({ page }) => {
     await openChef(page); await navigate(page, "Pantry");
+    await revealPantryEditors(page);
+    await revealPantryAdd(page);
     const input = page.getByRole("textbox", { name: "New pantry ingredient", exact: true });
     const text = Array.from({ length: count }, (_, i) => `ingredient ${i}: 100 g`).join("\n");
     await input.fill(text); await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
@@ -362,7 +382,7 @@ test("reviewed mains lead instant picks and API failure keeps safe picks with re
   await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }] });
   await openChef(page); await navigate(page, "Recipes");
-  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await page.getByRole("button", { name: "Find dinner ideas", exact: true }).click();
   await expect(page.locator(".recipe-card").first()).toContainText("Garlic Beans");
   let reads = 0;
   await page.route("**/api/chef", route => ++reads === 1 ? route.fulfill({ status: 503, json: { error: { message: "Temporary test outage" } } }) : route.continue());
@@ -418,6 +438,7 @@ test("theme toggle remains usable when preference storage cannot be written", as
 test("removal recovery stays available across navigation without covering the Chef action", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await navigate(page, "Chef");
   const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
@@ -434,9 +455,12 @@ test("removal recovery stays available across navigation without covering the Ch
 test("pantry date controls show a full date with a separate readable label at all widths", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g", useBy: "2026-10-30" }] });
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
+    await revealPantryEditors(page);
     const date = page.getByRole("textbox", { name: "Use by rice", exact: true });
+    await revealPantryEditors(page);
     await expect(date).toHaveValue("2026-10-30");
     const box = await date.boundingBox();
     expect(box!.width).toBeGreaterThanOrEqual(190);
@@ -536,8 +560,10 @@ test("bought ingredients reach pantry once through a reviewed preview, with safe
   const preview = page.getByRole("dialog", { name: "Add bought items to pantry", exact: true });
   await expect(preview).toContainText("Cooked and uncooked amounts are kept separate");
   const amount = preview.getByRole("textbox", { name: "Amount bought rice", exact: true });
+  await revealPantryEditors(page);
   await amount.fill("-1 g");
   await expect(preview.getByRole("button", { name: "Confirm pantry additions", exact: true })).toBeDisabled();
+  await revealPantryEditors(page);
   await amount.fill("100 g");
   await preview.getByRole("button", { name: "Confirm pantry additions", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.pantry.length).toBe(4);
@@ -687,6 +713,7 @@ test("a second bought batch of the same shortage can reach pantry after the firs
   await page.getByRole("dialog", { name: "Add bought items to pantry", exact: true }).getByRole("button", { name: "Confirm pantry additions", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.shoppingPurchases?.length).toBe(1);
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: /Next step/ }).click();
@@ -724,7 +751,7 @@ test("a day chosen in Plan survives browsing, recipe discussion and starting a n
   await page.getByRole("button", { name: "Next week", exact: true }).click();
   await page.getByRole("button", { name: "Choose dinner Fri, Oct 30", exact: true }).click();
   await page.getByRole("button", { name: "Browse recipes", exact: true }).click();
-  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await page.getByRole("button", { name: "Find dinner ideas", exact: true }).click();
   await discussFirstRecipe(page);
   await expect(page.getByRole("textbox", { name: "Dinner day", exact: true })).toHaveValue(friday);
   await restartDiscovery(page);

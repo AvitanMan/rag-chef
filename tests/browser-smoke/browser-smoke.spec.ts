@@ -1,3 +1,4 @@
+import { revealShoppingTools } from "../e2e/ui-controls";
 import { openChef } from "../e2e/open-chef";
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_COOKING_PROFILE, type KitchenState, type PlannedMeal } from "../../app/lib/kitchen-types";
@@ -81,11 +82,13 @@ test("shopping copy fallback and print layout work without changing kitchen data
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   await navigate(page, "Shopping");
   const before = await (await request.get("/api/kitchen")).json();
+  await revealShoppingTools(page);
   await page.getByRole("button", { name: "Copy shopping list", exact: true }).click();
   const fallback = page.getByRole("textbox", { name: "Shopping list text", exact: true });
   await expect(fallback).toBeFocused();
   await expect(fallback).toHaveValue(/rice: 200 g/);
   await expect(fallback).toHaveValue(/tomato: 2/);
+  await revealShoppingTools(page);
   await page.getByRole("button", { name: "Print", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-print-requested", "true");
   await page.emulateMedia({ media: "print" });

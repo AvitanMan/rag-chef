@@ -19,10 +19,10 @@ test.beforeEach(async ({ page, request }) => {
 
 test("combined pantry and dinner preview can be edited and applied once with exact shopping", async ({ page, request }) => {
   const before = await read(request);
-  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
-  await dialog.getByLabel("Your request", { exact: true }).fill("Bought 500 g rice. Plan two dinners.");
-  await dialog.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await dialog.getByLabel("Kitchen update", { exact: true }).fill("Bought 500 g rice. Plan two dinners.");
+  await dialog.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
   expect(await read(request)).toEqual(before);
   await dialog.getByLabel("Amount", { exact: true }).fill("750 g");
@@ -45,15 +45,15 @@ test("combined pantry and dinner preview can be edited and applied once with exa
 
 test("discard and stale family changes cannot write an obsolete assistant draft", async ({ page, request }) => {
   const before = await read(request);
-  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
-  await dialog.getByLabel("Your request", { exact: true }).fill("Bought rice; plan dinners.");
-  await dialog.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await dialog.getByLabel("Kitchen update", { exact: true }).fill("Bought rice; plan dinners.");
+  await dialog.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
   await dialog.getByRole("button", { name: "Discard", exact: true }).click();
   expect(await read(request)).toEqual(before);
-  await dialog.getByLabel("Your request", { exact: true }).fill("Bought rice; plan dinners.");
-  await dialog.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await dialog.getByLabel("Kitchen update", { exact: true }).fill("Bought rice; plan dinners.");
+  await dialog.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
   const changed = await request.put("/api/kitchen", { data: { revision: before.revision, state: { ...before.state, pantry: [{ id: "family-onion", name: "onion", measure: "2" }] } } });
   const newer = await changed.json();
@@ -71,9 +71,9 @@ test("unavailable AI retains manual kitchen controls", async ({ page, request })
   await page.unroute("**/api/assistant");
   await page.route("**/api/assistant", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Your model is unavailable. Manual kitchen controls still work." } }) }));
   const before = await read(request);
-  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
-  await dialog.getByLabel("Your request", { exact: true }).fill("Plan dinners."); await dialog.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await dialog.getByLabel("Kitchen update", { exact: true }).fill("Plan dinners."); await dialog.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   await expect(dialog.getByRole("alert")).toHaveText(/model is unavailable/);
   await dialog.getByRole("button", { name: "Close kitchen assistant", exact: true }).click();
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: "Plan", exact: true }).filter({ visible: true }).first().click();

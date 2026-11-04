@@ -35,7 +35,7 @@ test("server-renders the RAG Chef application shell", async () => {
   const html = await response.text();
   assert.match(html, /<title>RAG Chef — Cook with what you have<\/title>/i);
   assert.match(html, /RAG Chef/);
-  assert.match(html, /Ask Chef/);
+  assert.match(html, /Kitchen assistant/);
   assert.match(html, /Weekly plan/);
   assert.match(html, /Loading your weekly plan/);
   assert.doesNotMatch(html, /class="day-card/);

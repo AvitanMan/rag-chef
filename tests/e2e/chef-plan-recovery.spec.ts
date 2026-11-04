@@ -31,7 +31,7 @@ test("cancelled interpretation cannot replace a later manual preview or write ki
   const dialog = await openPlanner(page);
   const before = await readKitchen(request);
   await dialog.getByLabel("Planning request", { exact: true }).fill("Plan three dinners");
-  await dialog.getByRole("button", { name: "Ask Chef to plan", exact: true }).click();
+  await dialog.getByRole("button", { name: "Preview dinner plan", exact: true }).click();
   await expect.poll(() => entered).toBeTruthy();
   await dialog.getByRole("button", { name: "Cancel request", exact: true }).click();
   await dialog.getByLabel("Number of dinners", { exact: true }).fill("1");
@@ -58,11 +58,11 @@ test("stale apply preserves another tab's pantry update and requires a fresh rev
   await expect(dialog.getByRole("button", { name: "Apply plan", exact: true })).toBeDisabled();
   expect(await readKitchen(request)).toEqual(newer);
   await dialog.getByLabel("Planning request", { exact: true }).fill("Plan two dinners");
-  await expect(dialog.getByRole("button", { name: "Revise with Chef", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Revise dinner plan", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Apply plan", exact: true })).toBeEnabled();
   await expect(dialog.getByLabel("Excluded ingredients", { exact: true })).toHaveValue("peanut");
-  await expect(dialog.getByRole("button", { name: "Revise with Chef", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Revise dinner plan", exact: true })).toBeEnabled();
   expect(await readKitchen(request)).toEqual(newer);
 });
 
@@ -140,10 +140,10 @@ test("manual requirements must be previewed before a conversational request can 
   await dialog.getByLabel("Excluded ingredients", { exact: true }).fill("peanut");
   await dialog.getByLabel("Plan servings", { exact: true }).fill("4");
   await dialog.getByLabel("Planning request", { exact: true }).fill("Plan two dinners");
-  await expect(dialog.getByRole("button", { name: "Ask Chef to plan", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Preview dinner plan", exact: true })).toBeDisabled();
   await expect(dialog.getByText("Your controls changed. Preview them before asking Chef to revise or applying.", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-  const revise = dialog.getByRole("button", { name: "Revise with Chef", exact: true });
+  const revise = dialog.getByRole("button", { name: "Revise dinner plan", exact: true });
   await expect(revise).toBeEnabled();
   const response = page.waitForResponse(response => response.url().endsWith("/api/chef/plan"));
   await revise.click();
@@ -168,12 +168,12 @@ test("clarifying a revision keeps the earlier dinner identities and requirements
   const apply = dialog.getByRole("button", { name: "Apply plan", exact: true });
   await expect(apply).toBeEnabled();
   await dialog.getByLabel("Planning request", { exact: true }).fill("Replace it");
-  await dialog.getByRole("button", { name: "Revise with Chef", exact: true }).click();
+  await dialog.getByRole("button", { name: "Revise dinner plan", exact: true }).click();
   await expect(dialog.getByText("Which dinner date do you want to change or keep?", { exact: true })).toBeVisible();
   await expect(apply).toBeDisabled();
   await dialog.getByLabel("Planning request", { exact: true }).fill("Keep Thursday and replace Friday");
   const nextResponse = page.waitForResponse(response => response.url().endsWith("/api/chef/plan"));
-  await dialog.getByRole("button", { name: "Revise with Chef", exact: true }).click();
+  await dialog.getByRole("button", { name: "Revise dinner plan", exact: true }).click();
   const revised = (await (await nextResponse).json()).draft as ChefPlanDraft;
   expect(revised.intent.excludedIngredients).toContain("peanut");
   expect(revised.intent.servings).toBe(4);

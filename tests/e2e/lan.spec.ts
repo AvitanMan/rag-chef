@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors } from "./ui-controls";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 
@@ -44,9 +45,12 @@ test("private HTTP devices save pantry and dinners, ask grounded cooking questio
   await sharing.screenshot({ path: info.outputPath("lan-phone-address.png") });
 
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 500 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Review pantry ingredients", exact: true }).getByRole("button", { name: "Confirm ingredients", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("500 g");
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   const withRice = await kitchen(request);
@@ -55,7 +59,7 @@ test("private HTTP devices save pantry and dinners, ask grounded cooking questio
   expect(withRice.state.pantry[0].id).toMatch(/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
 
   await navigate(page, "Recipes");
-  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await page.getByRole("button", { name: "Find dinner ideas", exact: true }).click();
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
   const discovery = page.waitForResponse(response => response.url().endsWith("/api/chef") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
@@ -82,11 +86,11 @@ test("private HTTP devices save pantry and dinners, ask grounded cooking questio
   await cooking.getByRole("button", { name: "← Exit cooking", exact: true }).click();
 
   const beforePreview = await kitchen(request);
-  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
   const assistant = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
-  await assistant.getByRole("textbox", { name: "Your request", exact: true }).fill("Add 2 onions");
+  await assistant.getByRole("textbox", { name: "Kitchen update", exact: true }).fill("Add 2 onions");
   const assistantReply = page.waitForResponse(response => response.url().endsWith("/api/assistant") && response.request().method() === "POST");
-  await assistant.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await assistant.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   const prepared = await assistantReply;
   expect(prepared.ok()).toBeTruthy();
   expect(prepared.request().postDataJSON()).toMatchObject({ query: "Add 2 onions", provider: "ollama", model: "test-model" });

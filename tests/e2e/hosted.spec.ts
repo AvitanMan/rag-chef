@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors } from "./ui-controls";
 import { createHmac } from 'node:crypto';
 import { test, expect, type BrowserContext, type APIRequestContext } from '@playwright/test';
 
@@ -40,14 +41,14 @@ test('shared household owner and member journey protects drafts, credentials, wr
     const ownerHeaders = { ...headers, "x-rag-chef-actor": ownerId, "x-rag-chef-household": ownerSession.household.id };
     const memberHeaders = { ...headers, "x-rag-chef-actor": memberId, "x-rag-chef-household": ownerSession.household.id };
     expect(ownerSession.household.assistantEnabled).toBe(false);
-    await expect(page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Kitchen assistant', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Plan with Chef', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'Enable assistant beta', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Disable assistant beta', exact: true })).toBeVisible();
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/hosted-settings-${info.project.name}.png`, fullPage: true });
     await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Plan/ }).filter({ visible: true }).first().click();
-    await page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true }).click();
+    await page.getByRole('button', { name: 'Kitchen assistant', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Kitchen assistant', exact: true })).toBeVisible();
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/hosted-assistant-${info.project.name}.png` });
     await page.getByRole('button', { name: 'Close kitchen assistant', exact: true }).click();
@@ -144,6 +145,7 @@ test('two household members merge independent pending pantry edits without losin
     await page.goto('/'); await memberPage.goto('/');
     for (const current of [page, memberPage]) {
       await current.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Pantry/ }).filter({ visible: true }).first().click();
+      await revealPantryEditors(current);
       await expect(current.getByRole('textbox', { name: 'Available rice', exact: true })).toHaveValue('2000 g');
     }
     let caught!: () => void;
@@ -154,8 +156,10 @@ test('two household members merge independent pending pantry edits without losin
       if (intercept && route.request().method() === 'PUT') { intercept = false; caught(); await held; }
       await route.continue();
     });
+    await revealPantryEditors(page);
     await page.getByRole('textbox', { name: 'Available rice', exact: true }).fill('1500 g');
     await arrived;
+    await revealPantryAdd(memberPage);
     await memberPage.getByRole('textbox', { name: 'New pantry ingredient', exact: true }).fill('beans: 1 kg');
     const memberSave = memberPage.waitForResponse(response => response.url().endsWith('/api/kitchen') && response.request().method() === 'PUT' && response.status() === 200);
     await memberPage.getByRole('button', { name: 'Add to pantry', exact: true }).click();
@@ -173,12 +177,14 @@ test('a stale tab cannot autosave into a new account and logout unmounts private
   const ownerId = `owner-${info.project.name}`, otherId = `other-${info.project.name}`;
   await login(context, ownerId); await page.goto('/');
   await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await revealPantryEditors(page);
   await expect(page.getByRole('textbox', { name: 'Available rice', exact: true })).toHaveValue('1500 g');
   await page.bringToFront();
   // Another tab signs into B. A's mounted form and its captured request scope
   // remain unchanged until the server rejects its next actual autosave.
   await login(context, otherId);
   const rejectedSave = page.waitForResponse(response => response.url().endsWith('/api/kitchen') && response.request().method() === 'PUT');
+  await revealPantryEditors(page);
   await page.getByRole('textbox', { name: 'Available rice', exact: true }).fill('999 g');
   expect((await rejectedSave).status()).toBe(403);
   await expect.poll(() => page.evaluate(user => Object.keys(sessionStorage).some(key => key.startsWith(`rag-chef-account:${user}:`)), otherId)).toBe(true);
@@ -192,9 +198,12 @@ test('a stale tab cannot autosave into a new account and logout unmounts private
     else await route.continue();
   });
   await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await revealPantryEditors(page);
+  await revealPantryAdd(page);
   await page.getByRole('textbox', { name: 'New pantry ingredient', exact: true }).fill('oats: 50 g');
   await page.getByRole('button', { name: 'Add to pantry', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm ingredients', exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole('textbox', { name: 'Available oats', exact: true })).toHaveValue('50 g');
   await expect(page.locator('.save-indicator')).toHaveText('Offline');
   expect((await document(context.request)).state?.pantry ?? []).toEqual([]);
@@ -253,7 +262,9 @@ test('recovering an older private draft preserves newer independent household st
   const newer = await newerSave.json();
   await page.goto('/');
   await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await revealPantryEditors(page);
   await expect(page.getByRole('textbox', { name: 'Available rice', exact: true })).toHaveValue('1 kg');
+  await revealPantryEditors(page);
   await expect(page.getByRole('textbox', { name: 'Available beans', exact: true })).toHaveValue('2 kg');
   const cacheKey = `rag-chef-account:${encodeURIComponent(ownerId)}:${encodeURIComponent(session.household.id)}:rag-chef-kitchen-v2:draft:older-private-recovery`;
   const recovered = { revision: original.revision, base: original.state, state: { ...original.state, pantry: [{ ...rice, measure: '500 g' }] }, dirty: true, updatedAt: '2026-10-19T00:00:00.000Z', reason: 'edit' };
@@ -261,7 +272,8 @@ test('recovering an older private draft preserves newer independent household st
   const recovery = page.locator('.recovery-panel');
   await expect(recovery.locator('summary')).toContainText('Unsaved kitchens found (1)');
   await recovery.locator('summary').click();
-  await recovery.getByRole('button', { name: 'Recover this draft', exact: true }).click();
+  await recovery.getByRole('button', { name: 'Review this draft', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Review browser draft', exact: true }).getByRole('button', { name: 'Recover this draft', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The household kitchen changed', exact: true })).toBeVisible();
   expect(await document(context.request)).toEqual(newer);
   const mergedSave = page.waitForResponse(response => response.url().endsWith('/api/kitchen') && response.request().method() === 'PUT' && response.status() === 200);
@@ -317,13 +329,13 @@ test('LM Studio browser connection prepares a real assistant draft without chang
   await expect(connections.getByRole('combobox', { name: 'Local model', exact: true })).toHaveValue(model);
 
   await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Plan/ }).filter({ visible: true }).first().click();
-  await page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true }).click();
+  await page.getByRole('button', { name: 'Kitchen assistant', exact: true }).click();
   const assistant = page.getByRole('dialog', { name: 'Kitchen assistant', exact: true });
-  await assistant.getByRole('textbox', { name: 'Your request', exact: true }).fill('Add 2 kg rice');
-  await expect(assistant.getByRole('button', { name: 'Ask Chef', exact: true })).toBeEnabled();
+  await assistant.getByRole('textbox', { name: 'Kitchen update', exact: true }).fill('Add 2 kg rice');
+  await expect(assistant.getByRole('button', { name: 'Preview kitchen changes', exact: true })).toBeEnabled();
   const before = await document(context.request);
   const prepared = page.waitForResponse(response => new URL(response.url()).pathname === '/api/assistant' && response.request().method() === 'POST');
-  await assistant.getByRole('button', { name: 'Ask Chef', exact: true }).click();
+  await assistant.getByRole('button', { name: 'Preview kitchen changes', exact: true }).click();
   const response = await prepared;
   expect(response.status()).toBe(202);
   expect(response.request().postDataJSON().ai).toEqual({ provider: 'browser_lmstudio', model });

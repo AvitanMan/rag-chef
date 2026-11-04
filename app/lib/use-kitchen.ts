@@ -11,8 +11,16 @@ import { KITCHEN_CACHE_KEY, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, migrate
 import type { Recipe } from "./recipe-types";
 import { parseCachedKitchen, readRecoveryDrafts, type DraftReason, type RecoveryCandidate, type RecoveryEntry } from "./kitchen-recovery";
 import { parseLegacyCookingProfile, validateKitchenWrite } from "./kitchen-validation";
+import { buildKitchenChangePreview, type KitchenChangePreview } from "./kitchen-change-preview";
 
 export type KitchenSaveState = "loading" | "pending" | "saving" | "saved" | "offline" | "error" | "conflict";
+export type RecoveryDraftPreview = Readonly<{
+  id: string;
+  updatedAt: string | null;
+  revision: number;
+  changes: KitchenChangePreview;
+  token: string;
+}>;
 
 export function useKitchen(fallbackRecipes: Recipe[]) {
   const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch, registerSessionWork } = useAppSession();
@@ -29,6 +37,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const [conflict, setConflict] = useState<KitchenDocument | null>(null);
   const [retry, setRetry] = useState(0);
   const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([]);
+  const [recoveryError, setRecoveryError] = useState("");
   const [mergeBase, setMergeBase] = useState<KitchenState | null>(null);
   const baseSnapshot = useRef<KitchenState | null>(null);
   const rememberBase = useCallback((value: KitchenState | null) => { baseSnapshot.current = value; setMergeBase(value); }, []);
@@ -43,6 +52,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const connected = useRef(false);
   const recoveryEntries = useRef(new Map<string, RecoveryEntry>());
   const serverDocument = useRef<KitchenDocument | null>(null);
+  const recoveryPreview = useRef<{ id: string; token: string; currentState: string; currentRevision: number; candidate: string } | null>(null);
 
   const refreshRecovery = useCallback(() => {
     try {
@@ -52,7 +62,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     } catch { /* Storage failure is reported by the draft writer. */ }
   }, [privateStorage]);
 
-  const cache = useCallback((value: KitchenState, dirty: boolean) => {
+  const cache = useCallback((value: KitchenState, dirty: boolean, onError?: (message: string) => void) => {
     try {
       const serialized = JSON.stringify({ revision: revision.current, state: value, base: baseSnapshot.current, dirty, updatedAt: new Date().toISOString() });
       if (dirty) {
@@ -71,15 +81,17 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     } catch {
       storageAvailable.current = false;
       setBackupAvailable(false);
-      setStatus(`Browser backup is full or unavailable. Keep this tab open until saved to ${savedLocation}.`);
+      const message = `Browser backup is full or unavailable. Keep this tab open until saved to ${savedLocation}.`;
+      setStatus(message); onError?.(message);
       return false;
     }
   }, [refreshRecovery, privateStorage, privateTabStorage, savedLocation]);
 
-  const preserveCurrent = useCallback((reason: DraftReason) => {
+  const preserveCurrent = useCallback((reason: DraftReason, onError?: (message: string) => void) => {
     try { validateKitchenWrite({ revision: revision.current, state: latest.current }); }
     catch (error) {
-      setStatus(`Correct the current kitchen before replacing it: ${error instanceof Error ? error.message : "invalid kitchen data"}`);
+      const message = `Correct the current kitchen before replacing it: ${error instanceof Error ? error.message : "invalid kitchen data"}`;
+      setStatus(message); onError?.(message);
       return false;
     }
     try {
@@ -87,7 +99,8 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       privateStorage.setItem(id, JSON.stringify({ revision: revision.current, state: latest.current, base: baseSnapshot.current, dirty: true, reason, updatedAt: new Date().toISOString() }));
       return true;
     } catch {
-      setStatus("Could not preserve your current kitchen. Free browser storage or export it before replacing it.");
+      const message = "Could not preserve your current kitchen. Free browser storage or export it before replacing it.";
+      setStatus(message); onError?.(message);
       setBackupAvailable(false);
       return false;
     }
@@ -436,23 +449,57 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     return true;
   }, [cache, preserveCurrent, ready, refreshRecovery, hosted]);
 
-  const recoverDraft = useCallback((id: string): boolean => {
+  const effectiveRecoveryState = useCallback((candidate: KitchenState): KitchenState => structuredClone({
+    ...candidate,
+    ...(hosted ? { tastePreferences: latest.current.tastePreferences, recentActionReceipts: latest.current.recentActionReceipts } : {}),
+    cookingProfile: candidate.cookingProfile ?? latest.current.cookingProfile ?? DEFAULT_COOKING_PROFILE,
+  }), [hosted]);
+
+  // Save/refresh notifications must not replace a recovery decision's error.
+  const recoveryFailed = useCallback((message: string) => {
+    setRecoveryError(message); setStatus(message);
+    return false;
+  }, []);
+
+  const previewRecoveryDraft = useCallback((id: string): RecoveryDraftPreview | null => {
+    if (!ready) { recoveryFailed("Wait for your kitchen to finish loading before reviewing a draft."); return null; }
+    const entry = recoveryEntries.current.get(id);
+    try {
+      if (!entry || privateStorage.getItem(id) !== entry.serialized) {
+        refreshRecovery(); recoveryFailed("That draft changed in another tab. Review its updated details and choose again."); return null;
+      }
+      const token = randomId();
+      recoveryPreview.current = { id, token, currentState: JSON.stringify(latest.current), currentRevision: revision.current, candidate: entry.serialized };
+      const preview = Object.freeze({ id, token, updatedAt: entry.summary.updatedAt, revision: entry.cached.revision,
+        changes: buildKitchenChangePreview(latest.current, effectiveRecoveryState(entry.cached.state)) });
+      setRecoveryError("");
+      return preview;
+    } catch { recoveryFailed("The browser could not read that draft. Retry before recovering it."); return null; }
+  }, [effectiveRecoveryState, privateStorage, ready, refreshRecovery, recoveryFailed]);
+
+  const recoverDraft = useCallback((id: string, expectedReview?: RecoveryDraftPreview): boolean => {
     if (!ready || saving.current || paused.current) {
-      setStatus("Finish saving or resolve the current conflict before recovering another kitchen.");
-      return false;
+      return recoveryFailed("Finish saving or resolve the current conflict before recovering another kitchen.");
     }
     const entry = recoveryEntries.current.get(id);
     try {
       if (!entry || privateStorage.getItem(id) !== entry.serialized) {
-        refreshRecovery(); setStatus("That draft changed in another tab. Review its updated details and choose again."); return false;
+        refreshRecovery(); return recoveryFailed("That draft changed in another tab. Review its updated details and choose again.");
       }
-      if (!preserveCurrent("before-recovery")) return false;
+      if (expectedReview) {
+        const reviewed = recoveryPreview.current;
+        if (!reviewed || reviewed.id !== id || expectedReview.id !== id || reviewed.token !== expectedReview.token
+          || reviewed.candidate !== entry.serialized || reviewed.currentRevision !== revision.current || reviewed.currentState !== JSON.stringify(latest.current)) {
+          return recoveryFailed("The kitchen or draft changed after this preview. Review the updated differences before recovering it.");
+        }
+      }
+      if (!preserveCurrent("before-recovery", setRecoveryError)) return false;
       const previousRevision = revision.current;
       const previousBase = baseSnapshot.current;
       revision.current = entry.cached.revision;
       rememberBase(entry.cached.base ?? null);
-      const next = structuredClone({ ...entry.cached.state, ...(hosted ? { tastePreferences: latest.current.tastePreferences, recentActionReceipts: latest.current.recentActionReceipts } : {}), cookingProfile: entry.cached.state.cookingProfile ?? latest.current.cookingProfile ?? DEFAULT_COOKING_PROFILE });
-      if (!cache(next, true)) { revision.current = previousRevision; rememberBase(previousBase); return false; }
+      const next = effectiveRecoveryState(entry.cached.state);
+      if (!cache(next, true, setRecoveryError)) { revision.current = previousRevision; rememberBase(previousBase); return false; }
       latest.current = next;
       savedJson.current = "";
       setState(next);
@@ -465,11 +512,13 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
         setRetry((value) => value + 1);
       }
       refreshRecovery();
+      recoveryPreview.current = null;
+      setRecoveryError("");
       return true;
     } catch {
-      setStatus("The browser could not read that draft. Export your current kitchen and retry."); return false;
+      return recoveryFailed("The browser could not read that draft. Export your current kitchen and retry.");
     }
-  }, [cache, preserveCurrent, ready, refreshRecovery, privateStorage, hosted, rememberBase]);
+  }, [cache, effectiveRecoveryState, preserveCurrent, ready, refreshRecovery, privateStorage, rememberBase, recoveryFailed]);
 
   const discardDraft = useCallback((id: string): boolean => {
     const entry = recoveryEntries.current.get(id);
@@ -485,5 +534,5 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
 
   const saveState: KitchenSaveState = savePhase === "saved" && JSON.stringify(state) !== savedSnapshot ? "pending" : savePhase;
   return { state, update, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, conflictRows: hosted && conflict ? mergeKitchenDraft(mergeBase, state, conflict.state ?? structuredClone(EMPTY_KITCHEN)).conflicts : [], resolveConflict, retrySave: () => setRetry((value) => value + 1),
-    busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoverDraft, discardDraft, restoreBackup };
+    busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoveryError, previewRecoveryDraft, recoverDraft, discardDraft, restoreBackup };
 }

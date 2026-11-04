@@ -23,13 +23,17 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Chef**. If tonight already has a saved dinner, its panel
-shows portions, measured pantry coverage, missing ingredients, and **Cook dinner**.
-Otherwise, choose an instant suggestion or ask Chef for ideas. **Choose for
-tonight** saves the dinner and shows that panel without visiting Plan or a date
-picker. Recipes uses the same selection action. **Dinner day and portions** is
-shared across Chef and Recipes; choose another day before selecting when needed.
+The app opens on **Weekly plan**, with tonight’s dinner first. Use **Cook this
+dinner** for a saved meal or **Choose tonight’s dinner** to find one. The **Chef**
+navigation item opens **Dinner ideas** for individual dinners and recipe questions;
+**Find dinner ideas** in Recipes opens the same screen. **Choose for tonight**
+saves a selection and shows its dinner panel. **Dinner day and portions** is shared
+across Chef and Recipes; choose another day before selecting when needed.
 Source quantities are the default, and unknown yields use recipe batches.
+
+For several dinners, use **Plan with Chef** on Weekly plan. For groceries bought
+or used, cooked dinners, or taste preferences, open the global **Kitchen assistant**.
+Both prepare changes for review before you apply them.
 
 In **Recipe details → Personal amounts**, save measured quantities for the
 source's serving yield, or one recipe batch when yield is unknown. For example,
@@ -63,10 +67,10 @@ weekly filling, copying, locking, and manual completion.
 
 Recipe search, filters, and list position stay intact during the current session.
 Return links preserve the originating plan or recipe browser, and browser Back
-and Forward restore the section and dinner context. Reloading starts at today’s
-dinner. Browsing and choosing dinner do not require an AI model.
+and Forward restore the section and dinner context. Reloading opens Weekly plan
+with today’s dinner first. Browsing and choosing dinner do not require an AI model.
 
-Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pantry
+Chef opens with up to three **Pantry picks**, or **Ideas to start with** when your pantry
 is empty, using the loaded catalog without a model call. Saved exclusions and
 dislikes still apply. Use **Find my dinner** for a specific request, or leave it
 blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
@@ -156,7 +160,7 @@ cooking session still requires confirmation.
 
 ### Populate a fresh installation
 
-Use **Load starter recipes** on Chef or Recipes to add three original MIT-licensed
+Use **Load starter recipes** on Plan, Chef, or Recipes to add three original MIT-licensed
 recipes without a model, account, or external download. Retrying is safe and does
 not add duplicate recipes. The action changes only the catalog.
 
@@ -258,7 +262,19 @@ trust settings automatically.
    storage. The server configuration contains its hash. Never put credentials in URLs.
 4. Leave **Remember this device** unchecked for a session with a 12-hour maximum,
    or select it to stay signed in for 30 days. Expiry is fixed from sign-in.
-   The friendly name and IP fallback have separate browser sessions.
+   Using the kitchen does not extend it, and an unremembered session may end
+   sooner when the browser closes. The friendly name and IP fallback have
+   separate browser sessions.
+
+The sign-in screen’s **Need help signing in?** points household members to the
+person running the kitchen for its shared username and password. If the kitchen
+does not respond, check that the household computer is awake, RAG Chef is running,
+and both devices are on the same Wi-Fi. Return to the same kitchen address.
+
+In **Settings → Devices & access**, **Your signed-in device** shows whether this
+browser is remembered, its sign-in end date and time in the device’s local time
+zone, and **This browser’s kitchen address**. The displayed end time is the fixed
+session deadline; a different address needs a separate sign-in.
 
 Do not transfer `root-ca-key.pem` or `server-key.pem`. The public certificate's
 SHA-256 fingerprint is printed by the launcher so it can be compared before
@@ -275,7 +291,7 @@ kitchen drafts on devices you have authorized. Expired sessions hide the kitchen
 and pause saves; sign in again to recover a draft and review any save conflict.
 If browser storage is unavailable, keep the tab open until your work is saved.
 
-**Sign out of this device** is available in the header and Access settings.
+**Sign out of this device** is available in the header menu and **Devices & access** settings.
 Unsaved work offers Keep working, Save and sign out, or Discard and sign out.
 Successful logout revokes the session, signs out other tabs on that origin, and
 clears private browser drafts, cooking state, and history references. Theme
@@ -340,14 +356,14 @@ disposable copies and leave this preview and its database untouched.
 
 ### Plan dinners with Chef
 
-Open **Plan with Chef** from Chef or Weekly Plan. Ask for several dinners,
-portions, exclusions, or a priority such as using food due soon. The assistant
-uses the selected AI provider to interpret your request. The application
-selects approved recipes and calculates stock coverage and shopping requirements.
+Open **Plan with Chef** from Weekly plan. Ask for several dinners, portions,
+exclusions, or a priority such as using food due soon, then choose **Preview dinner
+plan**. The selected AI provider interprets your request. The application selects
+approved recipes and calculates stock coverage and shopping requirements.
 
 Review the dates, portions or recipe batches, dietary requirements, exclusions,
 and ranking priority. Edit those controls and select **Preview plan** to produce
-a new preview without a model call. **Revise with Chef** carries the structured
+a new preview without a model call. **Revise dinner plan** carries the structured
 draft into a follow-up request; refer to dates when keeping or replacing dinners.
 
 Each dinner shows its original source, measured pantry coverage, missing
@@ -374,9 +390,22 @@ ingredient rows, not prices, and entered use-by dates are planning information.
 If Ollama is unavailable, use the manual controls and **Preview plan** or the
 existing **Fill empty days** flow.
 
+### Update your kitchen
+
+The global **Kitchen assistant** opens **Update your kitchen**. Describe purchases,
+ingredients used, a cooked dinner, or taste preferences in **Kitchen update**, then
+choose **Preview kitchen changes**. Review the interpreted actions and the resulting
+pantry, dinner, and weekly shopping changes. You can include dinner planning in
+the same request when it depends on those updates.
+
+Use **Revise kitchen changes** to refine a request. **Enter updates manually** lets
+you choose actions and amounts without a model; **Preview edited changes** recalculates
+their effect. Only **Apply changes** saves the reviewed updates. Editing a preview
+or a change to the saved kitchen requires a fresh preview before applying.
+
 ### Use food that is due soon
 
-Chef’s **Use soon** section shows up to five nonzero pantry items with entered
+The **Use soon** section on Plan and Chef shows up to five nonzero pantry items with entered
 use-by dates from today through three days ahead; **Review pantry** opens the
 complete list. Select an ingredient to see three matching dinners, then use
 **Show more dinners** for further matches. Normal dinner selection, replacement
@@ -405,7 +434,9 @@ that choice in this browser. Theme preferences are separate from kitchen backups
 
 An empty week offers optional preferences and pantry shortcuts beside a short
 next-step hint. One **Today’s dinner** card offers cooking, changing dinner, and
-shopping actions. Mobile week entries are compact; **Fill options** contains
+shopping actions. Mobile week entries show the dinner and portions first; open
+**Details** to change portions, cook, or review amounts. **Earlier this week**
+reveals past days in the current week. **Fill options** contains
 advanced filling preferences. **Today’s dinner** gives immediate access to tonight;
 saving a dinner opens its Chef panel. Recipe selection defaults to today;
 choose a historical or future date in the shared dinner context when needed.
@@ -415,7 +446,9 @@ In **Settings**, cooking preferences come first. Enter allergies and dislikes as
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
-In **Pantry**, paste ingredients separated by new lines, commas, or semicolons.
+**Pantry** starts with your saved stock, amounts, and entered dates. Select an
+ingredient’s **Edit** row to change its amount or date, or remove it.
+Open **Add ingredients** to paste ingredients separated by new lines, commas, or semicolons.
 Amounts are optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported.
 Multiple ingredients and measured entries open an editable confirmation preview
 whose actions remain visible while the ingredient rows scroll.
@@ -478,7 +511,10 @@ their own identities. No cooked-to-dry weight or volume ratio is assumed.
 Shopping flags a preparation mismatch for review instead of subtracting the
 wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
 
-Checked items move into **Bought** without changing pantry stock. Use **Add bought
+The remaining-item count stays visible while scrolling. **List tools** below the
+checklist contains copy and print actions. Checked items move into **Bought**
+without changing pantry stock. The latest check offers **Undo**, which cannot
+reverse a later check or an already applied pantry purchase. Use **Add bought
 items to pantry** to review actual purchased amounts, then **Confirm pantry
 additions**. Each purchase adds separate batches, preserving existing quantities,
 use-by dates, and cooked/uncooked identities. Unknown and note-only amounts remain
@@ -760,9 +796,21 @@ preferences and require review before restoration.
 It validates the file and previews counts before replacement, preserves the
 current kitchen as a recoverable draft, and uses the current revision when saving.
 Replacement is blocked if the recovery copy cannot be written. Catalog data and
-model preferences are not restored. **Unsaved kitchens found** lets you review
-closed-tab drafts with dates, counts and differences; recovery copies a draft
-without deleting another tab's work. Offline restores stay pending until saved.
+model preferences are not restored. Offline restores stay pending until saved.
+
+In **Unsaved kitchens found**, choose **Review this draft** to compare **This
+kitchen** with the **Browser draft** before recovering it. The review shows pantry
+amounts and dates, dinner and cooking-preference changes, and summaries of other
+affected data. Expand additional changes when a category has more than four rows.
+**Cancel** leaves the kitchen untouched. **Recover this draft** preserves a copy
+of the current kitchen and keeps the original draft. If either the kitchen or
+draft changes after preview, recovery is blocked until you review the latest
+differences. A newer server revision may still require a save-conflict decision.
+
+Local save conflicts show **Saved kitchen** beside **This browser draft**, including
+the actual ingredient amounts and cooking preferences that differ. Choose **Load
+saved version** or **Save this draft** after reviewing them. Hosted households keep
+their existing row-by-row merge choices for independent and conflicting edits.
 
 ### Reviewed recipe metadata
 

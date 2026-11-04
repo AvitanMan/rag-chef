@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
@@ -25,7 +26,7 @@ test("fresh kitchen browses synthetic recipes and persists a selected dinner", a
   await expect(card).toBeVisible();
   await expect(card).toContainText("0 of 2 ingredients in pantry");
   await card.getByRole("button", { name: /^Choose for tonight:/ }).click();
-  await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dinner ideas", level: 1, exact: true })).toBeVisible();
   await expect.poll(async () => Object.values((await (await request.get("/api/kitchen")).json()).state?.meals ?? {}).length).toBe(1);
   await page.reload(); await navigate(page, "Plan");
   await expect(page.locator(".day-card.filled")).toHaveCount(1);
@@ -39,8 +40,10 @@ test("zero stock is unavailable and removing duplicate names preserves the other
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   await expect(page.locator(".recipe-card")).toContainText("1 of 2 ingredients in pantry");
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.getByRole("button", { name: "Remove rice", exact: true }).first().click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.map((row: { id: string }) => row.id)).toEqual(["rice-positive", "tomato-zero"]);
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).fill("0 g");
   await navigate(page, "Recipes");
   await expect(page.locator(".recipe-card")).toContainText("0 of 2 ingredients in pantry");
@@ -113,6 +116,7 @@ test("backup restore previews changes and rejects invalid files without changing
   expect((await downloadPromise).suggestedFilename()).toMatch(/\.json$/);
   await page.reload(); await navigate(page, "Plan");
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("300 g");
 });
 
@@ -126,7 +130,8 @@ test("another tab draft can be reviewed and recovered without deleting its origi
   await openChef(page); await navigate(page, "Plan");
   await page.getByText(/Unsaved kitchens found/).click();
   await expect(page.locator(".recovery-candidate")).toContainText("1 pantry rows");
-  await page.getByRole("button", { name: "Recover this draft" }).click();
+  await page.getByRole("button", { name: "Review this draft", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review browser draft", exact: true }).getByRole("button", { name: "Recover this draft", exact: true }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry).toEqual(draft.pantry);
   expect(await page.evaluate((key) => localStorage.getItem(key), key)).not.toBeNull();
 });
@@ -147,9 +152,12 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
 test("offline pantry edits survive closing the tab and can be explicitly recovered after reconnecting", async ({ page, context, request }) => {
   await openChef(page); await navigate(page, "Plan");
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await context.setOffline(true);
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("400 g");
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((row: { name: string; measure: string }) => row.name === "beans" && row.measure === "400 g")))).toBeTruthy();
   await page.close();
@@ -157,14 +165,17 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
   const reopened = await context.newPage();
   await reopened.goto("/");
   await reopened.getByText(/Unsaved kitchens found/).click();
-  await reopened.getByRole("button", { name: "Recover this draft", exact: true }).first().click();
+  await reopened.getByRole("button", { name: "Review this draft", exact: true }).first().click();
+  await reopened.getByRole("dialog", { name: "Review browser draft", exact: true }).getByRole("button", { name: "Recover this draft", exact: true }).click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string; measure: string }) => ({ name: stock.name, measure: stock.measure }))).toEqual([{ name: "beans", measure: "400 g" }]);
   await navigate(reopened, "Pantry");
+  await revealPantryEditors(reopened);
   await expect(reopened.getByRole("textbox", { name: "Available beans", exact: true })).toHaveValue("400 g");
 });
 
 test("two tabs expose a revision conflict and keep server and browser versions until a choice", async ({ page, context, request }) => {
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   const other = await context.newPage();
   let releaseWrite = () => {};
   const heldWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
@@ -173,6 +184,7 @@ test("two tabs expose a revision conflict and keep server and browser versions u
   let otherRevision: number | undefined;
   try {
     await other.goto("/"); await navigate(other, "Pantry");
+    await revealPantryEditors(other);
     await expect(other.locator(".save-indicator")).toHaveText("Saved");
     // Hold a genuine unsaved edit while the first tab saves from the same revision.
     // Clean tabs now refresh automatically, so sequential edits should not conflict.
@@ -183,10 +195,12 @@ test("two tabs expose a revision conflict and keep server and browser versions u
       }
       await route.continue();
     });
+    await revealPantryAdd(other);
     await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
     await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
     await writing;
     const pageWrite = page.waitForRequest(request => request.url().endsWith("/api/kitchen") && request.method() === "PUT");
+    await revealPantryAdd(page);
     await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
     await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
     expect((await pageWrite).postDataJSON().revision).toBe(otherRevision);
@@ -198,7 +212,8 @@ test("two tabs expose a revision conflict and keep server and browser versions u
     expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
     expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
     await other.getByRole("button", { name: "Load saved version", exact: true }).click();
+    await revealPantryEditors(other);
     await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
-    await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
+    await expect(other.locator('[data-pantry-name="beans"]')).toHaveCount(0);
   } finally { releaseWrite(); await other.close(); }
 });

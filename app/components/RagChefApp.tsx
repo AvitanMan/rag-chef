@@ -11,6 +11,9 @@ import { discardPendingStorageItem, householdDate } from "../lib/private-storage
 import { assistantFetch, selectedAIModel, type AISelection } from "../lib/browser-ai";
 import { AIConnections } from "./AIConnections";
 import { HouseholdSettings } from "./HouseholdSettings";
+import { LocalDeviceAccess } from "./LocalDeviceAccess";
+import { KitchenChangeList, RecoveryDraftReview } from "./KitchenChangeReview";
+import { buildKitchenChangePreview } from "../lib/kitchen-change-preview";
 import { KitchenAssistant, type AssistantPreset } from "./KitchenAssistant";
 
 /* eslint-disable @next/next/no-img-element -- Recipe images come from source adapters with dynamic hostnames. */
@@ -43,8 +46,8 @@ import { chefMealHash, chefMealPreview, chefRecipeHash, cookingSourceStep } from
 import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
 import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
 import { COOKING_SESSION_KEY, writeCookingSession, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
-import { useKitchen } from "../lib/use-kitchen";
-import { DEFAULT_COOKING_PROFILE, DINNER_AMOUNT_LIMITS, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
+import { useKitchen, type RecoveryDraftPreview } from "../lib/use-kitchen";
+import { DEFAULT_COOKING_PROFILE, EMPTY_KITCHEN, DINNER_AMOUNT_LIMITS, mealScale, type CookingProfile, type KitchenState, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, placePlannedDinner, weekStart } from "../lib/kitchen-state";
 import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
 import { mealAmountLabel, canonicalIngredient, completeMeal, consumptionPreview, parseMeasure, resolvedMealIngredients, undoMeal, undoMealProblem, allocateStockForMeals, mealReadiness } from "../lib/quantities";
@@ -328,6 +331,8 @@ export default function RagChefApp() {
   const [chefRefinements, setChefRefinements] = useState<string[]>([]);
   const pantry = useMemo(() => availablePantryNames(kitchen.state.pantry, today), [kitchen.state.pantry, today]);
   const [pantryDraft, setPantryDraft] = useState("");
+  const [recoveryReview, setRecoveryReview] = useState<RecoveryDraftPreview | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState(false);
   const [pantryPreview, setPantryPreview] = useState<PantryInputRow[] | null>(null);
   const [pantryError, setPantryError] = useState("");
   const [removals, setRemovals] = useState<{ id: string; label: string; pantry: PantryStock[]; meals: PlannedMeal[] }[]>([]);
@@ -1168,7 +1173,7 @@ export default function RagChefApp() {
           </div>
           <div className="topbar-actions">
             <span className={`save-indicator save-${kitchen.saveState}`} role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
-            {assistantEnabled && <button className="secondary-button global-chef-action" aria-label="Ask Chef: kitchen assistant" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}><KitchenIcon name="chef" /><span>Ask Chef</span></button>}
+            {assistantEnabled && <button className="secondary-button global-chef-action" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}><KitchenIcon name="chef" /><span>Kitchen assistant</span></button>}
             <ThemeToggle />
             <button className="secondary-button icon-button" aria-label="Settings" disabled={!hydrated} onClick={() => navigate("settings")}><KitchenIcon name="settings" /></button>
             {(session.mode === "hosted" || session.localServer?.requiresPassword) && <details className="kitchen-menu"><summary aria-label="Kitchen menu"><KitchenIcon name="logout" /></summary><div><strong>{session.household?.name ?? "This kitchen"}</strong><button className="text-button" onClick={() => void signOut()}>Sign out of this device</button></div></details>}
@@ -1182,10 +1187,15 @@ export default function RagChefApp() {
         </section>}
 
         {(kitchen.saveState === "offline" || kitchen.saveState === "error" || !kitchen.backupAvailable) && <div className="inline-confirm" role="alert"><span>{kitchen.status}{!kitchen.backupAvailable && " Browser backup is unavailable; keep this tab open until saved to the server computer."}</span><button className="secondary-button" onClick={kitchen.retrySave}>Retry save</button></div>}
-        {kitchen.conflict && (session.mode === "hosted" ? <section className="panel conflict-review" role="alert"><h2>The household kitchen changed</h2><p>Your pending edits are preserved. Changes to separate rows will be combined; review rows edited in both places below.</p>{kitchen.conflictRows.length > 0 && <div className="table-scroll"><table><thead><tr><th>Item</th><th>This browser</th><th>Saved household</th></tr></thead><tbody>{kitchen.conflictRows.map(row => <tr key={row.path}><td>{row.path}</td><td>{conflictValue(row.browser)}</td><td>{conflictValue(row.saved)}</td></tr>)}</tbody></table></div>}<div className="modal-actions"><button className="primary-button" onClick={() => kitchen.resolveConflict(false)}>{kitchen.conflictRows.length ? "Use saved values for conflicts" : "Merge kitchen changes"}</button>{kitchen.conflictRows.length > 0 && <button className="secondary-button" onClick={() => kitchen.resolveConflict(true)}>Use my values for conflicts</button>}</div></section> : <div className="inline-confirm" role="alert"><span>Your browser draft and the saved kitchen differ. Choose the version to keep.{JSON.stringify(kitchen.conflict.state?.cookingProfile ?? DEFAULT_PROFILE) !== JSON.stringify(profile) && " Cooking preferences also differ; review allergies and equipment before choosing."}</span><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div>)}
+        {kitchen.conflict && (session.mode === "hosted" ? <section className="panel conflict-review" role="alert"><h2>The household kitchen changed</h2><p>Your pending edits are preserved. Changes to separate rows will be combined; review rows edited in both places below.</p>{kitchen.conflictRows.length > 0 && <div className="table-scroll"><table><thead><tr><th>Item</th><th>This browser</th><th>Saved household</th></tr></thead><tbody>{kitchen.conflictRows.map(row => <tr key={row.path}><td>{row.path}</td><td>{conflictValue(row.browser)}</td><td>{conflictValue(row.saved)}</td></tr>)}</tbody></table></div>}<div className="modal-actions"><button className="primary-button" onClick={() => kitchen.resolveConflict(false)}>{kitchen.conflictRows.length ? "Use saved values for conflicts" : "Merge kitchen changes"}</button>{kitchen.conflictRows.length > 0 && <button className="secondary-button" onClick={() => kitchen.resolveConflict(true)}>Use my values for conflicts</button>}</div></section> : <section className="panel conflict-review local-conflict-review" role="alert"><h2>Review your unsaved changes</h2><p>Your browser draft and the saved kitchen differ. Choose the version to keep.</p><KitchenChangeList preview={buildKitchenChangePreview(kitchen.conflict.state ?? EMPTY_KITCHEN, kitchen.state)} beforeLabel="Saved kitchen" afterLabel="This browser draft" /><div className="modal-actions"><button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button><button className="primary-button" onClick={() => kitchen.resolveConflict(true)}>Save this draft</button></div></section>)}
         {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
         {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{[cookingSession.timer, ...(cookingSession.extraTimers ?? [])].some(timer => timer.status === "finished") ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
-        {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
+        {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Compare a browser draft with this kitchen before recovering it. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { const preview = kitchen.previewRecoveryDraft(draft.id); setRecoveryReview(preview); setRecoveryNotice(!preview); }}>Review this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
+        {recoveryNotice && !recoveryReview && <p role="alert">{kitchen.recoveryError}</p>}
+        {recoveryReview && <RecoveryDraftReview preview={recoveryReview} busy={kitchen.busy} error={recoveryNotice ? kitchen.recoveryError : ""} close={() => { setRecoveryReview(null); setRecoveryNotice(false); }} refresh={() => { const preview = kitchen.previewRecoveryDraft(recoveryReview.id); if (preview) { setRecoveryReview(preview); setRecoveryNotice(false); } else setRecoveryNotice(true); }} confirm={() => {
+          if (kitchen.recoverDraft(recoveryReview.id, recoveryReview)) { setRecoveryReview(null); setRecoveryNotice(false); setView("plan"); }
+          else setRecoveryNotice(true);
+        }} />}
         {assistantEnabled && <ChefPlanWorkspace key={`${week}:${today}`} visible={chefPlanOpen} close={() => setChefPlanOpen(false)}
           week={week} today={today} kitchen={kitchen.state} revision={kitchen.getRevision()} saveState={kitchen.saveState} model={selectedAIModel(settings)} aiSettings={settings}
           refreshKitchen={async () => Boolean(await kitchenRef.current.refreshSavedKitchen())}
@@ -1291,7 +1301,7 @@ export default function RagChefApp() {
         {view === "recipes" && (
           <section className="recipe-section catalog-browser" aria-label="Recipe collection">
             {dinnerContext}
-            <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => { newDinnerSearch(); setChefFlow(current => ({ ...current, origin: "recipes" })); navigate("chef"); }}>Ask Chef</button></div>
+            <div className="section-heading"><p>Search names and ingredients · pantry matches first.</p><button className="secondary-button" onClick={() => { newDinnerSearch(); setChefFlow(current => ({ ...current, origin: "recipes" })); navigate("chef"); }}>Find dinner ideas</button></div>
             <div className="recipe-collections" role="group" aria-label="Recipe collections">
               {([["all", "All recipes"], ["favorites", "Favorites"], ["recent", "Cook again"]] as const).map(([value, label]) => <button key={value} className="secondary-button" aria-pressed={recipeCollection === value} onClick={() => { setRecipeCollection(value); setRecipeLimit(RECIPE_PAGE_SIZE); }}>{label}</button>)}
             </div>
@@ -1355,6 +1365,8 @@ export default function RagChefApp() {
           <DurableShoppingView
             items={shoppingItems}
             checked={kitchen.state.shoppingChecked}
+            cycles={kitchen.state.shoppingCycles}
+            purchases={kitchen.state.shoppingPurchases}
             update={kitchen.update}
             hasPlan={weekMeals.length > 0}
             week={week}
@@ -1524,7 +1536,7 @@ function NavButton({
 
 function viewTitle(view: View) {
   return {
-    chef: "Ask Chef",
+    chef: "Dinner ideas",
     recipes: "Recipes",
     pantry: "Pantry",
     plan: "Weekly plan",
@@ -1536,7 +1548,7 @@ function viewTitle(view: View) {
 function viewDescription(view: View) {
   return {
     plan: "A little planning. A week of good dinners.",
-    chef: "Find a dinner or get a hand with your recipe.",
+    chef: "Find one dinner or ask about a recipe.",
     recipes: "Find something you’ll love to cook.",
     pantry: "Know what you have. Make the most of it.",
     shop: "Just what your dinners need.",
@@ -1666,7 +1678,7 @@ function ChefView({
       {!askingChef && (!chefResult || chefResult.recommendations.length > 0 && recipes.length > 0) && <section className="recipe-section">
         <div className="section-heading">
           <div>
-            <h3>{chefResult ? "Your chef’s shortlist" : pantry.length ? "Pantry picks" : "Dinner ideas"}</h3>
+            <h3>{chefResult ? "Your chef’s shortlist" : pantry.length ? "Pantry picks" : "Ideas to start with"}</h3>
             {chefResult?.retrieval && <p>{chefResult.retrieval.catalogCount} approved recipes searched · {chefResult.generation === "ai" ? "Chef recommendations" : "catalog suggestions"}</p>}
           </div>
         </div>
@@ -1833,29 +1845,31 @@ function PantryView({
   remove: (value: string) => void;
   update: (change: (state: KitchenState) => KitchenState) => void;
 }) {
+  const [adding, setAdding] = useState(pantry.length === 0);
   const groups = pantryDateGroups(pantry, today);
   const visibleItems = browsePantry(groups[filter], search, sort);
   useEffect(() => {
     if (!focusId) return;
     const frame = requestAnimationFrame(() => {
       const row = document.getElementById(`pantry-row-${focusId}`);
+      const editor = row?.querySelector<HTMLDetailsElement>(".pantry-editor");
+      if (editor) editor.open = true;
       row?.scrollIntoView({ block: "center" }); row?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [focusId, filter]);
   return (
     <div className="pantry-page">
-      <section className="panel large-panel">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">A well-stocked kitchen</span><h2>Add what you have</h2><p>Type one ingredient or paste a whole list. Add amounts when you know them.</p>
-          </div>
-        </div>
+      <section className="panel large-panel inventory-panel">
+        <div className="section-heading"><div><h2>Your ingredients</h2><p>{pantry.length} {pantry.length === 1 ? "item" : "items"} in your kitchen</p></div></div>
+        <details className="pantry-add" open={adding} onToggle={event => setAdding(event.currentTarget.open)}>
+        <summary>Add ingredients</summary>
         <form className="add-form" onSubmit={(event) => { event.preventDefault(); add(); }}>
           <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={"rice: 300 g\ncanned tomatoes: 2 cans\ngarlic"} aria-label="New pantry ingredient" rows={3} />
           <button className="primary-button" type="submit">Add to pantry</button>
         </form>
-        <p className="quantity-note">Try “rice: 300 g”, “300 g rice”, or just “rice”. Use “cooked rice” for leftovers; plain rice means uncooked. Multiple ingredients open a confirmation preview. Leave unknown amounts blank; they won’t be subtracted from shopping.</p>
+        <details className="pantry-add-help"><summary>Tips for amounts and leftovers</summary><p className="quantity-note">Try “rice: 300 g”, “300 g rice”, or just “rice”. Use “cooked rice” for leftovers; plain rice means uncooked. Multiple ingredients open a confirmation preview. Leave unknown amounts blank; they won’t be subtracted from shopping.</p></details>
+        </details>
         <div className="pantry-browser-controls">
           <label>Search pantry<input type="search" placeholder="Ingredient name…" value={search} onChange={event => setSearch(event.target.value)} /></label>
           <button className="secondary-button" disabled={!search} onClick={() => setSearch("")}>Clear pantry search</button>
@@ -1868,8 +1882,11 @@ function PantryView({
         <p className="quantity-note" role="status">Showing {visibleItems.length} of {groups[filter].length} items in this view.</p>
         <div className="unified-pantry-list">
           {visibleItems.map((item) => (
-            <div className="unified-pantry-item" key={item.id} id={`pantry-row-${item.id}`}>
-              <label><strong>{item.name}</strong><ValidatedInput validate={measureInputProblem} aria-label={`Available ${item.name}`} placeholder="Amount unknown" value={item.measure} onCommit={(measure) => {
+            <div className="unified-pantry-item" key={item.id} id={`pantry-row-${item.id}`} data-pantry-name={item.name}>
+              <details className="pantry-editor">
+              <summary><span className="pantry-stock-summary"><strong>{item.name}</strong><span>{item.measure || "Amount unknown"}</span>{item.useBy && <small className={item.useBy < today ? "stock-past" : groups.soon.some(row => row.id === item.id) ? "stock-soon" : ""}>{item.useBy < today ? "Past entered date" : item.useBy === today ? "Use by today" : `Use by ${dateLabel(item.useBy)}`}</small>}</span><span className="pantry-edit-label">Edit</span></summary>
+              <div className="pantry-edit-fields">
+              <label>Available<ValidatedInput validate={measureInputProblem} aria-label={`Available ${item.name}`} placeholder="Amount unknown" value={item.measure} onCommit={(measure) => {
                 update((state) => ({ ...state, pantry: state.pantry.map((stock) => stock.id === item.id ? { ...stock, measure } : stock) }));
               }} />{item.measure && !parseMeasure(item.measure) && <small>Kept as a note; this amount cannot be subtracted automatically.</small>}</label>
               <label className="pantry-use-by">Use by<input type="date" aria-label={`Use by ${item.name}`} value={item.useBy ?? ""} onChange={(event) => {
@@ -1881,12 +1898,13 @@ function PantryView({
                   return next;
                 }) }));
               }} />{item.useBy && item.useBy < today && <small>Past entered use-by date; excluded from availability.</small>}</label>
-              <div className="pantry-row-actions">{groups.soon.some(row => row.id === item.id) && <button className="text-button" onClick={() => select(item.id)} aria-label={`Find dinners using ${item.name}`}>Find dinner</button>}
-              <button className="text-button" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`}>Remove</button></div>
+              <button className="text-button pantry-remove" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
+              </div></details>
+              {groups.soon.some(row => row.id === item.id) && <button className="text-button pantry-find-dinner" onClick={() => select(item.id)} aria-label={`Find dinners using ${item.name}`}>Find dinner</button>}
             </div>
           ))}
         </div>
-        {!pantry.length ? <p>Your pantry is empty. Add an ingredient above.</p> : !groups[filter].length ? <p>No items in this view. Choose All items to review the rest of your pantry.</p> : !visibleItems.length && <p>No pantry items match your search in this view. Clear the search or choose another date group.</p>}
+        {!pantry.length ? <p>Your pantry is empty. Start with a few ingredients you use often.</p> : !groups[filter].length ? <p>No items in this view. Choose All items to review the rest of your pantry.</p> : !visibleItems.length && <p>No pantry items match your search in this view. Clear the search or choose another date group.</p>}
       </section>
     </div>
   );
@@ -1921,7 +1939,7 @@ function SettingsView({
   currentKitchen: KitchenState;
   sources: Recipe["source"][];
 }) {
-  const { session, signOut } = useAppSession();
+  const { session } = useAppSession();
   const canEditRequirements = session.mode === "local" || session.household?.role === "owner";
   const [restorePreview, setRestorePreview] = useState<ReturnType<typeof parseKitchenBackup> | null>(null);
   const [restoreError, setRestoreError] = useState("");
@@ -1981,7 +1999,7 @@ function SettingsView({
         {session.localServer!.origins!.map(origin => <label key={origin}>Kitchen address<input readOnly value={origin} onFocus={event => event.currentTarget.select()} /></label>)}
         <p className="quantity-note">{session.localServer?.requiresPassword ? "Sign in with your shared kitchen username and password. Each device stays connected independently. Keep the server computer running while you cook." : "Anyone who can open these local addresses can use and change this kitchen."}</p>
       </section>}
-      {session.mode === "local" && <section className="panel settings-panel local-access-panel"><span className="eyebrow">Devices & access</span><h2>{session.localServer?.requiresPassword ? "Your signed-in device" : "Your local kitchen"}</h2><p>{session.localServer?.requiresPassword ? "Sign out when you’re finished on a shared device. Your saved kitchen stays on the server computer." : "This kitchen is running locally on your computer."}</p>{session.localServer?.requiresPassword && <button className="secondary-button" onClick={() => void signOut()}><KitchenIcon name="logout" />Sign out of this device</button>}</section>}
+      <LocalDeviceAccess />
       </div>
 
       <section className="panel settings-panel wide-panel" id="kitchen-backup">

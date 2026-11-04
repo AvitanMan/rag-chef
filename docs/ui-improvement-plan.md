@@ -1,5 +1,108 @@
 # UI review and improvement plan
 
+## November 4 darker neutral theme
+
+Dark mode now uses a near-black canvas, charcoal cards, neutral gray navigation,
+and off-white text. The green tint is removed from the theme, dinner banner,
+login panel, recipe placeholders, and focus shadows. Warm action accents remain.
+
+The isolated theme run passed all 12 applicable browser checks, including the
+320/390/768/1440px light/dark screenshot matrix and saved/system theme behavior.
+Eight duplicate matrix cases were intentionally skipped. All 24 checked dark
+text/surface pairs exceed 4.5:1 contrast; the stronger control border color exceeds
+3:1 against raised surfaces. The live HTTPS login was also visually checked at
+desktop and phone widths. [Dark Plan preview](images/plan-dark.png).
+
+## November 4 clarity, recovery, and device access
+
+The remaining three follow-up improvements are implemented:
+
+- Chef navigation opens Dinner ideas for individual dinners and recipe questions.
+  Plan with Chef previews several dinners, while the global Kitchen assistant
+  previews grocery, cooking, and preference updates. Each workspace names its
+  own preview action; recipe-specific questions retain their existing entry.
+- Browser drafts open a before-and-after comparison before recovery. It shows
+  ingredient quantities and dates, dated dinners and portions, cooking
+  preferences, and other changed records. Changes and removals appear first.
+  Long comparisons scroll within the dialog while its actions stay visible.
+  Local save conflicts also show saved-versus-browser values before choosing.
+  Previewing performs no persistence writes; confirmation rejects a changed
+  draft, current kitchen, or revision. Effective recovery keeps hosted feedback
+  and action history, and retains the current profile for legacy drafts.
+- Login identifies the current kitchen address and explains how to reconnect.
+  Devices & access shows whether this browser is remembered, its fixed sign-in
+  deadline in the browser’s time zone, its address, and sign-out.
+
+Review corrected a mobile layout shift when Saved changed to Saving: the status
+now has a stable row, keeping the toolbar and long pantry lists in place.
+Long draft comparisons initially focus their Close control and start at the top.
+A pre-commit review also found and fixed two recovery issues: the introduction
+now scrolls with the differences so stale-draft actions remain reachable on short
+screens, and recovery errors persist independently of background save/refresh
+notifications. A fresh preview clears the error. Regression coverage includes
+320×480 and 844×390 viewports, initial focus, and returning focus after closing.
+
+Screenshots from disposable kitchens: [Dinner ideas](images/dinner-ideas.png)
+and [draft comparison](images/draft-recovery.png).
+
+Validation: all 661 source tests, TypeScript, ESLint, and whitespace checks passed.
+All [10 recovery browser checks](../output/playwright/e2e-2026-11-04T18-34-14-165Z-b0af29fe/results.json)
+passed after the review fixes.
+The final [full desktop/mobile run](../output/playwright/e2e-2026-11-04T18-34-54-270Z-c6318c20/results.json)
+passed all 408 applicable cases, with 38 mode-specific or duplicate matrix cases
+intentionally skipped and no failures or retries. The screenshot matrix covers
+320/390/768/1440px in light and dark themes; the documentation images above use
+this final layout.
+The scroll and keyboard-focus checks passed
+[18 repeated desktop/mobile cases](../output/playwright/e2e-2026-11-04T18-15-35-287Z-2ea67850/results.json).
+Separate disposable runs passed
+[26 secure-login checks](../output/playwright/secure-lan-2026-11-04T18-39-00-685Z-277023ed/results.json),
+[14 hosted-account checks](../output/playwright/hosted-2026-11-04T18-34-57-848Z-2f2f3f1a/results.json),
+four Chromium/WebKit offline and export checks, both fresh-install journeys,
+and [three built-worker checks](../output/playwright/integration-2026-11-04T18-35-20-474Z-d6d46e58/rendered-html.log).
+The secure run includes device-access checks at 320px. The logout/Back test now
+waits for the router's login-page navigation before testing a separate reload;
+its private-screen and revoked-session assertions remain intact. That sequence
+also passed six repeated desktop/mobile runs.
+
+## November 4 everyday lists follow-up
+
+The first three follow-up improvements are implemented:
+
+- Pantry opens on saved ingredients with compact amount/date summaries. Add
+  ingredients and each row’s editing fields expand on demand; an empty pantry
+  opens the add form. Use-soon review still opens and focuses the selected row.
+- Mobile Plan shows compact dinner cards and puts past days behind Earlier this
+  week. Details reveals portions, cooking, and amount controls; direct review and
+  saved-dinner focus reveal the relevant day automatically. Desktop controls stay
+  expanded.
+- Shopping starts with its checklist, keeps the remaining count and latest-check
+  Undo visible, and moves copy/print into List tools. Undo rechecks the current
+  purchase cycle and preserves reviewed pantry additions. Keyboard focus stays
+  below the sticky header.
+
+Review also corrected narrow date fields, scroll jumps during pantry removal,
+desktop button styles, and hiding past days during amount review.
+
+Screenshots from a disposable synthetic kitchen:
+[Pantry inventory](images/pantry-inventory.png),
+[mobile Plan](images/plan-mobile.png), and
+[Shopping checklist](images/shopping-checklist.png).
+
+Validation: 649 source tests, TypeScript, ESLint, and whitespace checks passed.
+The [full desktop/mobile run](../output/playwright/e2e-2026-11-04T17-29-22-947Z-64405970/results.json)
+finished with 395 passes and one test still clicking a collapsed dinner control.
+After updating that interaction, all 14 affected Chef selection/replacement cases
+[passed on rerun](../output/playwright/e2e-2026-11-04T17-37-37-864Z-d04de286/results.json).
+All eight new layout/accessibility cases also
+[passed against the final UI](../output/playwright/e2e-2026-11-04T17-33-48-291Z-13203725/results.json).
+Separate disposable runs passed 22 secure-login checks, 14 hosted-account checks,
+four Chromium/WebKit offline and export checks, both fresh-install journeys,
+and the built-worker checks. The responsive screenshot matrix covers
+320/390/768/1440px in light and dark themes. Mode-specific and duplicate matrix
+cases are intentionally skipped in the general run. Generated reports are ignored
+by Git; the screenshots above are included in the repository.
+
 ## November 4 redesign and local browser login
 
 Implemented on `codex/ux-browser-login`, based on `codex/planning-assistant`.

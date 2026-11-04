@@ -109,7 +109,7 @@ test("unavailable local AI retains manual preview controls", async ({ page, requ
     const dialog = page.getByRole("dialog", { name: "Plan dinners with Chef" });
     const before = await readKitchen(request);
     await dialog.getByRole("textbox", { name: "Planning request", exact: true }).fill("Plan two dinners");
-    await dialog.getByRole("button", { name: "Ask Chef to plan", exact: true }).click();
+    await dialog.getByRole("button", { name: "Preview dinner plan", exact: true }).click();
     await expect(dialog.getByRole("alert")).toBeVisible();
     await dialog.getByLabel("Number of dinners", { exact: true }).fill("1");
     await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();

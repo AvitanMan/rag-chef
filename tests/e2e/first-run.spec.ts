@@ -1,3 +1,4 @@
+import { revealShoppingTools } from "./ui-controls";
 import { expect, test } from "@playwright/test";
 
 test("fresh installation recovers from setup failure and reaches dinner without AI", async ({ page, request }) => {
@@ -41,10 +42,11 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   await page.mouse.move(0, 0);
   await page.screenshot({ fullPage: true, animations: "disabled", path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/first-dinner-${test.info().project.name}.png` });
   await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await revealShoppingTools(page);
   await expect(page.getByRole("button", { name: "Copy shopping list", exact: true })).toBeVisible();
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
-  await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.locator(".shopping-tools > summary").click();
+  await page.mouse.wheel(0, -10000);
   await page.mouse.move(0, 0);
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeInViewport();
   await page.screenshot({ fullPage: true, animations: "disabled", path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/first-shopping-${test.info().project.name}.png` });

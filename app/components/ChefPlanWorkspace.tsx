@@ -133,11 +133,11 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
   const removedShopping = draft?.beforeShopping.filter(item => !draft.shopping.some(next => next.key === item.key)).length ?? 0;
   return <Modal className="kitchen-modal-backdrop chef-plan-backdrop" label="Plan dinners with Chef" close={closeWorkspace}>
     <section className="panel kitchen-modal chef-plan-workspace">
-      <header className="chef-plan-heading"><div><h2>Plan dinners with Chef</h2><p>Week of {dateLabel(week)} · Review your dinners and shopping before saving.</p></div><button className="text-button" aria-label="Close planning workspace" disabled={busy === "apply"} onClick={closeWorkspace}>Close</button></header>
+      <header className="chef-plan-heading"><div><h2>Plan dinners with Chef</h2><p>Plan several dinners and review their combined shopping list. Week of {dateLabel(week)}.</p></div><button className="text-button" aria-label="Close planning workspace" disabled={busy === "apply"} onClick={closeWorkspace}>Close</button></header>
       <form className="chef-plan-request" onSubmit={event => { event.preventDefault(); void preview(false); }}>
         <label htmlFor="chef-plan-request">Planning request</label>
         <textarea ref={requestField} id="chef-plan-request" value={query} maxLength={2000} rows={3} disabled={Boolean(busy)} placeholder={draft ? "Keep Tuesday, replace Thursday, and make Friday vegetarian…" : "Plan three dinners for four people using food that expires soon…"} onChange={event => setQuery(event.target.value)} />
-        <div className="modal-actions"><button className="primary-button" type="submit" disabled={!canRequest || !query.trim() || edited || stale}>{draft ? "Revise with Chef" : "Ask Chef to plan"}</button>{busy === "preview" && <button type="button" className="secondary-button" onClick={cancelPreview}>Cancel request</button>}</div>
+        <div className="modal-actions"><button className="primary-button" type="submit" disabled={!canRequest || !query.trim() || edited || stale}>{draft ? "Revise dinner plan" : "Preview dinner plan"}</button>{busy === "preview" && <button type="button" className="secondary-button" onClick={cancelPreview}>Cancel request</button>}</div>
       </form>
       {edited && <p className="quantity-note" role="status">Your controls changed. Preview them before asking Chef to revise or applying.</p>}
       {busy && <p role="status">{busy === "apply" ? "Saving the reviewed plan…" : "Preparing your dinner draft…"}</p>}
@@ -147,8 +147,8 @@ export function ChefPlanWorkspace({ visible, close, week, today, kitchen, revisi
       {stale && <p className="field-error" role="alert">This draft needs a fresh preview. Review the controls, then choose Preview plan before revising or applying.</p>}
       {needsClarification && <p className="quantity-note" role="status">Clarify your request or preview the controls before applying. Your existing draft is still available.</p>}
       <fieldset className="chef-plan-controls" disabled={Boolean(busy)}>
-        <legend>{draft ? "Review the interpreted request" : "Manual planning controls"}</legend>
-        <p>These controls work without AI. Your saved allergy and equipment requirements always apply.</p>
+        <legend>{draft ? "Review the interpreted request" : "Plan with controls"}</legend>
+        <p>Set dates, portions, and priorities without AI, then preview the plan. Your saved allergy and equipment requirements always apply.</p>
         <div className="chef-plan-fields">
           <label>Number of dinners<input type="number" min={1} max={7} value={intent.count} onChange={event => setIntent({ ...intent, count: Number(event.target.value), dates: [], replaceDates: [], authorizedReplacementDates: [], keepDates: [], perDate: {} })} /></label>
           <label>Plan servings<input type="number" {...DINNER_AMOUNT_LIMITS.servings} placeholder="Source quantities" value={intent.servings ?? ""} onChange={event => setIntent({ ...intent, servings: event.target.value ? Number(event.target.value) : null, batches: null })} /></label>

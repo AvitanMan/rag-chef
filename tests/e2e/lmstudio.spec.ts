@@ -36,20 +36,20 @@ test("LM Studio selection persists and reaches Chef, kitchen assistant, and plan
   await expect(page.getByRole("textbox", { name: "Model", exact: true })).toHaveValue(model);
 
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Plan/ }).filter({ visible: true }).first().click();
-  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
   const assistant = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
   await expect(assistant).toContainText(`LM Studio · ${model}`);
-  await assistant.getByRole("textbox", { name: "Your request", exact: true }).fill("Add 2 kg rice");
-  await assistant.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await assistant.getByRole("textbox", { name: "Kitchen update", exact: true }).fill("Add 2 kg rice");
+  await assistant.getByRole("button", { name: "Preview kitchen changes", exact: true }).click();
   await expect(assistant.getByRole("alert")).toContainText("Test model is offline");
   await page.getByRole("button", { name: "Close kitchen assistant", exact: true }).click();
   await page.getByRole("button", { name: "Plan with Chef", exact: true }).click();
   await page.getByRole("textbox", { name: "Planning request", exact: true }).fill("Plan one dinner");
-  await page.getByRole("button", { name: "Ask Chef to plan", exact: true }).click();
+  await page.getByRole("button", { name: "Preview dinner plan", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Plan dinners with Chef" }).getByRole("alert")).toContainText("Test model is offline");
   await page.getByRole("button", { name: "Close planning workspace", exact: true }).click();
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
-  await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
+  await page.getByRole("button", { name: "Find dinner ideas", exact: true }).click();
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Recommend a dinner");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
   await expect.poll(() => sent.length).toBe(3);

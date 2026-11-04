@@ -1,3 +1,4 @@
+import { revealPantryEditors } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PersonalRecipeAmounts, PlannedMeal } from "../../app/lib/kitchen-types";
@@ -36,11 +37,14 @@ test("personal editor keeps drafts local and saved dinner, shopping, cooking and
   let editor = drawer.getByRole("region", { name: "Personal amounts", exact: true });
   await expect(editor).toContainText("2 source servings");
   const rice = editor.getByRole("textbox", { name: "Personal amount for rice", exact: true });
+  await revealPantryEditors(page);
   await rice.fill("-1 g");
   await expect(editor.getByRole("button", { name: "Save personal amounts", exact: true })).toBeDisabled();
   expect((await read(request)).state.personalRecipeAmounts).toBeUndefined();
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(rice).toHaveValue("");
+  await revealPantryEditors(page);
   await rice.fill("300 g");
   await editor.getByRole("button", { name: "Save personal amounts", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts?.["fixture-tomato-rice"]?.amounts[0].measure).toBe("300 g");
@@ -181,7 +185,8 @@ test("unknown-yield batches, backup replacement and recovery retain personal amo
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts).toBeUndefined();
   await page.getByText(/Unsaved kitchens found/).click();
   const recovery = page.locator(".recovery-candidate").filter({ hasText: "1 personal amount sets changed" }).first();
-  await recovery.getByRole("button", { name: "Recover this draft", exact: true }).click();
+  await recovery.getByRole("button", { name: "Review this draft", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review browser draft", exact: true }).getByRole("button", { name: "Recover this draft", exact: true }).click();
   await page.getByRole("button", { name: "Save this draft", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts?.[recipe.id]).toEqual(personal);
   await expect.poll(async () => (await read(request)).state.meals[TODAY]?.batches).toBe(2);

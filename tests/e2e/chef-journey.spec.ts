@@ -1,3 +1,4 @@
+import { revealPantryEditors, revealPlanControls } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
@@ -102,6 +103,7 @@ test("Back from another section preserves the same recipe answer and conversatio
   await expect(answer).toBeVisible();
   const previousAnswer = await answer.textContent() ?? "";
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.goBack();
   await expect(answer).toHaveText(previousAnswer);
   const nextRequest = page.waitForRequest(r => r.url().endsWith("/api/chef") && r.method() === "POST");
@@ -270,7 +272,7 @@ for (const mode of ["unverified_warning", "unsupported_warning_detail", "support
 
 test("Chef home keeps date, source discussion and portions through planning and shopping", async ({ page, request }) => {
   await openChef(page);
-  await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dinner ideas", level: 1, exact: true })).toBeVisible();
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
@@ -292,7 +294,7 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals["2026-10-23"]?.servings).toBe(4);
   await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeVisible();
-  await page.reload(); await navigate(page, "Chef"); await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  await page.reload(); await navigate(page, "Chef"); await expect(page.getByRole("heading", { name: "Dinner ideas", level: 1, exact: true })).toBeVisible();
   await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toHaveCount(0);
 });
 test("unknown-yield Chef previews keep batches separate from servings and save the calculated amounts", async ({ page, request }) => {
@@ -436,8 +438,10 @@ test("Chef portions survive adding through Recipes and explicit copies keep thei
   const kitchen = async () => (await (await request.get("/api/kitchen")).json()).state as KitchenState;
   await expect.poll(async () => (await kitchen()).meals["2026-10-23"]?.servings).toBe(4);
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByLabel("Servings Fri, Oct 23", { exact: true }).fill("6");
   await expect.poll(async () => (await kitchen()).meals["2026-10-23"].servings).toBe(6);
+  await revealPlanControls(page);
   await page.locator("#dinner-2026-10-23 .meal-more > summary").click();
   await page.getByRole("combobox", { name: "Copy Fri, Oct 23 dinner", exact: true }).selectOption(TODAY);
   await expect.poll(async () => (await kitchen()).meals[TODAY]?.servings).toBe(6);
@@ -543,6 +547,7 @@ test("legacy unmatched cooking steps do not display another step's answer", asyn
 test("replacing a dinner does not reserve the old dinner's ingredients", async ({ page, request }) => {
   await savedRiceDinner(request, TODAY, true);
   await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Change dinner Thu, Oct 22", exact: true }).click();
   const before = await (await request.get("/api/kitchen")).json();
   const answer = await submit(page, "Tomato Rice");
@@ -581,6 +586,7 @@ test("cooking the same recipe on another day starts a fresh meal discussion", as
   document.state.meals["2026-10-23"] = { ...first, id: "second-rice-dinner", date: "2026-10-23", servings: 4 };
   expect((await request.put("/api/kitchen", { data: { revision: document.revision, state: document.state } })).ok()).toBeTruthy();
   await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Thu, Oct 22", exact: true }).click();
   const firstCooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await firstCooking.locator(".cook-help > summary").click();
@@ -591,6 +597,7 @@ test("cooking the same recipe on another day starts a fresh meal discussion", as
   await expect(firstCooking.locator(".step-chef-reply")).toBeVisible();
   await firstCooking.getByRole("button", { name: "← Exit cooking", exact: true }).click();
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Fri, Oct 23", exact: true }).click();
   await page.getByRole("dialog", { name: "Replace cooking session", exact: true }).getByRole("button", { name: "Replace cooking session", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
@@ -660,6 +667,7 @@ for (const mode of ["verification_reject", "verification_unavailable"]) {
 test("retrying a rejected cooking answer preserves timer, meal scope, and progress", async ({ page, request }) => {
   await savedRiceDinner(request);
   await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Thu, Oct 22", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
@@ -753,6 +761,7 @@ test("saved amount help works offline in Chef and cooking with source quantities
     await expect(page.getByRole("heading", { name: "Your chef’s shortlist", exact: true })).toHaveCount(0);
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/${test.info().project.name}-calculated-chef.png`, fullPage: true });
     await navigate(page, "Plan");
+    await revealPlanControls(page);
     await page.locator(`#dinner-${TODAY}`).getByRole("button", { name: /Cook/ }).click();
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
     await cooking.getByRole("button", { name: "Set timer", exact: true }).click();

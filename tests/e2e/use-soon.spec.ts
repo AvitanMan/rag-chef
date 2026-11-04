@@ -1,3 +1,4 @@
+import { revealPantryEditors } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
@@ -66,20 +67,26 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/use-soon-pantry-${test.info().project.name}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).fill("300 g");
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).press("Tab");
   await expect.poll(async () => (await read(request)).state.pantry[0].measure).toBe("300 g");
   await page.goBack();
   await expect(results).toContainText("300 g remaining");
   await page.goForward();
+  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("300 g");
   await page.getByRole("button", { name: "Past entered date (1)", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available carrot", exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-pantry-name="rice"]')).toHaveCount(0);
   await page.getByRole("button", { name: "All items (3)", exact: true }).click();
+  await revealPantryEditors(page);
   await page.getByLabel("Use by rice", { exact: true }).fill("2026-10-28");
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe("2026-10-28");
@@ -138,6 +145,7 @@ test("no match and empty pantry are explained with a path back to browsing", asy
   await page.getByRole("button", { name: "Browse all recipes", exact: true }).click();
   await expect(page.getByRole("searchbox", { name: "Search recipes", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.getByRole("button", { name: "Remove dragonfruit", exact: true }).click();
   await navigate(page, "Chef");
   await expect(page.getByRole("region", { name: "Use soon", exact: true })).toContainText("No food with an entered date");
@@ -178,6 +186,7 @@ test("Back clears a removed ingredient without adding a history loop", async ({ 
   const results = await selectRice(page);
   await results.getByRole("button", { name: "Review this item", exact: true }).click();
   const historyLength = await page.evaluate(() => window.history.length);
+  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);

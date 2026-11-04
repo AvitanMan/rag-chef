@@ -13,7 +13,7 @@ import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem, type MealReadiness } from "../lib/quantities";
-import { setShoppingItemBought } from "../lib/shopping-purchases";
+import { setShoppingItemBought, undoShoppingCheck } from "../lib/shopping-purchases";
 import { ShoppingExport } from "./ShoppingExport";
 import { KitchenIcon } from "./KitchenIcon";
 
@@ -56,6 +56,10 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
 }) {
   const [pending, setPending] = useState<{ date: string; recipe: Recipe; template?: PlannedMeal; expectedId: string } | null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => new Set());
+  const [expandedPastWeek, setExpandedPastWeek] = useState<string | null>(null);
+  const currentWeek = Boolean(today && weekStart(today) === week);
+  const showPast = expandedPastWeek === week || Boolean(currentWeek && today && ((focusDate && focusDate < today) || (reviewDate && reviewDate < today)));
   useEffect(() => {
     if (!reviewDate) return;
     const frame = requestAnimationFrame(() => document.getElementById(`amounts-${reviewDate}`)?.scrollIntoView({ block: "center" }));
@@ -64,13 +68,15 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   useEffect(() => {
     if (!focusDate) return;
     const frame = requestAnimationFrame(() => {
+      setExpandedDays(previous => new Set(previous).add(focusDate));
+      if (today && focusDate < today) setExpandedPastWeek(week);
       const card = document.getElementById(`dinner-${focusDate}`);
       card?.scrollIntoView({ block: "center", behavior: "instant" });
       card?.focus({ preventScroll: true });
       clearFocusDate?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusDate, clearFocusDate]);
+  }, [focusDate, clearFocusDate, today, week]);
   const dates = Array.from({ length: 7 }, (_, index) => addDateDays(week, index));
   const requestChoice = (date: string, recipe: Recipe, template?: PlannedMeal) => {
     if (meals[date]?.locked || meals[date]?.status === "cooked") return;
@@ -120,14 +126,24 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
         removeMeals(dates);
         setClearConfirm(false);
       }}>Remove unlocked meals</button></div>}
-      <section className="week-grid durable-week">
+      {currentWeek && today && today > week && <button className="secondary-button earlier-days-toggle" aria-expanded={showPast} onClick={() => {
+        setExpandedPastWeek(showPast ? null : week);
+        if (showPast && reviewDate && reviewDate < today) setReviewDate(null);
+      }}>{showPast ? "Hide earlier days" : "Earlier this week"} · {dates.filter(date => date < today).length}</button>}
+      <section className={`week-grid durable-week compact-week${showPast ? " show-past" : ""}`}>
         {dates.map((date) => {
           const meal = meals[date];
           const recipe = meal?.recipe;
           const immutable = meal?.locked || meal?.status === "cooked";
-          return <article className={`day-card ${meal ? "filled" : ""} ${date === today ? "is-today" : ""}`} key={date} id={`dinner-${date}`} tabIndex={-1} aria-label={dateLabel(date)} aria-current={date === today ? "date" : undefined}>
+          const expanded = expandedDays.has(date) || focusDate === date || reviewDate === date;
+          return <article className={`day-card ${meal ? "filled" : ""} ${date === today ? "is-today" : ""}${currentWeek && today && date < today ? " is-past" : ""}${expanded ? " day-expanded" : ""}`} key={date} id={`dinner-${date}`} tabIndex={-1} aria-label={dateLabel(date)} aria-current={date === today ? "date" : undefined}>
             <div className="day-heading"><span className="day-name">{dateLabel(date)}</span>{date === today && <span className="today-badge">Today</span>}{meal && <span className={`meal-status ${meal.status}`}>{meal.status === "cooked" ? "Cooked" : meal.locked ? "Locked" : "Planned"}</span>}</div>
             {recipe ? <>{recipe.image && <button className="day-image" onClick={() => openMeal(date)} aria-label={`View photo of ${meal.title}`}><img src={recipe.image} alt="" /></button>}<button className="day-recipe-title" onClick={() => openMeal(date)} aria-label={`Open ${meal.title} on ${dateLabel(date)}`}>{meal.title}</button></> : meal ? <div className="missing-recipe"><strong>{meal.title}</strong><p>Recipe unavailable. Choose a replacement to recover its shopping amounts.</p></div> : null}
+            {meal && <div className="day-compact-summary"><small>{meal.servings ? `${meal.servings} servings` : `${mealScale(meal)} recipe batches`}{needsReview.includes(date) ? " · Amounts need review" : ""}</small><button className="text-button day-options-toggle" aria-label={`${expanded ? "Close details" : "Details"} for ${dateLabel(date)}`} aria-expanded={expanded} aria-controls={`day-actions-${date}`} onClick={() => {
+              setExpandedDays(previous => { const next = new Set(previous); if (expanded) next.delete(date); else next.add(date); return next; });
+              if (expanded && reviewDate === date) setReviewDate(null);
+            }}>{expanded ? "Close details" : "Details"}</button></div>}
+            <div id={`day-actions-${date}`} className={`day-actions${!meal ? " empty-day-actions" : ""}`}>
             {!immutable && <button className={meal ? "text-button" : "primary-button"} onClick={() => chooseDay(date)} aria-label={`${meal ? "Change dinner" : "Choose dinner"} ${dateLabel(date)}`}>{meal ? "Change dinner" : "Choose dinner"}</button>}
             {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
             {meal && <>
@@ -145,6 +161,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
               {recipe && <label className="copy-meal">Copy dinner to<select aria-label={`Copy ${dateLabel(date)} dinner`} value="" onChange={(event) => { if (event.target.value) requestChoice(event.target.value, recipe, meal); }}><option value="">Choose day…</option>{dates.filter((target) => target !== date && !meals[target]?.locked && meals[target]?.status !== "cooked").map((target) => <option key={target} value={target}>{dateLabel(target)}{meals[target] ? " (replace)" : ""}</option>)}</select></label>}
               </details>
             </>}
+            </div>
           </article>;
         })}
       </section>
@@ -154,12 +171,14 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   );
 }
 
-export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: { items: ShoppingItem[]; checked: Record<string, boolean>; update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode }) {
+export function DurableShoppingView({ items, checked, cycles, purchases, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: { items: ShoppingItem[]; checked: Record<string, boolean>; cycles?: KitchenState["shoppingCycles"]; purchases?: KitchenState["shoppingPurchases"]; update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode }) {
+  const [lastCheck, setLastCheck] = useState<{ key: string; name: string; cycleId: string } | null>(null);
+  const canUndoCheck = lastCheck && checked[lastCheck.key] && cycles?.[lastCheck.key] === lastCheck.cycleId && items.some(item => item.key === lastCheck.key) && !purchases?.some(purchase => purchase.items.some(item => item.key === lastCheck.key && item.cycleId === lastCheck.cycleId));
   const toBuy = items.filter((item) => !checked[item.key]).sort((a, b) => Number(b.needsReview) - Number(a.needsReview));
   const bought = items.filter((item) => checked[item.key]);
   const reviewCount = items.filter((item) => item.needsReview).length;
   const renderItem = (item: ShoppingItem) => <div className={`shopping-item ${checked[item.key] ? "checked" : ""}`} key={item.key}>
-        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = randomId(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
+        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = randomId(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); if (done) setLastCheck({ key: item.key, name: item.name, cycleId }); else if (lastCheck?.key === item.key) setLastCheck(null); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
         <div className="shopping-detail">
           {item.preparationNote && <small>{item.preparationNote}</small>}
           {item.needsReview && <><b>{item.preparationNote ? "Review preparation" : "Review amount"}</b><div>{item.mealDates.map((date) => <button className="text-button" key={date} aria-label={`Review ${item.name} for ${dateLabel(date)}`} onClick={() => reviewMeal(date)}>Review {dateLabel(date)}</button>)}</div></>}
@@ -167,17 +186,29 @@ export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, r
         </div>
       </div>;
   return <div className="shopping-layout focused-shopping">
-    <section className="panel shopping-panel">
-      <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><span className="eyebrow">Your shopping list</span><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
-      <ShoppingExport items={toBuy} week={week} />
-      {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review amounts before updating stock.</small></div>}
-      {purchaseHistory}
+    <section className="panel shopping-panel" onFocusCapture={event => {
+      const panel = event.currentTarget, target = event.target;
+      if (target.closest(".shopping-progress")) return;
+      requestAnimationFrame(() => {
+        if (document.activeElement !== target) return;
+        const header = panel.querySelector(".shopping-progress")?.getBoundingClientRect();
+        const top = target.getBoundingClientRect().top;
+        if (header && top < header.bottom + 12) window.scrollBy({ top: top - header.bottom - 12, behavior: "instant" });
+      });
+    }}>
+      <div className="shopping-progress">
+      <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
+      {canUndoCheck && <div className="shopping-check-undo"><span role="status">Checked {lastCheck.name}</span><button className="text-button" aria-label={`Undo checked ${lastCheck.name}`} onClick={() => { update(state => undoShoppingCheck(state, lastCheck.key, lastCheck.cycleId)); setLastCheck(null); }}>Undo</button></div>}
+      </div>
+      {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review before adding to your pantry.</small></div>}
       {reviewCount > 0 && <p className="quantity-note" role="status">{reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review. You can still use this list.</p>}
       {items.length ? <>
         {toBuy.length ? <section className="shopping-list" aria-label="To buy">{toBuy.map(renderItem)}</section> : <p role="status">Everything on this list is checked.</p>}
         {bought.length > 0 && <details className="bought-items"><summary>Bought ({bought.length})</summary><section className="shopping-list" aria-label="Bought items">{bought.map(renderItem)}</section><button className="text-button" onClick={() => update((state) => ({ ...state, shoppingChecked: Object.fromEntries(Object.entries(state.shoppingChecked).filter(([key]) => !key.startsWith(`${week}:`))) }))}>Uncheck all</button></details>}
         <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry.</p></details>
       </> : <div className="empty-state"><strong>{hasPlan ? "No remaining shopping for these dinners." : "Plan a few dinners first."}</strong><p>{hasPlan ? "Known quantities are covered or the meals have been cooked." : "Choose dinners to build your shopping totals."}</p><button className="primary-button" onClick={goPlan}>Go to weekly plan</button></div>}
+      <details className="shopping-tools"><summary>List tools</summary><ShoppingExport items={toBuy} week={week} /></details>
+      {purchaseHistory}
     </section>
   </div>;
 }

@@ -1,3 +1,4 @@
+import { revealPantryEditors, revealShoppingTools } from "./ui-controls";
 import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
@@ -90,6 +91,7 @@ test("reviewed dinner counts compose with collections, search, time and saved ex
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("rice");
   await expect(explanation).toContainText("1 reviewed dinner matches these filters.");
   await navigate(page, "Pantry"); await navigate(page, "Recipes");
+  await revealPantryEditors(page);
   await expect(reviewed).toBeChecked();
   await expect(page.locator(".recipe-card")).toHaveCount(1);
   await page.getByRole("button", { name: "Clear search", exact: true }).click();
@@ -134,6 +136,7 @@ test("pantry search and sorting compose with dates, preserve batches, editing, U
   ];
   await save(request, { ...empty(), pantry });
   await openChef(page); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   const search = page.getByRole("searchbox", { name: "Search pantry", exact: true });
   const sort = page.getByRole("combobox", { name: "Sort pantry", exact: true });
   const rows = page.locator(".unified-pantry-item");
@@ -147,15 +150,20 @@ test("pantry search and sorting compose with dates, preserve batches, editing, U
   await sort.selectOption("useBy");
   const before = await read(request);
   await navigate(page, "Recipes"); await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await expect(search).toHaveValue("RICE"); await expect(sort).toHaveValue("useBy");
   expect(await read(request)).toEqual(before);
   await page.getByRole("button", { name: "Use soon (1)", exact: true }).click();
   await expect(rows).toHaveCount(1); await expect(rows).toHaveAttribute("id", "pantry-row-rice-early");
+  await revealPantryEditors(page);
   const amount = rows.getByRole("textbox", { name: "Available Rice", exact: true });
+  await revealPantryEditors(page);
   await amount.fill("150 g"); await amount.press("Tab");
   await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice-early").measure).toBe("150 g");
+  await revealPantryEditors(page);
   await rows.getByRole("button", { name: "Remove Rice", exact: true }).click();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(rows).toHaveCount(1); await expect(amount).toHaveValue("150 g");
   await page.getByRole("button", { name: "Past entered date (1)", exact: true }).click();
   await expect(page.getByText("No pantry items match your search in this view.", { exact: false })).toBeVisible();
@@ -187,6 +195,7 @@ for (const failClipboard of [false, true]) {
     await save(request, { ...empty(), meals: { [TODAY]: planned, [future.date]: future }, pantry: [{ id: "rice", name: "rice", measure: "50 g" }] });
     await openChef(page); await navigate(page, "Shopping");
     const before = await read(request);
+    await revealShoppingTools(page);
     await page.getByRole("button", { name: "Copy shopping list", exact: true }).click();
     let text: string;
     if (failClipboard) {
@@ -206,9 +215,11 @@ for (const failClipboard of [false, true]) {
     await page.getByRole("checkbox", { name: /^Bought rice / }).click();
     await expect(page.locator(".save-indicator")).toHaveText("Saved");
     const afterCheck = await read(request);
+    await revealShoppingTools(page);
     await page.getByRole("button", { name: "Copy shopping list", exact: true }).click();
     const exported = failClipboard ? await page.getByRole("textbox", { name: "Shopping list text", exact: true }).inputValue() : await page.evaluate(() => (window as unknown as { copiedList: string }).copiedList);
     expect(exported).not.toContain("rice:"); expect(exported).toContain("Review amount");
+    await revealShoppingTools(page);
     await page.getByRole("button", { name: "Print", exact: true }).click();
     expect(await page.evaluate(() => (window as unknown as { printCalls: number }).printCalls)).toBe(1);
     await page.emulateMedia({ media: "print" });
@@ -220,7 +231,9 @@ for (const failClipboard of [false, true]) {
     await expect(print).toBeHidden();
     expect(await read(request)).toEqual(afterCheck);
     await page.getByRole("checkbox", { name: /^Bought tomato / }).click();
+    await revealShoppingTools(page);
     await expect(page.getByRole("button", { name: "Copy shopping list", exact: true })).toBeDisabled();
+    await revealShoppingTools(page);
     await expect(page.getByRole("button", { name: "Print", exact: true })).toBeDisabled();
   });
 }

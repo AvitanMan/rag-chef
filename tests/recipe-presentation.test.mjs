@@ -16,6 +16,8 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["lib", "app-session", "tsx"],
   ["lib", "assistant-controls", "ts"],
+  ["lib", "kitchen-change-preview", "ts"],
+  ["components", "LocalDeviceAccess", "tsx"], ["components", "KitchenChangeReview", "tsx"],
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "KitchenIcon", "tsx"], ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
   ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences", "ChefPlanWorkspace", "AIConnections", "HouseholdSettings", "KitchenAssistant"].map((name) => ["components", name, "tsx"]),
@@ -273,7 +275,7 @@ test("compact weekly plan marks only today and provides a current-week shortcut"
   assert.match(html, /class="today-badge">Today/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>This week<\/button>/);
   assert.match(html, /0 of 7 dinners planned/);
-  assert.doesNotMatch(html, /Make the week easier|empty-day|day-image/);
+  assert.doesNotMatch(html, /Make the week easier|class="empty-day"|class="day-image"/);
   const otherWeek = plan({ week: "2026-10-26" });
   assert.doesNotMatch(otherWeek, /aria-current="date"|today-badge/);
   assert.match(otherWeek, /<button class="secondary-button">This week<\/button>/);
@@ -344,7 +346,10 @@ test("shopping check, uncheck and reset actions alter only checks in the selecte
   let state = { pantry: [{ id: "rice", name: "Rice", measure: "100 g" }], meals: { saved: true }, shoppingChecked: { "2026-10-19:rice": true, "2026-10-26:rice": true } };
   const pantry = state.pantry, meals = state.meals;
   const props = { ...shoppingProps, update: (change) => { state = change(state); } };
-  const nodes = children(DurableShoppingView(props));
+  let tree;
+  function CaptureShopping() { tree = DurableShoppingView(props); return tree; }
+  renderToStaticMarkup(createElement(CaptureShopping));
+  const nodes = children(tree);
   nodes.find((node) => node.props?.["aria-label"] === "Bought Salt Review amount").props.onChange({ target: { checked: true } });
   assert.equal(state.shoppingChecked["2026-10-19:salt"], true);
   nodes.find((node) => node.props?.["aria-label"] === "Bought Rice 200 g").props.onChange({ target: { checked: false } });

@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors } from "./ui-controls";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 
@@ -97,6 +98,7 @@ test("remembering this device lasts thirty days and logout revokes it across tab
   const sibling = await context.newPage(); await sibling.goto("/");
   await expect(sibling.locator(".save-indicator")).toHaveText("Saved");
   await navigate(page, "Pantry"); await navigate(page, "Recipes");
+  await revealPantryEditors(page);
   await page.getByLabel("Kitchen menu", { exact: true }).click();
   await page.getByRole("button", { name: "Sign out of this device", exact: true }).filter({ visible: true }).first().click();
   await expect(page.getByRole("textbox", { name: "Username", exact: true })).toBeVisible();
@@ -104,8 +106,13 @@ test("remembering this device lasts thirty days and logout revokes it across tab
   expect((await context.request.get("/api/kitchen")).status()).toBe(401);
   const replay = await context.request.get("/api/kitchen", { headers: { cookie: `${cookie.name}=${cookie.value}` } });
   expect(replay.status()).toBe(401);
+  // Back's protected RSC request falls back to a full login-page navigation.
+  // Let it finish before testing a separate user-triggered reload.
+  const backLoaded = page.waitForEvent("load");
   await page.goBack();
   await expect(page.locator(".app-shell")).toHaveCount(0);
+  await backLoaded;
+  await expect(page.getByRole("textbox", { name: "Username", exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("textbox", { name: "Username", exact: true })).toBeVisible();
 });
@@ -113,10 +120,13 @@ test("remembering this device lasts thirty days and logout revokes it across tab
 test("session loss hides the kitchen, and reauthentication recovers an unsaved draft", async ({ page, context }) => {
   await page.goto("/"); await signIn(page);
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.route("**/api/kitchen", async route => route.request().method() === "PUT" ? route.abort("connectionfailed") : route.continue());
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 500 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Review pantry ingredients", exact: true }).getByRole("button", { name: "Confirm ingredients", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
   await context.clearCookies();
   await page.evaluate(() => window.dispatchEvent(new Event("rag-chef-session-check")));
@@ -127,6 +137,7 @@ test("session loss hides the kitchen, and reauthentication recovers an unsaved d
   const useDraft = page.getByRole("button", { name: "Save this draft", exact: true });
   if (await useDraft.isVisible()) await useDraft.click();
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("500 g");
 });
 
@@ -142,6 +153,8 @@ test("friendly HTTPS phone login saves to the shared kitchen without offline she
   const sharing = page.getByRole("region", { name: "Use your kitchen on other devices", exact: true });
   expect(await sharing.getByRole("textbox", { name: "Kitchen address", exact: true }).evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value))).toContain(friendlyURL);
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 500 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Review pantry ingredients", exact: true }).getByRole("button", { name: "Confirm ingredients", exact: true }).click();

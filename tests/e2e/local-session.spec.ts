@@ -1,3 +1,4 @@
+import { revealPantryAdd, revealPantryEditors, revealPlanControls } from "./ui-controls";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -17,12 +18,15 @@ async function signIn(page: Page) {
 }
 async function pantry(page: Page) {
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /^Pantry/ }).filter({ visible: true }).first().click();
+  await revealPantryEditors(page);
 }
 async function addRice(page: Page) {
   await pantry(page);
+  await revealPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 500 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Review pantry ingredients", exact: true }).getByRole("button", { name: "Confirm ingredients", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("500 g");
 }
 async function requestSignOut(page: Page) {
@@ -44,6 +48,7 @@ async function startTomatoRice(page: Page, request: APIRequestContext, baseURL: 
   const response = await request.put("/api/kitchen", { headers: { origin: baseURL, "X-Rag-Chef-Session": session.localAccess.sessionId }, data: { revision: current.revision, state: planned } });
   expect(response.status()).toBe(200);
   await page.goto("/"); await signIn(page);
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await expect(cooking).toContainText("Rinse the rice.");
@@ -68,6 +73,7 @@ test("dirty logout offers keep working and saves reviewed changes before signing
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Keep working", exact: true }).click();
   await expect(dialog).not.toBeVisible();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("500 g");
   await requestSignOut(page);
   await page.unroute("**/api/kitchen");
@@ -95,7 +101,7 @@ test("failed logout stays signed in and explicit discard removes only the browse
   await page.unroute("**/api/kitchen"); await signIn(page);
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   await pantry(page);
-  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-pantry-name="rice"]')).toHaveCount(0);
 });
 
 test("expiry preserves a dirty draft in memory when browser writes are blocked", async ({ page, context, request }) => {
@@ -116,6 +122,7 @@ test("expiry preserves a dirty draft in memory when browser writes are blocked",
   await page.getByRole("button", { name: "Save this draft", exact: true }).click();
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   await pantry(page);
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("500 g");
   expect((await savedKitchen(request)).state.pantry).toMatchObject([{ name: "rice", measure: "500 g" }]);
 });
@@ -136,7 +143,7 @@ test("requests from an earlier login cannot edit a newly signed-in session", asy
   expect((await savedKitchen(request)).state.pantry).toEqual([]);
   await page.goBack();
   await expect(page.locator(".app-shell")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-pantry-name="rice"]')).toHaveCount(0);
 });
 
 test("blocked browser writes keep successive cooking edits in memory without a false tab conflict", async ({ page, context, request, baseURL }) => {

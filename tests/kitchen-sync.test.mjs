@@ -32,7 +32,7 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["random-id", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-merge", "private-storage", "app-session"]) {
+for (const name of ["random-id", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-change-preview", "kitchen-merge", "private-storage", "app-session"]) {
   const source = await readFile(new URL(`../app/lib/${name}.${name === "app-session" ? "tsx" : "ts"}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
