@@ -32,6 +32,9 @@ After pulling updates, run `pnpm db:migrate` before restarting the app. Reviewed
 assistant saves require the latest catalog consistency migration; ordinary
 manual controls remain available if the database still needs that update.
 
+The app opens on **Plan**, with tonight’s dinner first. Use the five navigation
+choices to move between Plan, Chef, Recipes, Shopping, and Pantry.
+
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
 2. Choose a dinner. Review portions and missing ingredients in its dinner panel.
 3. Open **Weekly shopping** to review, copy, or print the ingredients still needed.
@@ -77,7 +80,13 @@ automatically; an HTTPS IP fallback is printed too.
 On first use, transfer `.wrangler/local-https/root-ca.cer` to your phone and trust
 that public certificate. The username and randomly generated password are in
 `.wrangler/local-https/credentials.json`. These local files are ignored by Git;
-private keys stay on the server. [Certificate setup and LAN troubleshooting](docs/guide.md#use-from-a-phone-on-your-local-network).
+private keys stay on the server. Run `pnpm db:migrate` after updating, then enter
+the credentials on the RAG Chef sign-in screen. Sessions last 12 hours; select
+**Remember this device** for 30 days. **Sign out of this device** revokes the
+browser session and clears its private drafts after any unsaved-work review.
+[Certificate setup and LAN troubleshooting](docs/guide.md#use-from-a-phone-on-your-local-network).
+
+![Local kitchen sign-in](docs/images/login.png)
 
 Keep the computer and model running. The phone uses the computer's AI and shared
 kitchen; it does not need LM Studio or Ollama installed. Choose the provider in

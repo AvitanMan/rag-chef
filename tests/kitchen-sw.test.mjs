@@ -38,6 +38,14 @@ test("authenticated requests bypass the worker and remove old offline pages", as
   assert.equal(await w.dispatch("fetch", { request: request() }), undefined, "A disabled shell cannot serve cached pages on later requests.");
 });
 
+test("the anonymous protected login gate disables an existing worker before cookie authentication", async () => {
+  const w = worker(); await w.seed();
+  await w.dispatch("message", { data: { type: "DISABLE_SHELL" } });
+  assert.deepEqual(await w.caches.keys(), []);
+  w.network(async () => { throw new Error("offline"); });
+  assert.equal(await w.dispatch("fetch", { request: request() }), undefined);
+});
+
 test("no-store responses replace stale offline pages without being cached", async () => {
   const w = worker(); await w.seed();
   w.network(async () => new Response("private live page", { headers: { "cache-control": "private, no-store, max-age=0" } }));

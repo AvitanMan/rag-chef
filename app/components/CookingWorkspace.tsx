@@ -188,7 +188,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
     </section>
     <main ref={content}>
       {completionReview ?? <>
-      <div className="cook-step-number">Step {session.step + 1}</div><p>{session.instructions[session.step]}</p>
+      <div className="cook-step-number">Step {session.step + 1} of {session.instructions.length}</div><p>{session.instructions[session.step]}</p>
       <ExtraCookingTimers session={session} now={now} onChange={onChange} sourceSeconds={sourceSeconds} />
       <details className="cook-ingredients"><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
         <p className="quantity-note">{session.plannedMeal ? session.plannedMeal.servings ? `${session.plannedMeal.servings} servings` : `${mealScale(session.plannedMeal)} recipe batches` : "Original recipe quantities"}. Source directions retain their original wording.</p>

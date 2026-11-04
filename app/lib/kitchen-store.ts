@@ -100,22 +100,28 @@ export async function saveKitchenDocument(
     if (current.revision === revision && household.role !== "owner" && JSON.stringify(current.state?.cookingProfile ?? DEFAULT_COOKING_PROFILE) !== profile) throw new HouseholdAuthError("OWNER_REQUIRED", "Only the household owner can change shared cooking requirements.");
     throw new KitchenConflictError(current);
   }
+  const localAccess = household.localAccess;
+  // Use the database's execution time: a valid session can expire while this
+  // statement waits in D1's queue after request validation has completed.
+  const localGuard = localAccess ? " AND EXISTS(SELECT 1 FROM local_auth_sessions WHERE id=? AND credential_version=? AND origin=? AND expires_at>CAST(unixepoch('subsec')*1000 AS INTEGER))" : "";
+  const localBindings = localAccess ? [localAccess.sessionId, localAccess.credentialVersion, localAccess.origin] : [];
   // Each write is one atomic statement. A preflight SELECT would lose updates
   // if two browser tabs read the same revision before writing.
   const statement = revision === 0
     ? db.prepare(
       `INSERT INTO kitchen_state (id, state_json, revision, updated_at)
-       SELECT ?, ?, 1, ? WHERE 1=1${catalogGuard} ON CONFLICT(id) DO NOTHING
+       SELECT ?, ?, 1, ? WHERE 1=1${catalogGuard}${localGuard} ON CONFLICT(id) DO NOTHING
        RETURNING state_json, revision, updated_at`,
-    ).bind(household.householdId, serialized, updatedAt, ...catalogBindings)
+    ).bind(household.householdId, serialized, updatedAt, ...catalogBindings, ...localBindings)
     : db.prepare(
       `UPDATE kitchen_state
        SET state_json = ?, revision = revision + 1, updated_at = ?
-       WHERE id = ? AND revision = ?${catalogGuard}
+       WHERE id = ? AND revision = ?${catalogGuard}${localGuard}
        RETURNING state_json, revision, updated_at`,
-    ).bind(serialized, updatedAt, household.householdId, revision, ...catalogBindings);
+    ).bind(serialized, updatedAt, household.householdId, revision, ...catalogBindings, ...localBindings);
   const row = await statement.first<KitchenRow>();
   if (row) return documentFromRow(row);
+  await validateHouseholdContext(household);
   await checkCatalog();
   throw new KitchenConflictError(await getKitchenDocument(household));
 }

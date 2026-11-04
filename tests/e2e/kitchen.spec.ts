@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 
@@ -17,7 +18,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("fresh kitchen browses synthetic recipes and persists a selected dinner", async ({ page, request }) => {
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   const card = page.locator(".recipe-card").filter({ has: page.getByRole("heading", { name: "Tomato Rice", exact: true }) });
@@ -33,7 +34,7 @@ test("fresh kitchen browses synthetic recipes and persists a selected dinner", a
 
 test("zero stock is unavailable and removing duplicate names preserves the other ID", async ({ page, request }) => {
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice-zero", name: "rice", measure: "0 g" }, { id: "rice-positive", name: "rice", measure: "400 g" }, { id: "tomato-zero", name: "tomato", measure: "0" }] });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   await expect(page.locator(".recipe-card")).toContainText("1 of 2 ingredients in pantry");
@@ -46,7 +47,7 @@ test("zero stock is unavailable and removing duplicate names preserves the other
 });
 
 test("allergy aliases and diet conflicts agree across browsing, planning and Chef", async ({ page, request }) => {
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
   await page.getByRole("textbox", { name: "Allergies", exact: true }).fill("milk, peanut");
@@ -75,7 +76,7 @@ test("Chef submits all saved allergies and excludes an allergen at the end of a 
   const allergies = [...Array.from({ length: 99 }, (_, index) => `excluded food ${index}`), "peanut"];
   const cookingProfile = { version: 1 as const, allergies, diet: "No restriction", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"] };
   await saveFixture(request, { ...emptyState(), cookingProfile });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Recommend Peanut Noodles");
   const responding = page.waitForResponse(response => response.url().endsWith("/api/chef") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
@@ -90,7 +91,7 @@ test("Chef submits all saved allergies and excludes an allergen at the end of a 
 });
 
 test("backup restore previews changes and rejects invalid files without changing saved state", async ({ page, request }) => {
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const before = await readKitchen(request);
   const file = page.getByLabel("Restore backup file", { exact: true });
@@ -122,7 +123,7 @@ test("another tab draft can be reviewed and recovered without deleting its origi
   await page.addInitScript(({ key, draft, revision }) => {
     localStorage.setItem(key, JSON.stringify({ revision, state: draft, dirty: true, updatedAt: "2026-10-22T09:00:00.000Z", reason: "edit" }));
   }, { key, draft, revision: document.revision });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByText(/Unsaved kitchens found/).click();
   await expect(page.locator(".recovery-candidate")).toContainText("1 pantry rows");
   await page.getByRole("button", { name: "Recover this draft" }).click();
@@ -136,7 +137,7 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
     if (!failed) { failed = true; await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Test storage unavailable" }) }); }
     else await route.continue();
   });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await expect(page.getByRole("button", { name: "Retry catalog" })).toBeVisible();
   await page.getByRole("button", { name: "Retry catalog" }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
@@ -144,7 +145,7 @@ test("catalog read failure has an explicit recovery action", async ({ page }) =>
 });
 
 test("offline pantry edits survive closing the tab and can be explicitly recovered after reconnecting", async ({ page, context, request }) => {
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await context.setOffline(true);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
@@ -163,7 +164,7 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
 });
 
 test("two tabs expose a revision conflict and keep server and browser versions until a choice", async ({ page, context, request }) => {
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   const other = await context.newPage();
   let releaseWrite = () => {};
   const heldWrite = new Promise<void>(resolve => { releaseWrite = resolve; });

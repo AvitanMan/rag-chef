@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -37,7 +38,7 @@ test.beforeEach(async ({ page, request }) => {
 
 test("invalid pantry drafts do not block valid edits and correction saves", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "100 g" }, { id: "beans", name: "beans", measure: "400 g" }] });
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   const rice = page.getByRole("textbox", { name: "Available rice", exact: true });
   await rice.fill("-2 g");
   await expect(rice).toHaveAttribute("aria-invalid", "true");
@@ -55,7 +56,7 @@ test("invalid pantry drafts do not block valid edits and correction saves", asyn
 test("servings allow clear and retype while invalid bounds and overrides stay unsaved", async ({ page, request }) => {
   const source = await recipe(request);
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/");
+  await openChef(page);
   await navigate(page, "Plan");
   const servings = page.getByRole("spinbutton", { name: "Servings Sun, Oct 25", exact: true });
   await servings.fill(""); await expect(servings).toHaveValue("");
@@ -73,7 +74,7 @@ test("servings allow clear and retype while invalid bounds and overrides stay un
 test("Chef servings keep an editable draft while saved quantities change only after valid input", async ({ page, request }) => {
   const source = await recipe(request);
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/");
+  await openChef(page);
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toBeVisible();
   await page.locator(".dinner-context > summary").click();
   const portions = page.getByRole("spinbutton", { name: "Chef portions", exact: true });
@@ -87,7 +88,7 @@ test("Chef servings keep an editable draft while saved quantities change only af
   await portions.fill("6");
   await expect(portions).toHaveAttribute("aria-invalid", "false");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(6);
-  await page.reload();
+  await page.reload(); await navigate(page, "Chef");
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toBeVisible();
   await page.locator(".dinner-context > summary").click();
   await expect(portions).toHaveValue("6");
@@ -98,7 +99,7 @@ test("fractional dinner batches stay valid and editable across Plan and both Che
   delete source.servings;
   const dinner = { ...meal(source), baseServings: null, servings: null, batches: 1 };
   await save(request, { ...empty(), meals: { [TODAY]: dinner } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("spinbutton", { name: "Batches Sun, Oct 25", exact: true }).fill("0.5");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].batches).toBe(0.5);
   await navigate(page, "Chef");
@@ -130,7 +131,7 @@ for (const surface of ["Chef", "Plan", "Shopping"]) {
     source.ingredients = [{ name: "rice", measure: "200 g" }, { name: "tomato", measure: "2" }, { name: "salt", measure: "to taste" }];
     const dinner = { ...meal(source), baseServings: null, servings: null, batches: 0.5, ingredientOverrides: { "1": "3" } };
     await save(request, { ...empty(), meals: { [TODAY]: dinner } });
-    await page.goto("/");
+    await openChef(page);
     let editor = page.getByRole("region", { name: "Chosen dinner", exact: true });
     if (surface === "Chef") await editor.getByText("Adjust amounts", { exact: true }).click();
     if (surface === "Plan") {
@@ -167,7 +168,7 @@ test("yield changes keep unsupported portion conversions unsaved and explain how
   const source = await recipe(request);
   delete source.servings;
   await save(request, { ...empty(), meals: { [TODAY]: { ...meal(source), baseServings: null, servings: null, batches: 0.25 } } });
-  await page.goto("/");
+  await openChef(page);
   const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
   await dinner.getByText("Adjust amounts", { exact: true }).click();
   const original = dinner.getByRole("spinbutton", { name: "Original servings Sun, Oct 25", exact: true });
@@ -187,7 +188,7 @@ test("yield changes keep unsupported portion conversions unsaved and explain how
   await expect(portions).toHaveValue("100"); await expect(portions).toHaveAttribute("aria-invalid", "false");
   const knownSource = { ...source, servings: 49 };
   await save(request, { ...empty(), meals: { [TODAY]: { ...meal(knownSource), baseServings: 49, servings: 1 } } });
-  await page.reload(); await dinner.getByText("Adjust amounts", { exact: true }).click();
+  await page.reload(); await navigate(page, "Chef"); await dinner.getByText("Adjust amounts", { exact: true }).click();
   await expect(original).toHaveAttribute("aria-invalid", "false");
   await original.fill("98");
   await expect.poll(async () => (await read(request)).state.meals[TODAY].servings).toBe(2);
@@ -202,7 +203,7 @@ test("yield changes keep unsupported portion conversions unsaved and explain how
 
 test("a mobile recipe can be closed directly after scrolling to its source directions", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   const trigger = page.getByRole("button", { name: "View Tomato Rice", exact: true });
   await trigger.focus(); await trigger.press("Enter");
   const drawer = page.getByRole("dialog", { name: "Tomato Rice", exact: true });
@@ -224,7 +225,7 @@ for (const withRemoval of [false, true]) {
   test(`keyboard focus stays above mobile navigation${withRemoval ? " and removal recovery" : ""}`, async ({ page, request }) => {
     await page.setViewportSize({ width: 320, height: 740 });
     await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "100 g" }] });
-    await page.goto("/");
+    await openChef(page);
     if (withRemoval) {
       await navigate(page, "Pantry");
       await page.getByRole("button", { name: "Remove rice", exact: true }).click();
@@ -250,7 +251,7 @@ for (const withRemoval of [false, true]) {
 }
 
 test("chip editing and removal handle pointer, Escape and keyboard focus without merging values", async ({ page }) => {
-  await page.goto("/"); await navigate(page, "Settings");
+  await openChef(page); await navigate(page, "Settings");
   const input = page.getByRole("textbox", { name: "Allergies", exact: true });
   await input.pressSequentially("milk,peanut"); await input.press("Enter");
   await page.getByRole("button", { name: "Edit allergies milk", exact: true }).click();
@@ -272,7 +273,7 @@ test("chip editing and removal handle pointer, Escape and keyboard focus without
 });
 
 test("Recipes choose tonight directly and share an explicit future date with Chef", async ({ page, request }) => {
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -288,7 +289,7 @@ test("Recipes choose tonight directly and share an explicit future date with Che
 test("choosing an occupied day requires confirmation and cancelling keeps its dinner", async ({ page, request }) => {
   const source = await recipe(request);
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Cheese Pasta");
   await page.getByRole("button", { name: "Choose for tonight: Cheese Pasta", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Replace dinner", exact: true });
@@ -300,7 +301,7 @@ test("choosing an occupied day requires confirmation and cancelling keeps its di
 test("long pantry removal keeps the user's place, visible Undo and later edits", async ({ page, request }) => {
   const pantry = Array.from({ length: 30 }, (_, i) => ({ id: `item-${i}`, name: `ingredient ${i}`, measure: "100 g" }));
   await save(request, { ...empty(), pantry });
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   const remove = page.getByRole("button", { name: "Remove ingredient 25", exact: true });
   await remove.scrollIntoViewIfNeeded();
   const before = await page.evaluate(() => scrollY);
@@ -319,7 +320,7 @@ test("long pantry removal keeps the user's place, visible Undo and later edits",
 });
 
 test("Today is immediately actionable and saving reveals and focuses the new dinner", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   await navigate(page, "Plan");
   const today = page.getByRole("region", { name: "Today’s dinner", exact: true });
   const box = await today.boundingBox();
@@ -336,7 +337,7 @@ test("Today is immediately actionable and saving reveals and focuses the new din
 
 for (const count of [1, 18, 50]) {
   test(`${count}-row import keeps actions visible, including while editing the last row`, async ({ page }) => {
-    await page.goto("/"); await navigate(page, "Pantry");
+    await openChef(page); await navigate(page, "Pantry");
     const input = page.getByRole("textbox", { name: "New pantry ingredient", exact: true });
     const text = Array.from({ length: count }, (_, i) => `ingredient ${i}: 100 g`).join("\n");
     await input.fill(text); await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
@@ -360,7 +361,7 @@ test("reviewed mains lead instant picks and API failure keeps safe picks with re
   const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { ...catalog.metadataByRecipeId[r.id], coreDinner: r.id === "fixture-vegan-beans", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
   await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }] });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
   await expect(page.locator(".recipe-card").first()).toContainText("Garlic Beans");
   let reads = 0;
@@ -384,7 +385,7 @@ test("reviewed mains lead instant picks and API failure keeps safe picks with re
 test("preferences come first and theme follows the system until a manual choice is saved", async ({ page }, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/");
+  await openChef(page);
   const toggle = page.getByRole("button", { name: "Dark mode", exact: true });
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await toggle.click(); await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -409,14 +410,14 @@ test("preferences come first and theme follows the system until a manual choice 
 test("theme toggle remains usable when preference storage cannot be written", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException("Unavailable", "QuotaExceededError"); }; });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Dark mode", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 
 test("removal recovery stays available across navigation without covering the Chef action", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await navigate(page, "Chef");
   const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
@@ -432,7 +433,7 @@ test("removal recovery stays available across navigation without covering the Ch
 
 test("pantry date controls show a full date with a separate readable label at all widths", async ({ page, request }) => {
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g", useBy: "2026-10-30" }] });
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     const date = page.getByRole("textbox", { name: "Use by rice", exact: true });
@@ -454,7 +455,7 @@ test("automatic filling prefers reviewed mains and the wider collection is an ex
   const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { coreDinner: mains.includes(r.id), dinnerRole: mains.includes(r.id) ? "main" : "side", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
   await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.locator(".fill-options > summary").click();
   const preference = page.getByRole("checkbox", { name: "Prefer reviewed mains", exact: true });
   await expect(preference).toBeChecked();
@@ -470,7 +471,7 @@ test("automatic filling prefers reviewed mains and the wider collection is an ex
 });
 
 test("Chef puts choices in view with one composer and applies refinements in one submission", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Find a dinner with rice and tomato");
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/, exact: true }).click();
@@ -508,8 +509,7 @@ test("Chef puts choices in view with one composer and applies refinements in one
 
 test("choosing from Plan has a correct return path and a single featured dinner", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Browse recipes", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Back to/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
   await navigate(page, "Plan");
   await page.getByRole("button", { name: "Choose dinner Sun, Oct 25", exact: true }).click();
   await expect(page.getByRole("button", { name: "← Back to plan", exact: true })).toBeVisible();
@@ -525,7 +525,7 @@ test("choosing from Plan has a correct return path and a single featured dinner"
 test("bought ingredients reach pantry once through a reviewed preview, with safe undo", async ({ page, request }) => {
   const source = await recipe(request);
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "100 g" }, { id: "cooked", name: "cooked rice", measure: "500 g" }, { id: "tomato", name: "tomato", measure: "2" }], meals: { [TODAY]: meal(source) } });
-  await page.goto("/"); await navigate(page, "Shopping");
+  await openChef(page); await navigate(page, "Shopping");
   const before = (await read(request)).state;
   const checkbox = page.getByRole("checkbox", { name: "Bought rice 100 g", exact: true });
   // The row moves into the collapsed Bought section when checked.
@@ -556,7 +556,7 @@ test("bought ingredients reach pantry once through a reviewed preview, with safe
 test("shopping amount review stays in place and updates the list before returning", async ({ page, request }) => {
   const source = { ...await recipe(request), ingredients: [{ name: "rice", measure: "to taste" }] };
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/"); await navigate(page, "Shopping");
+  await openChef(page); await navigate(page, "Shopping");
   await page.getByRole("button", { name: "Review rice for Sun, Oct 25", exact: true }).click();
   const review = page.getByRole("dialog", { name: "Review dinner amounts", exact: true });
   await review.getByRole("textbox", { name: "rice amount Sun, Oct 25", exact: true }).fill("200 g");
@@ -568,7 +568,7 @@ test("shopping amount review stays in place and updates the list before returnin
 
 test("timer setup is optional and replacing an active timer requires an explicit choice", async ({ page, request }) => {
   await save(request, { ...empty(), meals: { [TODAY]: meal(await recipe(request)) } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Cook this dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await expect(cooking.getByRole("region", { name: "Timer setup", exact: true })).toHaveCount(0);
@@ -592,7 +592,7 @@ test("timer setup is optional and replacing an active timer requires an explicit
 });
 
 test("a seventh refinement keeps all six existing exclusions and retains its draft", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Tomato Rice");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
@@ -614,7 +614,7 @@ test("a seventh refinement keeps all six existing exclusions and retains its dra
 
 for (const question of ["What can I cook with eggplant?", "Can you find a dinner with eggplant?"]) {
   test(`Chef refinements and chip removal keep the latest dinner question: ${question}`, async ({ page }) => {
-    await page.goto("/");
+    await openChef(page);
     const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
     async function submit(text: string, button: string) {
       await input.fill(text);
@@ -641,7 +641,7 @@ for (const question of ["What can I cook with eggplant?", "Can you find a dinner
 }
 
 test("oversized dinner refinements preserve the draft and choices until corrected without truncating exclusions", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   const input = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await input.fill("Find a dinner with rice and tomato");
   await page.getByRole("button", { name: "Find my dinner", exact: true }).click();
@@ -681,7 +681,7 @@ test("a second bought batch of the same shortage can reach pantry after the firs
   const source = { ...await recipe(request), ingredients: [{ name: "rice", measure: "200 g" }] };
   const firstDate = "2026-10-24";
   await save(request, { ...empty(), meals: { [firstDate]: { ...meal(source), id: "saturday-dinner", date: firstDate } } });
-  await page.goto("/"); await navigate(page, "Shopping");
+  await openChef(page); await navigate(page, "Shopping");
   await page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true }).click();
   await page.getByRole("button", { name: "Add bought items to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Add bought items to pantry", exact: true }).getByRole("button", { name: "Confirm pantry additions", exact: true }).click();
@@ -720,7 +720,7 @@ test("a second bought batch of the same shortage can reach pantry after the firs
 
 test("a day chosen in Plan survives browsing, recipe discussion and starting a new search", async ({ page, request }) => {
   const friday = "2026-10-30";
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Next week", exact: true }).click();
   await page.getByRole("button", { name: "Choose dinner Fri, Oct 30", exact: true }).click();
   await page.getByRole("button", { name: "Browse recipes", exact: true }).click();

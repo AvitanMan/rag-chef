@@ -1,4 +1,5 @@
 import { randomId } from "./random-id";
+import { readStorageForWrite } from "./private-storage";
 import type { PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validation";
@@ -7,7 +8,7 @@ export const COOKING_SESSION_KEY = "rag-chef-cooking-v1";
 
 /** Reject stale edits, including deletion, before replacing another tab's progress. */
 export function writeCookingSession(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">, expected: string | null, next: CookingSession | null) {
-  const stored = storage.getItem(COOKING_SESSION_KEY);
+  const stored = readStorageForWrite(storage, COOKING_SESSION_KEY);
   if (stored !== expected) return { saved: false, stored };
   const text = next ? JSON.stringify(next) : null;
   if (text === null) storage.removeItem(COOKING_SESSION_KEY);

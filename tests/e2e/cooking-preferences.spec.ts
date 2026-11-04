@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { CookingProfile, KitchenState } from "../../app/lib/kitchen-types";
 
@@ -16,7 +17,7 @@ test.beforeEach(async ({ request }) => { await save(request, empty()); });
 
 test("legacy browser cooking preferences migrate once and the saved profile wins after reload", async ({ page, request }) => {
   await page.addInitScript(legacy => localStorage.setItem("rag-chef-preferences-v2", JSON.stringify({ profile: legacy, settings: { provider: "ollama", ollamaModel: "qwen3.5:9b" } })), profile);
-  await page.goto("/");
+  await openChef(page);
   await expect.poll(async () => (await read(request)).state.cookingProfile).toEqual(profile);
   await navigate(page, "Settings");
   await expect(page.getByRole("button", { name: "Remove allergies milk", exact: true })).toBeVisible();
@@ -31,7 +32,7 @@ test("legacy browser cooking preferences migrate once and the saved profile wins
 });
 
 test("saved exclusions refresh another open tab and invalidate incompatible recipe choices", async ({ page, context, request }) => {
-  await page.goto("/"); await navigate(page, "Settings");
+  await openChef(page); await navigate(page, "Settings");
   const other = await context.newPage();
   try {
     await other.goto("/"); await navigate(other, "Recipes");
@@ -51,7 +52,7 @@ test("saved exclusions refresh another open tab and invalidate incompatible reci
 
 test("cooking preferences export and restore into a fresh browser after explicit review", async ({ page, browser, request, baseURL }) => {
   await save(request, { ...empty(), cookingProfile: profile, pantry: [{ id: "beans", name: "beans", measure: "400 g" }] });
-  await page.goto("/"); await navigate(page, "Settings");
+  await openChef(page); await navigate(page, "Settings");
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export backup", exact: true }).click();
   const stream = await (await downloading).createReadStream(); let text = "";

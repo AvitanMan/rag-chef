@@ -39,6 +39,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("message", (event) => {
+  if (event.data?.type === "DISABLE_SHELL") { event.waitUntil(disableShell()); return; }
   if (!shellAllowed || event.data?.type !== "CACHE_SHELL" || !Array.isArray(event.data.urls)) return;
   const urls = event.data.urls.filter((value) => {
     try { const url = new URL(value, self.location.origin); return url.origin === self.location.origin && !url.pathname.startsWith("/api/"); }

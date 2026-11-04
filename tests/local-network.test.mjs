@@ -1,20 +1,19 @@
 import assert from "node:assert/strict";
-import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
-
-const dir = await mkdtemp(join(tmpdir(), "rag-chef-lan-"));
-after(() => rm(dir, { recursive: true, force: true }));
-const source = await readFile(new URL("../app/lib/household.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replaceAll('"./auth"', '"./auth.mjs"');
-await writeFile(join(dir, "household.mjs"), compiled);
-await writeFile(join(dir, "auth.mjs"), 'export function validateHostedConfiguration() {} export async function getAuth() { return { api: { getSession: async () => null } }; }');
-const household = await import(pathToFileURL(join(dir, "household.mjs")));
+import { after, beforeEach, test } from "node:test";
+import { localAuthRuntime } from "./helpers/local-auth-runtime.mjs";
+const runtime = await localAuthRuntime();
+const { household } = runtime;
+after(() => runtime.close());
+beforeEach(() => runtime.database.exec("DELETE FROM local_auth_attempts; DELETE FROM local_auth_sessions"));
 const configure = origins => household.configureHouseholdRuntime({ RAG_CHEF_HOSTED: "0", RAG_CHEF_LAN_AUTH: "0", RAG_CHEF_LAN_PASSWORD_SHA256: "", RAG_CHEF_LAN_ORIGINS: origins });
 const request = (origin, options = {}) => new Request(`${origin}/api/kitchen/state`, options);
+
+const secureOrigin = "https://ragchef.local:3443";
+const testCredentials = "chef:test-only-kitchen-password";
+const passwordHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(testCredentials))), byte => byte.toString(16).padStart(2, "0")).join("");
+const basic = credentials => `Basic ${btoa(credentials)}`;
+const configureSecure = (extra = {}) => household.configureHouseholdRuntime({ DB: runtime.binding, RAG_CHEF_HOSTED: "0", RAG_CHEF_LAN_AUTH: "1", RAG_CHEF_LAN_PASSWORD_SHA256: passwordHash, RAG_CHEF_LAN_ORIGINS: `${secureOrigin},https://192.168.1.20:3443`, ...extra });
+
 
 test("standalone remains loopback-only until an exact private LAN origin is configured", async () => {
   configure("");
@@ -66,27 +65,29 @@ test("configured LAN origins never bypass hosted sign-in", async () => {
   configure("");
 });
 
-const secureOrigin = "https://ragchef.local:3443";
-const testCredentials = "chef:test-only-kitchen-password";
-const passwordHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(testCredentials))), byte => byte.toString(16).padStart(2, "0")).join("");
-const basic = credentials => `Basic ${btoa(credentials)}`;
-const configureSecure = (extra = {}) => household.configureHouseholdRuntime({ RAG_CHEF_HOSTED: "0", RAG_CHEF_LAN_AUTH: "1", RAG_CHEF_LAN_PASSWORD_SHA256: passwordHash, RAG_CHEF_LAN_ORIGINS: `${secureOrigin},https://192.168.1.20:3443`, ...extra });
 
 test("HTTPS mDNS origins are exact and reject wildcard, public, malformed or HTTP names", () => {
   assert.deepEqual(household.standaloneLanOrigins("https://ragchef.local:3443,https://Kitchen.Home.local:4443"), [secureOrigin, "https://kitchen.home.local:4443"]);
   for (const origin of ["http://ragchef.local:3443", "https://ragchef.local.evil.com:3443", "https://*.local:3443", "https://ragchef.local.:3443", "https://-kitchen.local:3443", "https://kitchen-.local:3443", "https://local:3443", "https://ragchef.local:3443/path", "https://user@ragchef.local:3443", "https://ragchef.local:3443?x=1", "https://ragchef.local:3443#x", "https://ragchef.local", "https://ragchef.local:0"]) assert.deepEqual(household.standaloneLanOrigins(origin), [], origin);
 });
 
-test("secure LAN authenticates pages, RSC, APIs, admin paths and direct household routes", async () => {
-  configureSecure(); assert.equal(household.secureLanMode(), true);
-  for (const path of ["/", "/?_rsc=opaque", "/api/kitchen", "/api/session", "/api/admin/recipes/import", "/other", "/assets/app.js"]) {
-    const denied = await household.authorizeApplicationRequest(new Request(`${secureOrigin}${path}`));
-    assert.equal(denied.status, 401, path); assert.equal(denied.headers.get("WWW-Authenticate"), 'Basic realm="RAG Chef", charset="UTF-8"'); assert.equal(denied.headers.get("Cache-Control"), "no-store");
-    const allowed = new Request(`${secureOrigin}${path}`, { headers: { authorization: basic(testCredentials) } });
-    assert.equal(await household.authorizeApplicationRequest(allowed), null, path);
+test("secure LAN exposes only the login shell and authenticates API tooling without browser challenges", async () => {
+  configureSecure();
+  for (const path of ["/", "/?_rsc=opaque", "/api/session", "/favicon.svg", "/og.png", "/assets/app.js", "/assets/app.css"]) {
+    assert.equal(await household.authorizeApplicationRequest(new Request(`${secureOrigin}${path}`)), null, path);
   }
+  for (const path of ["/api/kitchen", "/api/admin/recipes/import", "/other", "/kitchen-sw.js", "/kitchen-shell.json", "/assets/data.json"]) {
+    const denied = await household.authorizeApplicationRequest(new Request(`${secureOrigin}${path}`));
+    assert.equal(denied.status, 401, path); assert.equal(denied.headers.get("WWW-Authenticate"), null); assert.equal(denied.headers.get("Cache-Control"), "no-store");
+  }
+  const headers = { authorization: basic(testCredentials), "x-rag-chef-client": "cli" };
+  assert.equal(await household.authorizeApplicationRequest(request(secureOrigin, { headers })), null);
+  for (const extra of [{ "sec-fetch-mode": "cors" }, { "sec-fetch-site": "same-origin" }, { "sec-fetch-dest": "empty" }]) {
+    assert.equal((await household.authorizeApplicationRequest(request(secureOrigin, { headers: { ...headers, ...extra } }))).status, 401);
+  }
+  assert.equal((await household.authorizeApplicationRequest(new Request(`${secureOrigin}/private`, { headers }))).status, 401);
   await assert.rejects(household.requireHousehold(request(secureOrigin)), error => error.code === "LAN_SIGN_IN_REQUIRED");
-  assert.equal((await household.requireHousehold(request(secureOrigin, { headers: { authorization: basic(testCredentials) } }))).mode, "local");
+  assert.equal((await household.requireHousehold(request(secureOrigin, { headers }))).localCli, true);
   configure("");
 });
 
@@ -99,7 +100,7 @@ test("secure LAN rejects malformed credentials without leaking the password or s
   }
   for (const hash of ["", "malformed", "g".repeat(64), "0".repeat(63), "0".repeat(65)]) {
     configureSecure({ RAG_CHEF_LAN_PASSWORD_SHA256: hash });
-    const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(testCredentials) } }));
+    const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(testCredentials), "x-rag-chef-client": "cli" } }));
     assert.equal(denied.status, 503); assert.equal((await denied.json()).error.code, "LAN_AUTH_NOT_CONFIGURED");
   }
   configure("");
@@ -118,24 +119,24 @@ test("secure LAN rejects protocol, host and forwarded-header bypasses even with 
 
 test("automatic Basic credentials cannot bypass same-origin protection for API or SSR writes", async () => {
   configureSecure();
-  for (const path of ["/", "/?_rsc=opaque", "/api/kitchen", "/api/admin/recipes/import"]) {
+  for (const path of ["/api/kitchen", "/api/admin/recipes/import"]) {
     for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       for (const extra of [{}, { origin: "https://evil.example" }, { origin: "null" }, { origin: "http://ragchef.local:3443" }, { origin: secureOrigin, "sec-fetch-site": "cross-site" }]) {
         const denied = await household.authorizeApplicationRequest(new Request(`${secureOrigin}${path}`, { method, headers: { authorization: basic(testCredentials), ...extra } }));
         assert.equal(denied.status, 403, `${method} ${path}`); assert.equal((await denied.json()).error.code, "CROSS_ORIGIN_WRITE");
       }
-      const allowed = new Request(`${secureOrigin}${path}`, { method, headers: { authorization: basic(testCredentials), origin: secureOrigin } });
+      const allowed = new Request(`${secureOrigin}${path}`, { method, headers: { authorization: basic(testCredentials), "x-rag-chef-client": "cli", origin: secureOrigin } });
       assert.equal(await household.authorizeApplicationRequest(allowed), null);
     }
   }
-  await assert.rejects(household.requireHousehold(request(secureOrigin, { method: "POST", headers: { authorization: basic(testCredentials) } })), error => error.code === "CROSS_ORIGIN_WRITE");
+  await assert.rejects(household.requireHousehold(request(secureOrigin, { method: "POST", headers: { authorization: basic(testCredentials), "x-rag-chef-client": "cli" } })), error => error.code === "CROSS_ORIGIN_WRITE");
   configure("");
 });
 
 test("secure LAN settings do not replace hosted authentication or alter normal loopback development", async () => {
   configureSecure({ RAG_CHEF_HOSTED: "1", RAG_CHEF_LAN_PASSWORD_SHA256: "invalid" });
   assert.equal(household.secureLanMode(), false);
-  const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(testCredentials) } }));
+  const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(testCredentials), "x-rag-chef-client": "cli" } }));
   assert.equal(denied.status, 401); assert.equal(denied.headers.get("WWW-Authenticate"), null); assert.equal((await denied.json()).error.code, "SIGN_IN_REQUIRED");
   configure(""); assert.equal(household.secureLanMode(), false);
   assert.equal((await household.requireHousehold(request("http://localhost:3000", { method: "PUT" }))).mode, "local");
@@ -146,10 +147,10 @@ test("secure LAN accepts a configured admin login while the hash binds its usern
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(credentials))), byte => byte.toString(16).padStart(2, "0")).join("");
   configureSecure({ RAG_CHEF_LAN_PASSWORD_SHA256: hash });
   try {
-    assert.equal(await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(credentials) } })), null);
-    assert.equal((await household.requireHousehold(request(secureOrigin, { headers: { authorization: basic(credentials) } }))).mode, "local");
+    assert.equal(await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(credentials), "x-rag-chef-client": "cli" } })), null);
+    assert.equal((await household.requireHousehold(request(secureOrigin, { headers: { authorization: basic(credentials), "x-rag-chef-client": "cli" } }))).mode, "local");
     for (const invalid of ["chef:N6!qZ2", "Admin:N6!qZ2", "admin:other6", "admin:", ":N6!qZ2", "admin:line\nbreak"]) {
-      const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(invalid) } }));
+      const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(invalid), "x-rag-chef-client": "cli" } }));
       assert.equal(denied.status, 401); assert.equal((await denied.json()).error.code, "LAN_SIGN_IN_REQUIRED");
     }
   } finally { configure(""); }
@@ -159,7 +160,7 @@ test("secure LAN rejects malformed credential fields even when their raw hash is
   for (const credentials of [":N6!qZ2", "ad min:N6!qZ2", "admin\n:N6!qZ2", `${"a".repeat(65)}:N6!qZ2`, "admin:", "admin:short", "admin:line\nbreak", "admin:nul\u0000value", `admin:${"a".repeat(129)}`]) {
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(credentials))), byte => byte.toString(16).padStart(2, "0")).join("");
     configureSecure({ RAG_CHEF_LAN_PASSWORD_SHA256: hash });
-    const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(credentials) } }));
+    const denied = await household.authorizeApplicationRequest(request(secureOrigin, { headers: { authorization: basic(credentials), "x-rag-chef-client": "cli" } }));
     assert.equal(denied.status, 401); assert.equal((await denied.json()).error.code, "LAN_SIGN_IN_REQUIRED");
   }
   configure("");

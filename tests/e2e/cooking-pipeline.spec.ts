@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -50,7 +51,7 @@ test("cooking again from a cooked dinner uses an unattached session and preserve
   const cooked = { ...meal(source, true), servings: 4, ingredientOverrides: { "0": "350 g" } };
   const pantry = [{ id: "rice-stock", name: "rice", measure: "500 g" }];
   await save(request, { ...empty(), pantry, meals: { [TODAY]: cooked } });
-  await page.goto("/"); await page.getByRole("button", { name: "Recipe details", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Recipe details", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: source.title, exact: true });
   await expect(drawer).toContainText("Starting again uses original recipe quantities");
   await drawer.getByRole("button", { name: "Start cooking again", exact: true }).click();
@@ -73,7 +74,7 @@ test("procedural source directions stay in the full method until cooking is fini
   const source = await importRecipe(request, "Cooking Review Directions", ["Boil water.", "Cook rice according to package instructions", "Drain and serve."]);
   expect(source.instructions[1]).toBe("Cook rice according to package instructions");
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   await expect(page.getByRole("region", { name: "Choose cooking method", exact: true })).toHaveCount(0);
   const cooking = page.getByRole("dialog", { name: "Cooking " + source.title, exact: true });
   await expect(cooking).toContainText("Boil water.");
@@ -97,7 +98,7 @@ test("previously saved sessions attached to cooked dinners can finish without re
       instructions: recipe.instructions, method: "Main method", step: recipe.instructions.length - 1,
       timer: { durationMs: 300000, remainingMs: 120000, endAt: null, status: "paused" }, soundEnabled: false }));
   }, { recipe: source, dinner: cooked });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking " + source.title, exact: true });
   await expect(cooking.getByRole("timer", { name: "Time remaining", exact: true })).toHaveText("02:00");
@@ -114,7 +115,7 @@ test("numbered source directions keep their canonical step evidence IDs in cooki
   const source = await importRecipe(request, "Cooking Review Numbered Rice", ["1. Rinse the rice.", "2. Simmer the rice for 10 minutes."]);
   expect(source.instructions[0]).toBe("1. Rinse the rice.");
   await save(request, { ...empty(), meals: { [TODAY]: meal(source) } });
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking " + source.title, exact: true });
   await expect(cooking).toContainText("Rinse the rice.");
   await cooking.getByText("Ask about this step", { exact: true }).click();

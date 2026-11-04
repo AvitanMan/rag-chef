@@ -108,7 +108,7 @@ async function freePort(excluded = []) {
 async function probeServer(baseURL, servername) {
   if (!secureRun) return (await fetch(`${baseURL}${hostedRun ? "/api/session" : "/api/recipes/catalog"}`, { signal: AbortSignal.timeout(1000) })).ok;
   return new Promise((accept, reject) => {
-    const request = httpsRequest(`${baseURL}/api/session`, { ca: secureTLS.ca, auth: `chef:${secureLogin.password}`, timeout: 1000, ...(servername ? { servername, headers: { host: `${servername}:${new URL(baseURL).port}` } } : {}) }, response => {
+    const request = httpsRequest(`${baseURL}/api/session`, { ca: secureTLS.ca, timeout: 1000, ...(servername ? { servername, headers: { host: `${servername}:${new URL(baseURL).port}` } } : {}) }, response => {
       response.resume(); accept(response.statusCode === 200);
     });
     request.on("timeout", () => request.destroy(new Error("Server probe timed out")));
@@ -204,7 +204,7 @@ try {
       console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
       if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
       const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...(hostedRun ? ["tests/e2e/hosted.spec.ts"] : secureRun ? ["tests/e2e/secure-lan.spec.ts"] : lanRun ? ["tests/e2e/lan.spec.ts"] : []), ...process.argv.slice(3)]);
+      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...(hostedRun ? ["tests/e2e/hosted.spec.ts"] : secureRun ? ["tests/e2e/secure-lan.spec.ts", "tests/e2e/local-session.spec.ts"] : lanRun ? ["tests/e2e/lan.spec.ts"] : []), ...process.argv.slice(3)]);
       console.log("Isolated browser checks passed.");
     }
   }

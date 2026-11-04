@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -27,7 +28,7 @@ test.beforeEach(async ({ page, request }) => {
 test("main timer setup follows other tabs without replacing an unfinished duration draft", async ({ page, context, request }) => {
   const recipe = (await recipes(request)).find(item => item.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(recipe, TODAY) } });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   const remaining = cooking.getByRole("timer", { name: "Time remaining", exact: true });
@@ -69,7 +70,7 @@ test("main timer setup follows other tabs without replacing an unfinished durati
 
 test("favorites persist across reloads, export with backups and remain subject to saved exclusions", async ({ page, request }) => {
   const catalogBefore = await recipes(request);
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: "Favorite: Tomato Rice", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.favoriteRecipeIds).toEqual(["fixture-tomato-rice"]);
@@ -107,7 +108,7 @@ test("Cook again deduplicates recent dinners and creates a new meal without chan
   const beans = catalog.find(recipe => recipe.id === "fixture-vegan-beans")!;
   const meals = Object.fromEntries([meal(rice, "2026-10-19", true), meal(pasta, "2026-10-20", true), meal(rice, "2026-10-21", true), meal(beans, "2026-10-23")].map(meal => [meal.date, meal]));
   await save(request, { ...empty(), meals, pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("button", { name: "Cook again", exact: true }).click();
   await expect(page.locator(".recipe-card")).toHaveCount(2);
   await expect(page.locator(".recipe-card").first()).toContainText("Tomato Rice");
@@ -127,7 +128,7 @@ test("main and additional timers share clear validation and accept long duration
   const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });
   const kitchenBefore = await read(request);
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   const minutes = cooking.getByRole("spinbutton", { name: "Minutes", exact: true });
@@ -173,7 +174,7 @@ test("labeled timers run independently, survive reloads, and require a choice be
   const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });
   const kitchenBefore = await read(request);
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("textbox", { name: "Main timer name", exact: true }).fill("Sauce");

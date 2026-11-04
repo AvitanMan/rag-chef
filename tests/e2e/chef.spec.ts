@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { Recipe, RecipeMetadata } from "../../app/lib/recipe-types";
 import type { KitchenState } from "../../app/lib/kitchen-types";
@@ -10,7 +11,7 @@ async function control(values: { mode?: string; unavailable?: boolean; resetCall
   return response.json();
 }
 async function ask(page: Page, query: string) {
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
   return submitChef(page, query);
@@ -125,7 +126,7 @@ test.describe("instant dinner picks", () => {
 
   test("saved allergies and diet filter instant picks while dislikes reduce their priority", async ({ page, request }) => {
     await saveKitchen(request, { ...emptyKitchen(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }, { id: "beans", name: "beans", measure: "400 g" }, { id: "garlic", name: "garlic", measure: "2 cloves" }] });
-    await page.goto("/");
+    await openChef(page);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
     await page.getByRole("textbox", { name: "Allergies", exact: true }).fill("milk, peanut");
@@ -164,8 +165,8 @@ test.describe("instant dinner picks", () => {
 
 test("Chef evidence quotes approved source records and keeps ingredient quantities intact", async ({ page, request }, testInfo) => {
   const before = await (await request.get("/api/recipes/catalog")).json() as { recipes: Recipe[] };
-  await page.goto("/");
-  await page.getByRole("button", { name: "✦ Chef", exact: true }).filter({ visible: true }).first().click();
+  await openChef(page);
+  await page.getByRole("button", { name: "Chef", exact: true }).filter({ visible: true }).first().click();
   const answer = await submitChef(page, "Tomato Rice");
   expect(answer.generation).toBe("ai");
   expect(answer.sourceFacts).toHaveLength(1);
@@ -390,8 +391,8 @@ test.describe("planning directly from Chef", () => {
     expect(response.ok()).toBeTruthy();
   }
   async function openSelection(page: Page, change = false) {
-    await page.goto("/");
-    await page.getByRole("button", { name: /▦ Plan/, exact: true }).filter({ visible: true }).first().click();
+    await openChef(page);
+    await page.getByRole("button", { name: /Plan/, exact: true }).filter({ visible: true }).first().click();
     await page.getByRole("button", { name: `${change ? "Change" : "Choose"} dinner Fri, Oct 23`, exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: change ? "Choosing a replacement for Fri, Oct 23" : "Choosing dinner for Friday, October 23." })).toBeVisible();
   }
@@ -413,7 +414,7 @@ test.describe("planning directly from Chef", () => {
   });
 
   test("Chef defaults to today and preserves an explicitly chosen dinner day", async ({ page, request }) => {
-    await page.goto("/");
+    await openChef(page);
     await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
     await expect(page.getByLabel("Dinner day", { exact: true })).toHaveValue("2026-10-22");
     if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
@@ -444,7 +445,7 @@ test.describe("planning directly from Chef", () => {
       expect(saved.pantry).toEqual([]);
       expect(saved.shoppingChecked).toEqual({});
       await page.reload();
-      await page.getByRole("button", { name: "▦ Plan", exact: true }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: "Plan", exact: true }).filter({ visible: true }).first().click();
       await expect(page.locator(".day-card.filled")).toHaveCount(1);
       await expect(page.locator(".day-card.filled")).toContainText("Tomato Rice");
     });
@@ -502,7 +503,7 @@ test.describe("planning directly from Chef", () => {
 
 test("a pending Chef request can be canceled without displaying its late answer", async ({ page }) => {
   await control({ mode: "hold" });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
@@ -518,7 +519,7 @@ test("a pending Chef request can be canceled without displaying its late answer"
 
 test("a new pantry context and request replace an older pending Chef result", async ({ page }) => {
   await control({ mode: "hold" });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");
@@ -574,7 +575,7 @@ test("a new day hides yesterday's Chef answer and excludes stock that has just p
 
 test("changing the pantry cancels a pending Chef request even without starting a replacement", async ({ page }) => {
   await control({ mode: "hold" });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await page.getByRole("button", { name: "Ask Chef", exact: true }).click();
   await page.getByRole("textbox", { name: "Dinner request", exact: true }).fill("Tomato Rice");

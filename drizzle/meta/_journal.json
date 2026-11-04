@@ -57,6 +57,13 @@
       "when": 1793830000000,
       "tag": "0008_catalog_apply_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793805035544,
+      "tag": "0009_local_browser_sessions",
+      "breakpoints": true
     }
   ]
 }

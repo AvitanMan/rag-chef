@@ -317,3 +317,14 @@ export const aiConnections = sqliteTable("ai_connections", {
 export const aiModelTasks = sqliteTable("ai_model_tasks", {
   id: text("id").primaryKey(), workflowId: text("workflow_id").notNull(), actorId: text("actor_id").notNull(), householdId: text("household_id").notNull(), operation: text("operation").notNull(), tokenHash: text("token_hash").notNull(), requestHash: text("request_hash").notNull(), kitchenRevision: integer("kitchen_revision").notNull(), inputJson: text("input_json").notNull(), transcriptJson: text("transcript_json").notNull(), status: text("status").notNull(), expiresAt: text("expires_at").notNull(), createdAt: text("created_at").notNull(), outputHash: text("output_hash"), responseJson: text("response_json"), responseStatus: integer("response_status"),
 }, (table) => [check("ai_model_tasks_status_check", sql`${table.status} IN ('pending','processing','completed','cancelled')`), index("ai_model_tasks_actor").on(table.actorId, table.householdId, table.workflowId), index("ai_model_tasks_expiry").on(table.expiresAt)]);
+
+/** Revocable device sessions for the password-protected local kitchen. */
+export const localAuthSessions = sqliteTable("local_auth_sessions", {
+  id: text("id").primaryKey(), tokenHash: text("token_hash").notNull().unique(), origin: text("origin").notNull(),
+  credentialVersion: text("credential_version").notNull(), createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(), remembered: integer("remembered", { mode: "boolean" }).notNull().default(false),
+}, table => [index("local_auth_sessions_expiry_idx").on(table.expiresAt)]);
+export const localAuthAttempts = sqliteTable("local_auth_attempts", {
+  id: integer("id").primaryKey(), credentialVersion: text("credential_version").notNull(),
+  windowStarted: integer("window_started").notNull(), failures: integer("failures").notNull(),
+}, table => [check("local_auth_attempts_singleton", sql`${table.id}=1`)]);

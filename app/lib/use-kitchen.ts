@@ -15,7 +15,7 @@ import { parseLegacyCookingProfile, validateKitchenWrite } from "./kitchen-valid
 export type KitchenSaveState = "loading" | "pending" | "saving" | "saved" | "offline" | "error" | "conflict";
 
 export function useKitchen(fallbackRecipes: Recipe[]) {
-  const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch } = useAppSession();
+  const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch, registerSessionWork } = useAppSession();
   const hosted = session.mode === "hosted";
   const requiresPassword = Boolean(session.localServer?.requiresPassword);
   const savedLocation = hosted ? "the shared kitchen" : "the server computer";
@@ -37,6 +37,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const savedJson = useRef("");
   const saving = useRef(false);
   const paused = useRef(false);
+  const recoveryReviewPending = useRef(false);
   const storageAvailable = useRef(true);
   const draftKey = useRef("");
   const connected = useRef(false);
@@ -102,10 +103,10 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       try {
         const previousDraftKey = privateTabStorage.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`);
         // A fresh key on each page load also isolates duplicated browser tabs.
-        privateTabStorage.setItem(`${KITCHEN_CACHE_KEY}:tab-draft`, draftKey.current);
         const previousDraft = previousDraftKey ? privateStorage.getItem(previousDraftKey) : null;
         const parsedDraft = parseCachedKitchen(previousDraft);
         cached = parsedDraft?.dirty ? parsedDraft : parseCachedKitchen(privateStorage.getItem(KITCHEN_CACHE_KEY));
+        try { privateTabStorage.setItem(`${KITCHEN_CACHE_KEY}:tab-draft`, draftKey.current); } catch { /* The protected storage mirror retains this tab's pointer in memory. */ }
         const old = privateStorage.getItem(LEGACY_STORAGE_KEY);
         if (old) legacy = JSON.parse(old);
       } catch { /* A damaged cache does not replace the database. */ }
@@ -125,9 +126,10 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
 
       let chosen: KitchenState;
       if (cached?.dirty) {
+        recoveryReviewPending.current = requiresPassword;
         chosen = cached.state;
         revision.current = cached.revision;
-        if (document && document.revision !== cached.revision) {
+        if (document && (document.revision !== cached.revision || requiresPassword)) {
           paused.current = true;
           setConflict(document);
         }
@@ -177,6 +179,24 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
 
   const flush = useCallback(async () => {
     if (saving.current || paused.current || !ready) return;
+    if (recoveryReviewPending.current) {
+      // A failed initial read must not turn reauthentication into permission to
+      // autosave a recovered draft. Fetch the current kitchen, then await review.
+      saving.current = true;
+      try {
+        const response = await kitchenFetch("/api/kitchen", { signal: AbortSignal.timeout(5_000) });
+        if (!response.ok) throw new Error();
+        const current = await response.json() as KitchenDocument;
+        if (current.state) validateKitchenWrite({ revision: current.revision, state: current.state });
+        serverDocument.current = current; connected.current = true; paused.current = true;
+        setConflict(current); setSavePhase("conflict");
+        setStatus("Review your recovered draft against the saved kitchen before saving.");
+      } catch {
+        setSavePhase("offline");
+        setStatus("Your recovered draft is kept here. Reconnect and retry to review it against the saved kitchen.");
+      } finally { saving.current = false; }
+      return;
+    }
     const snapshot = latest.current;
     const serialized = JSON.stringify(snapshot);
     if (savedJson.current === serialized) {
@@ -243,6 +263,21 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     }
   }, [cache, ready, savedLocation, rememberBase, kitchenFetch]);
 
+  useEffect(() => registerSessionWork("kitchen", {
+    hasPending: () => ready && (saving.current || JSON.stringify(latest.current) !== savedJson.current),
+    checkpoint: () => {
+      if (ready && !cache(latest.current, JSON.stringify(latest.current) !== savedJson.current)) throw new Error("Kitchen draft is held in memory only.");
+    },
+    save: async () => {
+      if (!ready || paused.current) return false;
+      const deadline = Date.now() + 11_000;
+      while (saving.current && Date.now() < deadline) await new Promise(resolve => window.setTimeout(resolve, 50));
+      if (saving.current) return false;
+      await flush();
+      return !paused.current && connected.current && JSON.stringify(latest.current) === savedJson.current;
+    },
+  }), [cache, flush, ready, registerSessionWork]);
+
 
 
   useEffect(() => {
@@ -268,22 +303,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
 
   useEffect(() => {
     if (hosted || requiresPassword) {
-      // Authenticated kitchens must not retain navigation HTML in the offline
-      // shell. Remove older registrations and caches without blocking drafts.
-      void (async () => {
-        try {
-          if (!("serviceWorker" in navigator)) return;
-          const rows = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(rows.filter(row => [row.active, row.waiting, row.installing].some(worker => worker?.scriptURL.endsWith("/kitchen-sw.js"))).map(row => row.unregister()));
-        } catch { /* Browser policy can deny worker cleanup; do not register a new shell. */ }
-      })();
-      void (async () => {
-        try {
-          if (!("caches" in window)) return;
-          const keys = await caches.keys();
-          await Promise.all(keys.filter(key => key.startsWith("rag-chef-shell-")).map(key => caches.delete(key)));
-        } catch { /* Private browsing can deny cache access; drafts remain available. */ }
-      })();
+      // The session gate removes private caches before login is checked.
       return;
     }
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
@@ -319,7 +339,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       if (signal?.aborted || saving.current || paused.current || revision.current !== startingRevision) return null;
       serverDocument.current = current;
       connected.current = true;
-      if (current.revision === revision.current) return current;
+      if (current.revision === revision.current && !recoveryReviewPending.current) return current;
       if (JSON.stringify(latest.current) !== savedJson.current) {
         cache(latest.current, true);
         paused.current = true;
@@ -364,6 +384,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const resolveConflict = useCallback((keepDraft: boolean) => {
     if (!conflict) return;
     serverDocument.current = conflict;
+    recoveryReviewPending.current = false;
     revision.current = conflict.revision;
     paused.current = false;
     setConflict(null);

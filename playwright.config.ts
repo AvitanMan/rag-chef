@@ -25,7 +25,7 @@ export default defineConfig({
   outputDir: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/test-results`,
   use: {
     baseURL,
-    ...(secureLanTest ? { ignoreHTTPSErrors: true, httpCredentials: { username: "chef", password: process.env.RAG_CHEF_TEST_LAN_PASSWORD! } } : {}),
+    ...(secureLanTest ? { ignoreHTTPSErrors: true } : {}),
     timezoneId: "Asia/Jerusalem",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

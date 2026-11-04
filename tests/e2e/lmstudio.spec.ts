@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect } from "@playwright/test";
 
 test.skip(process.env.RAG_CHEF_HOSTED_TEST === "1", "Standalone provider settings use the local runner.");
@@ -17,7 +18,7 @@ test("LM Studio selection persists and reaches Chef, kitchen assistant, and plan
       await route.fulfill({ status: 503, json: { error: { code: "ai_unavailable", message: "Test model is offline. Manual controls remain available." } } });
     });
   }
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.locator(".provider-card").filter({ hasText: "LM Studio" }).click();
   await page.getByRole("textbox", { name: "Model", exact: true }).fill(model);
@@ -35,7 +36,7 @@ test("LM Studio selection persists and reaches Chef, kitchen assistant, and plan
   await expect(page.getByRole("textbox", { name: "Model", exact: true })).toHaveValue(model);
 
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Plan/ }).filter({ visible: true }).first().click();
-  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
   const assistant = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
   await expect(assistant).toContainText(`LM Studio · ${model}`);
   await assistant.getByRole("textbox", { name: "Your request", exact: true }).fill("Add 2 kg rice");

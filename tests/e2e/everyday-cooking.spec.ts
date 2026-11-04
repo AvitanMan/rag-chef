@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe, RecipeMetadata, RecipeMetadataMap } from "../../app/lib/recipe-types";
@@ -34,7 +35,7 @@ test.beforeEach(async ({ page, request }) => {
 test("unknown and estimated recipe times explain empty results and clearing time preserves other filters", async ({ page, request }) => {
   const recipes = await catalog(request);
   await mockCatalog(page, recipes, { "fixture-tomato-rice": metadata(10, "curator_estimate") });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("rice");
   await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
   await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("30");
@@ -53,7 +54,7 @@ test("unknown and estimated recipe times explain empty results and clearing time
 test("mixed times count only source totals and distinguish a low limit from an unrelated search", async ({ page, request }) => {
   const recipes = (await catalog(request)).filter(recipe => ["fixture-tomato-rice", "fixture-vegan-beans", "fixture-cheese-pasta", "fixture-eggplant"].includes(recipe.id));
   await mockCatalog(page, recipes, { "fixture-tomato-rice": metadata(40), "fixture-vegan-beans": metadata(20), "fixture-cheese-pasta": metadata(10, "curator_estimate") });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await expect(page.getByText("2 of 4 matching recipes have verified total cooking times.", { exact: true })).toBeVisible();
   const limit = page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true });
   await limit.fill("30");
@@ -72,7 +73,7 @@ test("reviewed dinner counts compose with collections, search, time and saved ex
   const meal: PlannedMeal = { id: "cooked-rice", date: TODAY, recipeId: rice.id, recipe: rice, title: rice.title, baseServings: 2, servings: 2, batches: 1, ingredientOverrides: {}, locked: false, status: "cooked", completion: { id: "completed-rice", at: `${TODAY}T09:00:00.000Z`, deductions: [] } };
   await save(request, { ...empty(), meals: { [TODAY]: meal }, favoriteRecipeIds: [rice.id, "fixture-cheese-pasta"] });
   await mockCatalog(page, recipes, { [rice.id]: metadata(40), "fixture-vegan-beans": metadata(20), "fixture-cheese-pasta": metadata(null) });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   const reviewed = page.getByRole("checkbox", { name: "Reviewed dinners", exact: true });
   const explanation = page.locator("#reviewed-dinners-help");
   await expect(reviewed).not.toBeChecked();
@@ -110,7 +111,7 @@ test("reviewed dinner count includes all matches before pagination and excludes 
   const recipes = Array.from({ length: 35 }, (_, index) => ({ ...template, id: `dinner-${index}`, title: `Dinner ${String(index).padStart(2, "0")}` }));
   const reviews = Object.fromEntries(recipes.slice(0, 30).map(recipe => [recipe.id, metadata(40)]));
   await mockCatalog(page, recipes, reviews);
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await expect(page.locator("#reviewed-dinners-help")).toContainText("30 reviewed dinners match these filters.");
   await expect(page.locator(".recipe-card")).toHaveCount(24);
   await page.getByRole("button", { name: "Show more", exact: true }).click();
@@ -132,7 +133,7 @@ test("pantry search and sorting compose with dates, preserve batches, editing, U
     { id: "beans", name: "beans", measure: "" },
   ];
   await save(request, { ...empty(), pantry });
-  await page.goto("/"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Pantry");
   const search = page.getByRole("searchbox", { name: "Search pantry", exact: true });
   const sort = page.getByRole("combobox", { name: "Sort pantry", exact: true });
   const rows = page.locator(".unified-pantry-item");
@@ -184,7 +185,7 @@ for (const failClipboard of [false, true]) {
     const futureRecipe = recipes.find(recipe => recipe.id === "fixture-cheese-pasta")!;
     const future = { ...planned, id: "next-week", date: "2026-10-29", recipeId: futureRecipe.id, recipe: futureRecipe, title: futureRecipe.title, ingredientOverrides: {} };
     await save(request, { ...empty(), meals: { [TODAY]: planned, [future.date]: future }, pantry: [{ id: "rice", name: "rice", measure: "50 g" }] });
-    await page.goto("/"); await navigate(page, "Shopping");
+    await openChef(page); await navigate(page, "Shopping");
     const before = await read(request);
     await page.getByRole("button", { name: "Copy shopping list", exact: true }).click();
     let text: string;

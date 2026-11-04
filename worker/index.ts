@@ -26,22 +26,34 @@ interface ExecutionContext {
 // dangerouslyAllowSVG: true in next.config.js and uncomment below:
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
+function protectLocalResponse(response: Response): Response {
+  const protectedResponse = new Response(response.body, response);
+  protectedResponse.headers.set("Cache-Control", "private, no-store");
+  protectedResponse.headers.append("Vary", "Cookie, Authorization");
+  protectedResponse.headers.set("X-Content-Type-Options", "nosniff");
+  protectedResponse.headers.set("X-Frame-Options", "DENY");
+  protectedResponse.headers.set("Referrer-Policy", "no-referrer");
+  protectedResponse.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+  return protectedResponse;
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     configureHouseholdRuntime(env);
     const denied = await authorizeApplicationRequest(request);
-    if (denied) return denied;
+    if (denied) return secureLanMode() ? protectLocalResponse(denied) : denied;
     const url = new URL(request.url);
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
+      const image = await handleImageOptimization(request, {
         fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
         },
       }, allowedWidths);
+      return secureLanMode() ? protectLocalResponse(image) : image;
     }
 
     const response = await handler.fetch(request, env, ctx);
@@ -56,14 +68,7 @@ const worker = {
       shell.headers.set("Cache-Control", "private, no-cache");
       return shell;
     }
-    const protectedResponse = new Response(response.body, response);
-    protectedResponse.headers.set("Cache-Control", "private, no-store");
-    protectedResponse.headers.append("Vary", "Authorization");
-    protectedResponse.headers.set("X-Content-Type-Options", "nosniff");
-    protectedResponse.headers.set("X-Frame-Options", "DENY");
-    protectedResponse.headers.set("Referrer-Policy", "no-referrer");
-    protectedResponse.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
-    return protectedResponse;
+    return protectLocalResponse(response);
   },
 };
 

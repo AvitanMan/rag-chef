@@ -40,14 +40,14 @@ test('shared household owner and member journey protects drafts, credentials, wr
     const ownerHeaders = { ...headers, "x-rag-chef-actor": ownerId, "x-rag-chef-household": ownerSession.household.id };
     const memberHeaders = { ...headers, "x-rag-chef-actor": memberId, "x-rag-chef-household": ownerSession.household.id };
     expect(ownerSession.household.assistantEnabled).toBe(false);
-    await expect(page.getByRole('button', { name: 'Kitchen assistant', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Plan with Chef', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'Enable assistant beta', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Disable assistant beta', exact: true })).toBeVisible();
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/hosted-settings-${info.project.name}.png`, fullPage: true });
     await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Plan/ }).filter({ visible: true }).first().click();
-    await page.getByRole('button', { name: 'Kitchen assistant', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Kitchen assistant', exact: true })).toBeVisible();
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/hosted-assistant-${info.project.name}.png` });
     await page.getByRole('button', { name: 'Close kitchen assistant', exact: true }).click();
@@ -185,6 +185,19 @@ test('a stale tab cannot autosave into a new account and logout unmounts private
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByText(`Signed in as ${otherId}@example.test`, { exact: false })).toBeVisible();
   expect((await document(context.request)).state?.pantry ?? []).toEqual([]);
+  // Exercise the new explicit discard decision with real unsaved work, rather
+  // than racing the new account's initial save when clicking Sign out.
+  await page.route('**/api/kitchen', async route => {
+    if (route.request().method() === 'PUT') await route.abort('connectionfailed');
+    else await route.continue();
+  });
+  await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await page.getByRole('textbox', { name: 'New pantry ingredient', exact: true }).fill('oats: 50 g');
+  await page.getByRole('button', { name: 'Add to pantry', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm ingredients', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Available oats', exact: true })).toHaveValue('50 g');
+  await expect(page.locator('.save-indicator')).toHaveText('Offline');
+  expect((await document(context.request)).state?.pantry ?? []).toEqual([]);
   await page.evaluate(() => {
     const key = Object.keys(localStorage).find(value => value.startsWith('rag-chef-account:'));
     if (key) localStorage.setItem(key.replace(/:[^:]+$/, ':private-logout-test'), 'private data');
@@ -198,6 +211,9 @@ test('a stale tab cannot autosave into a new account and logout unmounts private
   }
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  const decision = page.getByRole('dialog', { name: 'Sign out of this device', exact: true });
+  await expect(decision).toBeVisible();
+  await decision.getByRole('button', { name: 'Discard and sign out', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
   await expect(page.locator('.side-nav')).toHaveCount(0);
   expect(pageErrors).toEqual([]);
@@ -301,7 +317,7 @@ test('LM Studio browser connection prepares a real assistant draft without chang
   await expect(connections.getByRole('combobox', { name: 'Local model', exact: true })).toHaveValue(model);
 
   await page.locator('.side-nav, .mobile-nav').getByRole('button', { name: /Plan/ }).filter({ visible: true }).first().click();
-  await page.getByRole('button', { name: 'Kitchen assistant', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Chef: kitchen assistant', exact: true }).click();
   const assistant = page.getByRole('dialog', { name: 'Kitchen assistant', exact: true });
   await assistant.getByRole('textbox', { name: 'Your request', exact: true }).fill('Add 2 kg rice');
   await expect(assistant.getByRole('button', { name: 'Ask Chef', exact: true })).toBeEnabled();

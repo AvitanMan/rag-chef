@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 
@@ -16,8 +17,8 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("another tab sees running cooking progress and must confirm replacement", async ({ page, context }) => {
-  await page.goto("/"); await expect(page.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
-  const other = await context.newPage(); await other.goto("/");
+  await openChef(page); await expect(page.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
+  const other = await context.newPage(); await openChef(other);
   await expect(other.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
   await cookRice(page);
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
@@ -53,7 +54,7 @@ for (const lateFailure of [false, true]) {
         });
       };
     });
-    await page.goto("/"); await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openChef(page); await page.getByRole("button", { name: "Settings", exact: true }).click();
     const backup = (count: number) => Buffer.from(JSON.stringify({ backupVersion: 1, exportedAt: "2026-11-01T12:00:00.000Z", state: { ...empty(), pantry: Array.from({ length: count }, (_, i) => ({ id: `stock-${i}`, name: `food ${i}`, measure: "1" })) } }));
     const file = page.getByLabel("Restore backup file", { exact: true });
     await file.setInputFiles({ name: "slow.json", mimeType: "application/json", buffer: backup(1) });
@@ -78,7 +79,7 @@ test("Back and Forward close pantry import and purchase previews", async ({ page
   const current = await (await request.get("/api/kitchen")).json();
   await request.put("/api/kitchen", { data: { revision: current.revision, state } });
   await page.clock.install({ time: new Date("2026-11-01T12:00:00+02:00") });
-  await page.goto("/"); await navigate(page, "Recipes"); await navigate(page, "Pantry");
+  await openChef(page); await navigate(page, "Recipes"); await navigate(page, "Pantry");
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 300 g\nbeans: 400 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Review pantry ingredients", exact: true })).toBeVisible();
@@ -105,7 +106,7 @@ test("blocked cooked undo keeps a full pantry and completion saved", async ({ pa
   const current = await (await request.get("/api/kitchen")).json();
   expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
   await page.clock.install({ time: new Date("2026-11-01T12:00:00+02:00") });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Undo cooked", exact: true }).click();
   await expect(page.getByText(/Make room in your pantry before undoing/)).toBeVisible();
   const after = (await (await request.get("/api/kitchen")).json()).state;
@@ -124,8 +125,8 @@ test("a storage failure keeps this tab's unsaved timer until an explicit conflic
       return setItem.call(this, key, value);
     };
   });
-  await page.goto("/"); await expect(page.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
-  const other = await context.newPage(); await other.goto("/");
+  await openChef(page); await expect(page.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
+  const other = await context.newPage(); await openChef(other);
   await expect(other.getByRole("button", { name: "Browse recipes", exact: true })).toBeEnabled();
   await cookRice(page);
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });

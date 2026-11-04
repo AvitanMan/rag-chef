@@ -7,7 +7,7 @@ import { PersonalRecipeAmountsEditor } from "./PersonalRecipeAmountsEditor";
 import { compareKitchens } from "../lib/kitchen-recovery";
 import { CatalogSetup } from "./CatalogSetup";
 import { useAppSession } from "../lib/app-session";
-import { householdDate } from "../lib/private-storage";
+import { discardPendingStorageItem, householdDate } from "../lib/private-storage";
 import { assistantFetch, selectedAIModel, type AISelection } from "../lib/browser-ai";
 import { AIConnections } from "./AIConnections";
 import { HouseholdSettings } from "./HouseholdSettings";
@@ -21,6 +21,7 @@ import { evaluateRecipeConstraints, normalizeConstraints } from "../lib/recipe-c
 import { availablePantryNames } from "../lib/kitchen-stock";
 import { parseKitchenBackup, serializeKitchenBackup } from "../lib/kitchen-backup";
 import { ThemeToggle } from "./ThemeToggle";
+import { KitchenIcon, type KitchenIconName } from "./KitchenIcon";
 import { ValidatedInput } from "./ValidatedInput";
 import { PantryImportPreview } from "./PantryImportPreview";
 import { constraintsForRecipeQuery, queryRequestsRecipes } from "../lib/recipe-query";
@@ -258,7 +259,7 @@ function instructionSections(recipe: Recipe): InstructionSection[] {
 }
 
 export default function RagChefApp() {
-  const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch } = useAppSession();
+  const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch, signOut, registerSessionWork } = useAppSession();
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantPreset, setAssistantPreset] = useState<AssistantPreset | null>(null);
   const assistantEnabled = session.mode === "local" || Boolean(session.household?.assistantEnabled);
@@ -273,7 +274,9 @@ export default function RagChefApp() {
     }).catch(() => {});
     return () => controller.abort();
   }, [session.mode, kitchenFetch]);
-  const [view, setView] = useState<View>("chef");
+  const [view, setView] = useState<View>("plan");
+  const privateNavigation = session.mode === "hosted" || Boolean(session.localServer?.requiresPassword);
+  const navigationPrefix = `navigation:${session.localAccess?.sessionId ?? "account"}:`;
   const [chefFlow, setChefFlow] = useState<ChefFlow>({ kind: "dinner", date: null, origin: null });
   const chefFlowRef = useRef(chefFlow);
   useEffect(() => { chefFlowRef.current = chefFlow; }, [chefFlow]);
@@ -513,6 +516,16 @@ export default function RagChefApp() {
       return await (navigator.locks ? navigator.locks.request(storageKey(COOKING_SESSION_KEY), save) : save());
     } catch {
       cookingUnsaved.current = true;
+      // Protected storage keeps failed writes in this tab's memory. Advance the
+      // comparison snapshot with that copy so our next edit is not mistaken for
+      // another tab's change, while still reporting that nothing is durable.
+      const snapshot = next ? JSON.stringify(next) : null;
+      try {
+        if (privateStorage.getItem(COOKING_SESSION_KEY) === snapshot) {
+          cookingSnapshot.current = snapshot;
+          setRenderedCookingSnapshot(snapshot);
+        }
+      } catch { /* Unavailable reads retain the previous comparison snapshot. */ }
       setCookingSession(next);
       setCookingStorageNotice("Cooking progress could not be saved in this browser. Keep this tab open to retain it.");
       return true;
@@ -537,13 +550,31 @@ export default function RagChefApp() {
     return () => window.clearTimeout(timer);
   }, [pendingCompletion, kitchen.recoverable, kitchen.state.meals, cookingSession, completionFingerprint, persistCookingSession]);
 
+  const cookingWork = useRef({ cookingSession, persistCookingSession, privateStorage });
+  useEffect(() => { cookingWork.current = { cookingSession, persistCookingSession, privateStorage }; }, [cookingSession, persistCookingSession, privateStorage]);
+  useEffect(() => registerSessionWork("cooking", {
+    hasPending: () => Boolean(cookingWork.current.cookingSession),
+    checkpoint: () => {
+      const work = cookingWork.current;
+      if (!work.cookingSession) return;
+      const result = writeCookingSession(work.privateStorage, cookingSnapshot.current, work.cookingSession);
+      if (result.saved) cookingSnapshot.current = result.stored;
+      else if (cookingUnsaved.current) throw new Error("Unsaved cooking progress is held in memory only.");
+    },
+    save: async () => {
+      const work = cookingWork.current;
+      const saved = await work.persistCookingSession(work.cookingSession);
+      return saved && !cookingUnsaved.current;
+    },
+  }), [registerSessionWork]);
+
   const navigationSnapshot = useRef("");
   useEffect(() => {
     if (!hydrated) return;
     const restore = (event: PopStateEvent) => {
       let saved: { view?: View; flow?: ChefFlow; useSoonId?: string | null; pantryFilter?: PantryFilter; pantryFocusId?: string | null } | undefined;
       try {
-        saved = session.mode === "hosted" ? JSON.parse(privateTabStorage.getItem(`navigation:${event.state?.ragChefNavigationRef}`) ?? "null") : event.state?.ragChefNavigation;
+        saved = privateNavigation ? JSON.parse(privateTabStorage.getItem(`${navigationPrefix}${event.state?.ragChefNavigationRef}`) ?? "null") : event.state?.ragChefNavigation;
       } catch { return; } // Unavailable or corrupt private history must not interrupt the current view.
       if (!saved?.view || !["chef", "recipes", "pantry", "plan", "shop", "settings"].includes(saved.view) || !saved.flow || !["dinner", "discovery", "discussion"].includes(saved.flow.kind)) return;
       const currentDate = householdDate(session.household?.timezone);
@@ -555,9 +586,9 @@ export default function RagChefApp() {
       };
       // Normalize stale history in place so Back cannot loop through a removed item.
       navigationSnapshot.current = JSON.stringify(restored);
-      if (session.mode === "hosted") {
+      if (privateNavigation) {
         try {
-          const id = randomId(); privateTabStorage.setItem(`navigation:${id}`, JSON.stringify(restored));
+          const id = randomId(); privateTabStorage.setItem(`${navigationPrefix}${id}`, JSON.stringify(restored));
           window.history.replaceState({ ...window.history.state, ragChefNavigation: undefined, ragChefNavigationRef: id }, "");
         } catch { /* Keep navigation usable without writing private data to browser history. */ }
       } else window.history.replaceState({ ...window.history.state, ragChefNavigation: restored }, "");
@@ -573,7 +604,7 @@ export default function RagChefApp() {
     };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [hydrated, privateTabStorage, session.mode, session.household?.timezone]);
+  }, [hydrated, privateTabStorage, privateNavigation, navigationPrefix, session.household?.timezone]);
   useEffect(() => {
     if (!hydrated) return;
     const snapshot = { view, flow: chefFlow, useSoonId: activeUseSoonId, pantryFilter, pantryFocusId };
@@ -581,13 +612,13 @@ export default function RagChefApp() {
     if (serialized === navigationSnapshot.current) return;
     const replace = !navigationSnapshot.current || Boolean(useSoonId && !activeUseSoonId);
     navigationSnapshot.current = serialized;
-    if (session.mode === "hosted") {
+    if (privateNavigation) {
       try {
-        const id = randomId(); privateTabStorage.setItem(`navigation:${id}`, serialized);
+        const id = randomId(); privateTabStorage.setItem(`${navigationPrefix}${id}`, serialized);
         window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: undefined, ragChefNavigationRef: id }, "");
       } catch { /* Account storage is optional; the current tab can still navigate. */ }
     } else window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: snapshot }, "");
-  }, [view, chefFlow, hydrated, activeUseSoonId, useSoonId, pantryFilter, pantryFocusId, privateTabStorage, session.mode]);
+  }, [view, chefFlow, hydrated, activeUseSoonId, useSoonId, pantryFilter, pantryFocusId, privateTabStorage, privateNavigation, navigationPrefix]);
 
   const loadPlanningCatalog = useCallback(async () => {
     setCatalogState("loading");
@@ -1048,6 +1079,10 @@ export default function RagChefApp() {
   const showChosenDinner = view === "chef" && chefFlow.kind === "dinner" && Boolean(chosenDinner);
   const reserved = Object.values(kitchen.state.meals).filter(meal => meal.id !== chosenDinner?.id && weekStart(meal.date) === weekStart(dinnerDate));
   const chosenReadiness = chosenDinner?.recipe && chosenDinner.status !== "cooked" ? mealReadiness(chosenDinner, allocateStockForMeals(reserved, kitchen.state.pantry, today).pantry, today) : null;
+  const todayMeal = kitchen.state.meals[today];
+  const todayReadiness = todayMeal?.recipe && todayMeal.status !== "cooked"
+    ? mealReadiness(todayMeal, allocateStockForMeals(Object.values(kitchen.state.meals).filter(meal => meal.id !== todayMeal.id && weekStart(meal.date) === weekStart(today)), kitchen.state.pantry, today).pantry, today)
+    : undefined;
   const useSoonResult = useMemo(() => activeUseSoonId && view === "chef" && chefFlow.kind === "discovery"
     ? rankUseSoonDinners({ kitchen: kitchen.state, selectedId: activeUseSoonId, today, date: dinnerDate,
       portions: chefPortions ? Number(chefPortions) : null, recipes: catalogRecipes, metadata: metadataByRecipeId, constraints, contentHashesByRecipeId }) : null,
@@ -1099,8 +1134,8 @@ export default function RagChefApp() {
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
-        <button className="brand" disabled={!hydrated} onClick={() => navigate("chef")}>
-          <span className="brand-mark">R</span>
+        <button className="brand" disabled={!hydrated} onClick={() => navigate("plan")}>
+          <span className="brand-mark"><KitchenIcon name="chef" /></span>
           <span>
             <strong>RAG Chef</strong>
             <small>Cook with what you have</small>
@@ -1108,31 +1143,35 @@ export default function RagChefApp() {
         </button>
 
         <nav className="side-nav">
-          <NavButton disabled={!hydrated} active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
-          <NavButton disabled={!hydrated} active={view === "chef"} icon="✦" label="Chef" onClick={() => navigate("chef")} />
-          <NavButton disabled={!hydrated} active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />
-          <NavButton disabled={!hydrated} active={view === "shop"} icon="✓" label="Shopping" onClick={() => navigate("shop")} count={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length || undefined} />
-          <NavButton disabled={!hydrated} active={view === "pantry"} icon="◌" label="Pantry" onClick={() => navigate("pantry")} count={pantry.length} />
+          <NavButton disabled={!hydrated} active={view === "plan"} icon="plan" label="Plan" onClick={() => navigate("plan")} />
+          <NavButton disabled={!hydrated} active={view === "chef"} icon="chef" label="Chef" onClick={() => navigate("chef")} />
+          <NavButton disabled={!hydrated} active={view === "recipes"} icon="recipes" label="Recipes" onClick={() => navigate("recipes")} />
+          <NavButton disabled={!hydrated} active={view === "shop"} icon="shop" label="Shopping" onClick={() => navigate("shop")} count={shoppingItems.filter((item) => !kitchen.state.shoppingChecked[item.key]).length || undefined} />
+          <NavButton disabled={!hydrated} active={view === "pantry"} icon="pantry" label="Pantry" onClick={() => navigate("pantry")} count={pantry.length} />
         </nav>
 
         <div className="source-mini" id="source-note">
-          <span className="status-dot" />
+          <KitchenIcon name="leaf" />
           <div>
-            <strong>Approved catalog</strong>
-            <small>Persistent recipes + local fallback</small>
+            <strong>Your everyday kitchen</strong>
+            <small>Good food. Less waste.</small>
           </div>
         </div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
-          <div>
+          <div className="page-heading">
+            <span className="eyebrow">{session.household?.name ?? "Your kitchen"}</span>
             <h1>{viewTitle(view)}</h1>
+            <p>{viewDescription(view)}</p>
           </div>
           <div className="topbar-actions">
-            <span className="save-indicator" role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
+            <span className={`save-indicator save-${kitchen.saveState}`} role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
+            {assistantEnabled && <button className="secondary-button global-chef-action" aria-label="Ask Chef: kitchen assistant" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}><KitchenIcon name="chef" /><span>Ask Chef</span></button>}
             <ThemeToggle />
-            <button className="secondary-button" aria-label="Settings" disabled={!hydrated} onClick={() => setView("settings")}>⚙</button>
+            <button className="secondary-button icon-button" aria-label="Settings" disabled={!hydrated} onClick={() => navigate("settings")}><KitchenIcon name="settings" /></button>
+            {(session.mode === "hosted" || session.localServer?.requiresPassword) && <details className="kitchen-menu"><summary aria-label="Kitchen menu"><KitchenIcon name="logout" /></summary><div><strong>{session.household?.name ?? "This kitchen"}</strong><button className="text-button" onClick={() => void signOut()}>Sign out of this device</button></div></details>}
           </div>
         </header>
 
@@ -1159,8 +1198,6 @@ export default function RagChefApp() {
         {assistantEnabled && <KitchenAssistant key={`${week}:${today}:${assistantPreset?.id ?? "chat"}`} visible={assistantOpen} close={() => setAssistantOpen(false)}
           week={week} today={today} kitchen={kitchen.state} revision={kitchen.getRevision()} saveState={kitchen.saveState} settings={settings} preset={assistantPreset}
           refreshKitchen={async () => Boolean(await kitchenRef.current.refreshSavedKitchen())} applied={async () => Boolean(await kitchenRef.current.refreshSavedKitchen())} />}
-        {assistantEnabled && view !== "settings" && <div className="assistant-entry"><div><strong>One assistant for your kitchen</strong><p>Update pantry, plan dinners, and review shopping together.</p></div><button className="primary-button" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}>Kitchen assistant</button></div>}
-        {!!kitchen.state.recentActionReceipts?.length && <details className="panel household-activity"><summary>Recent kitchen changes</summary>{kitchen.state.recentActionReceipts.slice(-10).reverse().map(receipt => <article key={receipt.id}><strong>{receipt.memberId === (session.user?.id ?? "local-user") ? "You" : memberNames[receipt.memberId] ?? "Family member"}</strong><time dateTime={receipt.appliedAt}>{new Date(receipt.appliedAt).toLocaleString(undefined, { timeZone: session.household?.timezone })}</time><ul>{receipt.summary.map((line, index) => <li key={index}>{line}</li>)}</ul></article>)}</details>}
         <fieldset className="kitchen-workspace" disabled={!kitchen.ready}>
 
         {(view === "recipes" || view === "chef") && <>
@@ -1172,7 +1209,6 @@ export default function RagChefApp() {
 
         {view === "chef" && (<>
           <div className="discovery-navigation">
-            {assistantEnabled && <button className="secondary-button" onClick={() => setChefPlanOpen(true)}>Plan with Chef</button>}
             <button className="text-button flow-back" onClick={backFromChef}>{chefOrigin === "plan" ? "← Back to plan" : chefOrigin === "recipes" ? "← Back to Recipes" : "Browse recipes"}</button>
             {chefOrigin === "plan" && <button className="text-button" onClick={() => navigate("recipes")}>Browse recipes</button>}
             {pinnedRecipe && chosenDinner && <button className="secondary-button" onClick={() => showDinner()}>Back to dinner</button>}
@@ -1279,10 +1315,13 @@ export default function RagChefApp() {
           </section>
         )}
 
-        {view === "plan" && hydrated && kitchen.ready && !weekMeals.length && <section className="onboarding-next" aria-label="Get started"><p>Choose tonight’s dinner to get started. Your shopping list builds itself.</p><button className="text-button" onClick={() => navigate("settings")}>Review preferences</button><button className="text-button" onClick={() => navigate("pantry")}>Add pantry ingredients</button></section>}
-        {view === "plan" && (<>
-          {assistantEnabled && <div className="chef-plan-entry"><div><strong>Plan a few dinners together</strong><p>Use pantry food, review shopping, and save when you are ready.</p></div><button className="secondary-button" onClick={() => setChefPlanOpen(true)}>Plan with Chef</button></div>}
+        {view === "plan" && !hydrated && <section className="panel empty-state" role="status" aria-label="Loading weekly plan"><strong>Loading your weekly plan…</strong><p>Your saved dinners will appear here.</p></section>}
+        {view === "plan" && hydrated && (<>
           <DurablePlanView
+            todayReadiness={todayReadiness}
+            planWithChef={assistantEnabled ? () => setChefPlanOpen(true) : undefined}
+            useSoon={hydrated && kitchen.ready ? <UseSoonSummary items={dateGroups.soon} pastCount={dateGroups.past.length} select={selectUseSoon} review={reviewPantry} /> : undefined}
+            setup={hydrated && kitchen.ready && !weekMeals.length ? <>{catalogState === "ready" && !catalogRecipes.length && <CatalogSetup loaded={loadPlanningCatalog} />}<section className="onboarding-next" aria-label="Get started"><span>Make this kitchen yours</span><button className="text-button" onClick={() => navigate("settings")}>Review preferences</button><button className="text-button" onClick={() => navigate("pantry")}>Add pantry ingredients</button></section></> : undefined}
             focusDate={focusDate}
             clearFocusDate={() => setFocusDate(null)}
             catalogState={catalogState}
@@ -1352,14 +1391,15 @@ export default function RagChefApp() {
 
         {undoNotice && !removals.length && <p role="status">{undoNotice}</p>}
         </fieldset>
+        {!!kitchen.state.recentActionReceipts?.length && <details className="panel household-activity"><summary>Recent kitchen changes</summary>{kitchen.state.recentActionReceipts.slice(-10).reverse().map(receipt => <article key={receipt.id}><strong>{receipt.memberId === (session.user?.id ?? "local-user") ? "You" : memberNames[receipt.memberId] ?? "Family member"}</strong><time dateTime={receipt.appliedAt}>{new Date(receipt.appliedAt).toLocaleString(undefined, { timeZone: session.household?.timezone })}</time><ul>{receipt.summary.map((line, index) => <li key={index}>{line}</li>)}</ul></article>)}</details>}
       </main>
 
       <nav ref={mobileNavRef} className="mobile-nav" aria-label="Mobile navigation">
-        <NavButton disabled={!hydrated} active={view === "plan"} icon="▦" label="Plan" onClick={() => navigate("plan")} />
-        <NavButton disabled={!hydrated} active={view === "chef"} icon="✦" label="Chef" onClick={() => navigate("chef")} />
-        <NavButton disabled={!hydrated} active={view === "recipes"} icon="▤" label="Recipes" onClick={() => navigate("recipes")} />
-        <NavButton disabled={!hydrated} active={view === "shop"} icon="✓" label="Shopping" onClick={() => navigate("shop")} />
-        <NavButton disabled={!hydrated} active={view === "pantry"} icon="◌" label="Pantry" onClick={() => navigate("pantry")} />
+        <NavButton disabled={!hydrated} active={view === "plan"} icon="plan" label="Plan" onClick={() => navigate("plan")} />
+        <NavButton disabled={!hydrated} active={view === "chef"} icon="chef" label="Chef" onClick={() => navigate("chef")} />
+        <NavButton disabled={!hydrated} active={view === "recipes"} icon="recipes" label="Recipes" onClick={() => navigate("recipes")} />
+        <NavButton disabled={!hydrated} active={view === "shop"} icon="shop" label="Shopping" onClick={() => navigate("shop")} />
+        <NavButton disabled={!hydrated} active={view === "pantry"} icon="pantry" label="Pantry" onClick={() => navigate("pantry")} />
       </nav>
 
       {pantryPreview && <PantryImportPreview rows={pantryPreview} pantry={kitchen.state.pantry} change={setPantryPreview} close={() => setPantryPreview(null)} disabled={!kitchen.ready || Boolean(kitchen.conflict)} confirm={() => {
@@ -1441,7 +1481,13 @@ export default function RagChefApp() {
           }}
         />
       )}
-      {cookingConflict && <Modal className="kitchen-modal-backdrop" label="Cooking progress changed" close={() => { if (!cookingResolution.current) setCookingConflict(null); }}><section className="panel kitchen-modal"><h2>Keep your unsaved cooking progress?</h2><p>This tab has progress that could not be saved. Another tab saved a different session. Choose which progress to keep.</p><div className="modal-actions"><button className="secondary-button" disabled={cookingResolving} onClick={() => { if (cookingResolution.current) return; cookingUnsaved.current = false; setCookingConflict(null); adoptCookingSnapshot(cookingConflict.stored); }}>Use saved session</button><button className="primary-button" disabled={cookingResolving} onClick={async () => {
+      {cookingConflict && <Modal className="kitchen-modal-backdrop" label="Cooking progress changed" close={() => { if (!cookingResolution.current) setCookingConflict(null); }}><section className="panel kitchen-modal"><h2>Keep your unsaved cooking progress?</h2><p>This tab has progress that could not be saved. Another tab saved a different session. Choose which progress to keep.</p><div className="modal-actions"><button className="secondary-button" disabled={cookingResolving} onClick={() => {
+        if (cookingResolution.current) return;
+        try {
+          const saved = discardPendingStorageItem(privateStorage, COOKING_SESSION_KEY);
+          cookingUnsaved.current = false; setCookingConflict(null); adoptCookingSnapshot(saved);
+        } catch { setCookingStorageNotice("The saved cooking session could not be read. Your progress is kept in this tab; retry when browser storage is available."); }
+      }}>Use saved session</button><button className="primary-button" disabled={cookingResolving} onClick={async () => {
         if (cookingResolution.current) return;
         cookingResolution.current = true; setCookingResolving(true);
         try { await persistCookingSession(cookingSession, cookingConflict.stored); }
@@ -1462,14 +1508,14 @@ function NavButton({
 }: {
   active: boolean;
   disabled?: boolean;
-  icon: string;
+  icon: KitchenIconName;
   label: string;
   onClick: () => void;
   count?: number;
 }) {
   return (
-    <button className={`nav-button ${active ? "active" : ""}`} disabled={disabled} onClick={onClick}>
-      <span className="nav-icon">{icon}</span>
+    <button className={`nav-button ${active ? "active" : ""}`} aria-current={active ? "page" : undefined} disabled={disabled} onClick={onClick}>
+      <span className="nav-icon"><KitchenIcon name={icon} /></span>
       <span>{label}</span>
       {count ? <span className="nav-count">{count}</span> : null}
     </button>
@@ -1484,6 +1530,17 @@ function viewTitle(view: View) {
     plan: "Weekly plan",
     shop: "Shopping",
     settings: "Settings",
+  }[view];
+}
+
+function viewDescription(view: View) {
+  return {
+    plan: "A little planning. A week of good dinners.",
+    chef: "Find a dinner or get a hand with your recipe.",
+    recipes: "Find something you’ll love to cook.",
+    pantry: "Know what you have. Make the most of it.",
+    shop: "Just what your dinners need.",
+    settings: "A kitchen that works for you.",
   }[view];
 }
 
@@ -1730,7 +1787,7 @@ export function RecipeCard({
   const completeness = recipeCompleteness(recipe);
   return (
     <article className={`recipe-card ${featured ? "featured" : ""}`}>
-      {recipe.image && <button className="recipe-image" onClick={open} aria-label={`Open ${recipe.title}`}><img src={recipe.image} alt="" loading="lazy" /></button>}
+      <button className={`recipe-image ${recipe.image ? "" : "recipe-placeholder"}`} onClick={open} aria-label={`Open ${recipe.title}`}>{recipe.image ? <img src={recipe.image} alt="" loading="lazy" /> : <><KitchenIcon name="plate" /><span>{recipe.cuisine || recipe.category || "From your recipe collection"}</span></>}</button>
       <div className="recipe-card-body">
         <div className="recipe-meta">
           <span>{recipe.cuisine || recipe.category}</span>
@@ -1791,7 +1848,7 @@ function PantryView({
       <section className="panel large-panel">
         <div className="section-heading">
           <div>
-            <p>Type or paste ingredients, separated by new lines, commas, or semicolons. Amounts are optional.</p>
+            <span className="eyebrow">A well-stocked kitchen</span><h2>Add what you have</h2><p>Type one ingredient or paste a whole list. Add amounts when you know them.</p>
           </div>
         </div>
         <form className="add-form" onSubmit={(event) => { event.preventDefault(); add(); }}>
@@ -1864,7 +1921,7 @@ function SettingsView({
   currentKitchen: KitchenState;
   sources: Recipe["source"][];
 }) {
-  const { session } = useAppSession();
+  const { session, signOut } = useAppSession();
   const canEditRequirements = session.mode === "local" || session.household?.role === "owner";
   const [restorePreview, setRestorePreview] = useState<ReturnType<typeof parseKitchenBackup> | null>(null);
   const [restoreError, setRestoreError] = useState("");
@@ -1889,7 +1946,7 @@ function SettingsView({
   }
   return (
     <div className="settings-grid">
-      {session.mode === "hosted" && <HouseholdSettings />}
+      <nav className="settings-sections" aria-label="Settings sections"><a href="#kitchen-preferences">Cooking preferences</a><a href="#kitchen-ai">AI connection</a><a href="#kitchen-devices">Devices & access</a><a href="#kitchen-backup">Backup</a><a href="#kitchen-sources">Recipe sources</a></nav>
       <section className="panel settings-panel wide-panel" id="kitchen-preferences">
         <div className="section-heading"><div><span className="eyebrow">Personalization</span><h2>How you cook</h2><p>Cooking preferences save with your kitchen and backups. Allergies are filtered before a recipe reaches the model.</p></div></div>
         {!canEditRequirements && <p>The household owner manages shared requirements. Everyone’s dinner suggestions use these exclusions.</p>}
@@ -1905,8 +1962,30 @@ function SettingsView({
         </fieldset>
       </section>
 
-      <section className="panel settings-panel wide-panel">
-        <h2>Kitchen backup</h2><p>Plans, pantry amounts, personal recipe amounts, favorites, and cooking preferences save automatically {session.mode === "hosted" ? "to your shared household" : "on the server computer"}.</p>
+      <div className="settings-group" id="kitchen-ai">{session.mode === "hosted" ? <AIConnections settings={settings} setSettings={setSettings} /> : <section className="panel settings-panel">
+        <div className="section-heading"><div><span className="eyebrow">Cooking assistant</span><h2>AI settings</h2><p>Choose where Chef answers are generated. Recipe search runs on the server computer.</p></div></div>
+        <div className="provider-grid">
+          <button className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} aria-pressed={settings.provider === "ollama"} onClick={() => setSettings({ ...settings, provider: "ollama" })}><span className="provider-symbol">OL</span><strong>Ollama</strong><small>Private · server computer</small></button>
+          <button className={`provider-card ${settings.provider === "lmstudio" ? "selected" : ""}`} aria-pressed={settings.provider === "lmstudio"} onClick={() => setSettings({ ...settings, provider: "lmstudio" })}><span className="provider-symbol">LM</span><strong>LM Studio</strong><small>Private · server computer</small></button>
+          <button className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} aria-pressed={settings.provider === "openai"} onClick={() => setSettings({ ...settings, provider: "openai" })}><span className="provider-symbol cloud">OA</span><strong>OpenAI</strong><small>Cloud · API key required</small></button>
+        </div>
+        <label className="model-field">Model<input value={selectedAIModel(settings)} placeholder={settings.provider === "lmstudio" ? "Model identifier from LM Studio" : undefined} onChange={(event) => setSettings(settings.provider === "ollama" ? { ...settings, ollamaModel: event.target.value } : settings.provider === "lmstudio" ? { ...settings, lmstudioModel: event.target.value } : { ...settings, openaiModel: event.target.value })} /></label>
+        {settings.provider === "lmstudio" && <p className="quantity-note">On the computer serving RAG Chef, load a model in LM Studio and start its server from the Developer tab. Enter its model identifier above. Phones use that computer’s model through RAG Chef; they do not need LM Studio installed.</p>}
+        <div className="connection-row"><button className="secondary-button" onClick={testConnection}>Test connection</button><span>{connectionStatus || "Not tested"}</span></div>
+        {connectionDetails.length > 0 && <ul aria-label="Chef capabilities">{connectionDetails.map((detail, index) => <li key={index}>{detail}</li>)}</ul>}
+      </section>}</div>
+
+      <div className="settings-group" id="kitchen-devices">{session.mode === "hosted" && <HouseholdSettings />}{session.mode === "local" && Boolean(session.localServer?.origins?.length) && <section className="panel settings-panel wide-panel" aria-label="Use your kitchen on other devices">
+        <h2>Open your kitchen on a phone</h2>
+        <p>Connect to the same Wi-Fi and open one of these addresses. All devices share this kitchen and connect to AI through the server computer. Keep that computer running while cooking.</p>
+        {session.localServer!.origins!.map(origin => <label key={origin}>Kitchen address<input readOnly value={origin} onFocus={event => event.currentTarget.select()} /></label>)}
+        <p className="quantity-note">{session.localServer?.requiresPassword ? "Sign in with your shared kitchen username and password. Each device stays connected independently. Keep the server computer running while you cook." : "Anyone who can open these local addresses can use and change this kitchen."}</p>
+      </section>}
+      {session.mode === "local" && <section className="panel settings-panel local-access-panel"><span className="eyebrow">Devices & access</span><h2>{session.localServer?.requiresPassword ? "Your signed-in device" : "Your local kitchen"}</h2><p>{session.localServer?.requiresPassword ? "Sign out when you’re finished on a shared device. Your saved kitchen stays on the server computer." : "This kitchen is running locally on your computer."}</p>{session.localServer?.requiresPassword && <button className="secondary-button" onClick={() => void signOut()}><KitchenIcon name="logout" />Sign out of this device</button>}</section>}
+      </div>
+
+      <section className="panel settings-panel wide-panel" id="kitchen-backup">
+        <span className="eyebrow">Keep a copy</span><h2>Kitchen backup</h2><p>Plans, pantry amounts, personal recipe amounts, favorites, and cooking preferences save automatically {session.mode === "hosted" ? "to your shared household" : "on the server computer"}.</p>
         <button className="secondary-button" onClick={exportBackup}>Export backup</button>
         {backupExportError && <p role="alert">{backupExportError}</p>}
         <label className="backup-upload">Restore backup<input type="file" accept="application/json,.json" aria-label="Restore backup file" onChange={(event) => { void readBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} /></label>
@@ -1932,28 +2011,8 @@ function SettingsView({
         </section>}
       </section>
 
-      {session.mode === "hosted" ? <AIConnections settings={settings} setSettings={setSettings} /> : <section className="panel settings-panel">
-        <div className="section-heading"><div><span className="eyebrow">Cooking assistant</span><h2>AI settings</h2><p>Choose where Chef answers are generated. Recipe search runs on the server computer.</p></div></div>
-        <div className="provider-grid">
-          <button className={`provider-card ${settings.provider === "ollama" ? "selected" : ""}`} aria-pressed={settings.provider === "ollama"} onClick={() => setSettings({ ...settings, provider: "ollama" })}><span className="provider-symbol">OL</span><strong>Ollama</strong><small>Private · server computer</small></button>
-          <button className={`provider-card ${settings.provider === "lmstudio" ? "selected" : ""}`} aria-pressed={settings.provider === "lmstudio"} onClick={() => setSettings({ ...settings, provider: "lmstudio" })}><span className="provider-symbol">LM</span><strong>LM Studio</strong><small>Private · server computer</small></button>
-          <button className={`provider-card ${settings.provider === "openai" ? "selected" : ""}`} aria-pressed={settings.provider === "openai"} onClick={() => setSettings({ ...settings, provider: "openai" })}><span className="provider-symbol cloud">OA</span><strong>OpenAI</strong><small>Cloud · API key required</small></button>
-        </div>
-        <label className="model-field">Model<input value={selectedAIModel(settings)} placeholder={settings.provider === "lmstudio" ? "Model identifier from LM Studio" : undefined} onChange={(event) => setSettings(settings.provider === "ollama" ? { ...settings, ollamaModel: event.target.value } : settings.provider === "lmstudio" ? { ...settings, lmstudioModel: event.target.value } : { ...settings, openaiModel: event.target.value })} /></label>
-        {settings.provider === "lmstudio" && <p className="quantity-note">On the computer serving RAG Chef, load a model in LM Studio and start its server from the Developer tab. Enter its model identifier above. Phones use that computer’s model through RAG Chef; they do not need LM Studio installed.</p>}
-        <div className="connection-row"><button className="secondary-button" onClick={testConnection}>Test connection</button><span>{connectionStatus || "Not tested"}</span></div>
-        {connectionDetails.length > 0 && <ul aria-label="Chef capabilities">{connectionDetails.map((detail, index) => <li key={index}>{detail}</li>)}</ul>}
-      </section>}
-
-      {session.mode === "local" && Boolean(session.localServer?.origins.length) && <section className="panel settings-panel wide-panel" aria-label="Use your kitchen on other devices">
-        <h2>Open your kitchen on a phone</h2>
-        <p>Connect to the same Wi-Fi and open one of these addresses. All devices share this kitchen and connect to AI through the server computer. Keep that computer running while cooking.</p>
-        {session.localServer!.origins.map(origin => <label key={origin}>Kitchen address<input readOnly value={origin} onFocus={event => event.currentTarget.select()} /></label>)}
-        <p className="quantity-note">{session.localServer?.requiresPassword ? "Your browser will ask for the shared kitchen username and password. People with those credentials can use and change this kitchen. Keep the server connected; offline pages are disabled for password-protected kitchens." : "Anyone who can open these local addresses can use and change this kitchen."}</p>
-      </section>}
-
-      <section className="panel settings-panel wide-panel">
-        <div className="section-heading"><div><span className="eyebrow">Source adapters</span><h2>Where recipes come from</h2></div></div>
+      <section className="panel settings-panel wide-panel" id="kitchen-sources">
+        <div className="section-heading"><div><span className="eyebrow">Recipe collection</span><h2>Where recipes come from</h2></div></div>
         <div className="source-list">
           {sources.map((source) => <div key={source.name}><span className="source-logo active">{source.name.slice(0, 1)}</span><div><strong>{source.name}</strong><small>{source.licenseId || "Prototype-approved · attributed"}</small></div><b>Cataloged</b></div>)}
           {!sources.length && <p>Load the recipe collection to see its sources.</p>}

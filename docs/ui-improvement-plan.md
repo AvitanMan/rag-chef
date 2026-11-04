@@ -1,5 +1,54 @@
 # UI review and improvement plan
 
+## November 4 redesign and local browser login
+
+Implemented on `codex/ux-browser-login`, based on `codex/planning-assistant`.
+The app now starts on the weekly Plan with tonight’s dinner, ingredient readiness,
+and use-soon stock first. Five labeled destinations, shared SVG icons, warm light
+and dark palettes, larger text and controls, grouped settings, and a compact
+Ask Chef entry replace the competing assistant banners.
+
+Secure local kitchens now use the in-app username/password form. Sessions expire
+after 12 hours, or 30 days with Remember this device. Logout is server-revoked
+and propagated to sibling tabs; pending changes require a save/discard decision.
+Expiry hides private screens and preserves drafts for reviewed recovery, including
+an in-memory fallback when browser storage rejects writes. Hosted Google sign-in
+and password-free standalone operation remain separate.
+
+Recovered drafts still require review when the first server read fails. Cooking
+progress held in memory preserves conflict checks against other tabs, and choosing
+saved progress discards the pending copy. Remembered-session timers reach the full
+30-day deadline without requiring a successful network refresh. Kitchen writes
+check session expiry at SQL execution time, and concurrent sign-in attempts reserve
+throttle capacity before credentials are compared.
+
+Run `pnpm db:migrate` before restarting `pnpm start:secure`. Migration 0009 adds
+session and sign-in-attempt tables; the launcher checks for them before serving.
+Existing shared credentials and certificate trust continue to work. See the
+[operating guide](guide.md#use-from-a-phone-on-your-local-network) for access,
+recovery, CLI authentication, and password reset instructions.
+
+Screenshots: [login](images/login.png), [dinner](images/dinner.png),
+[shopping](images/shopping.png), [cooking](images/cooking.png). Kitchen screenshots
+use original starter recipes and a disposable demonstration kitchen.
+
+Validation passed: 647 source tests, 388 desktop/mobile browser tests, 44 focused
+cooking checks after the storage fixes, and 22 secure-login checks. Mode-specific
+browser cases run separately. Isolated built-worker checks, hosted-account journeys,
+fresh installation, Chromium/WebKit
+offline cooking, and a 320/390/768/1440px visual matrix in both themes. The matrix
+also checks keyboard navigation and CSS-enlarged content; it is not a physical
+phone or native browser-zoom certification. All browser data and credentials are
+disposable, and model responses are deterministic test fixtures.
+
+The full browser run and final secure-login checks are recorded in
+[the browser report](../output/playwright/e2e-2026-11-04T16-06-44-643Z-3562fdca/results.json)
+and [the secure-login report](../output/playwright/secure-lan-2026-11-04T16-29-58-573Z-fb714f1f/results.json).
+Generated test artifacts are intentionally ignored by Git. TypeScript, ESLint,
+and whitespace checks also passed.
+
+## Earlier usability work
+
 **Implementation status:** F1–F9 are implemented, with a persistent dark mode toggle added. The original review is retained below; see the implementation record at the end for verification and screenshots.
 
 Reviewed October 25, 2026, against the current working tree, including the recent usability changes. This is a browser-tested review. No application code was changed during this review.

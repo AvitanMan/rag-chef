@@ -12,9 +12,10 @@ import type { KitchenState, PlannedMeal } from "../lib/kitchen-types";
 import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
-import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
+import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem, type MealReadiness } from "../lib/quantities";
 import { setShoppingItemBought } from "../lib/shopping-purchases";
 import { ShoppingExport } from "./ShoppingExport";
+import { KitchenIcon } from "./KitchenIcon";
 
 type UpdateKitchen = (change: (state: KitchenState) => KitchenState) => void;
 
@@ -22,7 +23,11 @@ export function dateLabel(date: string, options: Intl.DateTimeFormatOptions = { 
   return new Date(`${date}T12:00:00`).toLocaleDateString("en", options);
 }
 
-export function DurablePlanView({ week, today, setWeek, meals, update, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0 }: {
+export function DurablePlanView({ week, today, setWeek, meals, update, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0, planWithChef, useSoon, setup, todayReadiness }: {
+  todayReadiness?: MealReadiness;
+  planWithChef?: () => void;
+  useSoon?: ReactNode;
+  setup?: ReactNode;
   shoppingCount?: number;
   today?: string;
   focusDate?: string | null;
@@ -86,8 +91,10 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   return (
     <>
       {today && weekStart(today) === week && <section className="panel today-summary" aria-label="Today’s dinner">
-        <div><span className="eyebrow">Today · {dateLabel(today)}</span><strong>{meals[today]?.title ?? "What’s for dinner tonight?"}</strong>
+        <div className="today-copy"><span className="eyebrow">Today · {dateLabel(today)}</span><strong>{meals[today]?.title ?? "What’s for dinner tonight?"}</strong>
+          {!meals[today] && <p>Start with what’s in your pantry. We’ll help with the rest.</p>}
           {meals[today] && <small>{meals[today].status === "cooked" ? "Cooked" : meals[today].servings ? `${meals[today].servings} servings` : `${mealScale(meals[today])} recipe batches`}{meals[today].locked ? " · Locked" : ""}</small>}
+          {todayReadiness && <p className="today-readiness" aria-label="Tonight’s ingredient summary">{todayReadiness.missingCount + todayReadiness.partialCount ? `${todayReadiness.missingCount + todayReadiness.partialCount} ingredients still needed` : todayReadiness.reviewCount ? "Check your ingredient amounts" : "Known ingredient amounts covered"}{todayReadiness.reviewCount > 0 && ` · ${todayReadiness.reviewCount} amounts to review`}</p>}
         </div>
         <div className="today-actions">{!meals[today] ? <button className="primary-button" onClick={() => chooseDay(today)}>Choose tonight’s dinner</button> : <>
           {meals[today].recipe && meals[today].status !== "cooked" && <button className="primary-button" onClick={() => cookMeal(today)}>Cook this dinner</button>}
@@ -97,9 +104,11 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
           <button className="text-button" aria-label="Review shopping" onClick={goShopping}>Review shopping{shoppingCount ? ` · ${shoppingCount} to buy` : ""}</button>
         </div>
       </section>}
+      {setup}
+      {useSoon}
       <section className="planner-intro" aria-label="Plan actions">
-        <p>Choose a day to add dinner.</p>
-        <div className="planner-actions"><button className="secondary-button" onClick={generatePlan} disabled={count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
+        <div><span className="eyebrow">Make room for good food</span><h2>Your week, at a glance</h2><p>Choose a day to add dinner.</p></div>
+        <div className="planner-actions">{planWithChef && <button className="primary-button" onClick={planWithChef}><KitchenIcon name="chef" />Plan with Chef</button>}<button className="secondary-button" onClick={generatePlan} disabled={count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
         <details className="fill-options"><summary>Fill options</summary><label className="planner-preference"><input type="checkbox" checked={preferReviewedMains} onChange={(event) => setPreferReviewedMains(event.target.checked)} />Prefer reviewed mains</label>
         <p className="quantity-note">{preferReviewedMains ? "Reviewed mains come first. If they run out, unreviewed recipes can fill the remaining days; known sides and desserts stay out." : "Use the wider collection, including sides and desserts. Check that each choice makes a complete dinner."}</p></details>
       </section>
@@ -159,7 +168,7 @@ export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, r
       </div>;
   return <div className="shopping-layout focused-shopping">
     <section className="panel shopping-panel">
-      <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
+      <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><span className="eyebrow">Your shopping list</span><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
       <ShoppingExport items={toBuy} week={week} />
       {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review amounts before updating stock.</small></div>}
       {purchaseHistory}

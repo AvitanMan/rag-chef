@@ -17,7 +17,7 @@ for (const [folder, name, extension] of [
   ["lib", "app-session", "tsx"],
   ["lib", "assistant-controls", "ts"],
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
-  ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
+  ["components", "KitchenIcon", "tsx"], ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
   ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences", "ChefPlanWorkspace", "AIConnections", "HouseholdSettings", "KitchenAssistant"].map((name) => ["components", name, "tsx"]),
   ...["random-id", "private-storage", "browser-ai", "kitchen-merge", "recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
@@ -146,14 +146,15 @@ test("no match stops without fabricating evidence, and missing semantic scores d
   assert.doesNotMatch(grounding({ retrieval: { method: "precomputed_embeddings", ranked: [{ semanticScore: null }] } }), /Meaning, keywords/);
 });
 
-test("text-first recipe cards show real counts and explicit view/add actions without fake imagery", () => {
+test("recipe cards show real counts and explicit actions with an honest image placeholder", () => {
   const html = renderToStaticMarkup(createElement(RecipeCard, { recipe, details: recipePantryDetails(recipe, []), featured: false, open: noop, add: noop, addLabel: "Add to Monday" }));
   assert.match(html, /0 of 2 ingredients in pantry/);
   assert.match(html, /Names only · amounts not checked/);
   assert.match(html, /View recipe/);
   assert.match(html, /Add to Monday/);
   assert.match(html, /href="https:\/\/en.wikibooks.org\/wiki\/Cookbook:Test_Rice"/);
-  assert.doesNotMatch(html, /recipe-image|food-placeholder|pantry match|42%|<img/);
+  assert.match(html, /recipe-placeholder/);
+  assert.doesNotMatch(html, /food-placeholder|pantry match|42%|<img/);
 });
 
 test("real photos remain optional and coverage uses the same counts in cards and details", () => {

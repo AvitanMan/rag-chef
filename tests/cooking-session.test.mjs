@@ -8,15 +8,38 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-cooking-session-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["random-id", "cooking-session", "kitchen-validation", "kitchen-types", "quantities"]) {
+for (const name of ["random-id", "cooking-session", "kitchen-validation", "kitchen-types", "quantities", "private-storage"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 const { COOKING_SESSION_KEY, writeCookingSession, createCookingSession, parseCookingSession, remainingTimerMs, timerAction, parseTimerDuration, stepTimerSeconds, MAX_TIMER_MS, MAX_COOKING_TIMERS, canCompleteCookingSession, finishElapsedTimers, cookingHasRunningTimer } = await import(pathToFileURL(join(dir, "cooking-session.mjs")));
+const { mirroredStorage, scopedStorage } = await import(pathToFileURL(join(dir, "private-storage.mjs")));
 const recipe = () => ({ id: "rice", title: "Test Rice", image: null, category: "Dinner", cuisine: "International", source: { name: "Wikibooks", url: "https://en.wikibooks.org/" }, sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Rice", ingredients: [{ name: "rice", measure: "100 g" }], instructions: ["Rinse rice.", "Simmer for 10 minutes."], tags: [], servings: 2 });
 const planned = (source) => ({ id: "meal-1", date: "2026-10-22", recipeId: source.id, recipe: source, title: source.title, baseServings: 2, servings: 4, batches: 1, locked: false, status: "planned", ingredientOverrides: {} });
 const fresh = () => { const source = recipe(); return createCookingSession(source, source.instructions, "Main method", planned(source)); };
 const parse = (value) => parseCookingSession(JSON.stringify(value));
+
+test("a recovered mirror cannot overwrite another tab's cooking session before an explicit choice", () => {
+  const values = new Map(); let blockedA = false;
+  const backing = { get length() { return values.size; }, key: index => [...values.keys()][index] ?? null,
+    getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key), clear: () => values.clear() };
+  const rawA = { ...backing, setItem: (key, value) => { if (blockedA) throw new Error("Quota exceeded"); backing.setItem(key, value); } };
+  const a = scopedStorage(() => mirroredA, "protected:");
+  const b = scopedStorage(() => mirroredB, "protected:");
+  const mirroredA = mirroredStorage(() => rawA, new Map()), mirroredB = mirroredStorage(() => backing, new Map());
+  const initial = fresh(), initialText = writeCookingSession(a, null, initial).stored;
+  const own = { ...initial, step: 1 }, ownText = JSON.stringify(own);
+  blockedA = true;
+  assert.throws(() => writeCookingSession(a, initialText, own), /Quota/);
+  assert.equal(a.getItem(COOKING_SESSION_KEY), ownText);
+  const other = { ...initial, soundEnabled: true }, otherText = writeCookingSession(b, initialText, other).stored;
+  blockedA = false;
+  assert.deepEqual(writeCookingSession(a, ownText, { ...own, timerLabel: "Rice" }), { saved: false, stored: otherText });
+  assert.equal(backing.getItem(`protected:${COOKING_SESSION_KEY}`), otherText);
+  assert.equal(a.getItem(COOKING_SESSION_KEY), ownText, "the unsaved draft remains available for recovery");
+  assert.deepEqual(writeCookingSession(a, otherText, own), { saved: true, stored: ownText }, "keeping our draft explicitly compares against the newly saved session");
+  assert.equal(b.getItem(COOKING_SESSION_KEY), ownText);
+});
 
 test("starting an already-cooked dinner creates an unattached session without changing its captured amounts", () => {
   const source = recipe();

@@ -11,7 +11,7 @@ for (const name of ["private-storage", "kitchen-merge"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText);
 }
-const { scopedStorage, accountStoragePrefix, clearAccountStorage, householdDate, browserScope } = await import(pathToFileURL(join(dir, "private-storage.mjs")));
+const { scopedStorage, accountStoragePrefix, clearAccountStorage, householdDate, browserScope, mirroredStorage, migrateSecureLocalStorage, SECURE_LOCAL_PREFIX, readStorageForWrite, discardPendingStorageItem } = await import(pathToFileURL(join(dir, "private-storage.mjs")));
 const { mergeKitchenDraft } = await import(pathToFileURL(join(dir, "kitchen-merge.mjs")));
 function memoryStorage() { const values = new Map(); return { get length() { return values.size; }, key: i => [...values.keys()][i] ?? null, getItem: k => values.get(k) ?? null, setItem: (k, v) => values.set(k, String(v)), removeItem: k => values.delete(k), clear: () => values.clear() }; }
 const kitchen = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -62,4 +62,68 @@ test("returning to the same account never reactivates earlier storage capabiliti
   const returning = browserScope("alice:home"); returning.activate();
   old.setItem("draft", "delayed earlier reply");
   assert.equal(raw.getItem("alice:draft"), "first"); assert.equal(first.isActive(), false);
+});
+
+test("protected storage preserves failed writes in memory and reads changes from other tabs", () => {
+  const raw = memoryStorage(), memory = new Map(), storage = mirroredStorage(() => raw, memory);
+  storage.setItem("draft", "saved");
+  raw.setItem("draft", "another tab");
+  assert.equal(storage.getItem("draft"), "another tab");
+  const write = raw.setItem;
+  raw.setItem = () => { throw new Error("Quota exceeded"); };
+  assert.throws(() => storage.setItem("draft", "pending changes"), /Quota/);
+  assert.equal(storage.getItem("draft"), "pending changes");
+  raw.setItem = write;
+  storage.setItem("draft", "recovered");
+  assert.equal(raw.getItem("draft"), "recovered");
+  raw.setItem("draft", "later shared change");
+  assert.equal(storage.getItem("draft"), "later shared change");
+});
+
+test("secure local migration moves private keys once and preserves appearance and other applications", () => {
+  const raw = memoryStorage();
+  raw.setItem("rag-chef-kitchen-v2", "kitchen");
+  raw.setItem("rag-chef-kitchen-v2:draft:one", "unsaved");
+  raw.setItem("rag-chef-cooking-v1", "timer");
+  raw.setItem("rag-chef-theme", "dark");
+  raw.setItem("another-app", "unrelated");
+  raw.setItem("rag-chef-account:alice:home:private", "hosted");
+  migrateSecureLocalStorage(raw);
+  assert.equal(raw.getItem(`${SECURE_LOCAL_PREFIX}rag-chef-kitchen-v2:draft:one`), "unsaved");
+  assert.equal(raw.getItem(`${SECURE_LOCAL_PREFIX}rag-chef-cooking-v1`), "timer");
+  assert.equal(raw.getItem("rag-chef-kitchen-v2"), null);
+  assert.equal(raw.getItem("rag-chef-theme"), "dark");
+  assert.equal(raw.getItem("another-app"), "unrelated");
+  assert.equal(raw.getItem("rag-chef-account:alice:home:private"), "hosted");
+  raw.setItem("rag-chef-kitchen-v2", "later plain local kitchen");
+  migrateSecureLocalStorage(raw);
+  assert.equal(raw.getItem(`${SECURE_LOCAL_PREFIX}rag-chef-kitchen-v2`), "kitchen");
+});
+
+test("discarding a pending mirror adopts shared changes and deletions without resurrecting the draft", () => {
+  for (const saved of ["newer saved progress", null]) {
+    const raw = memoryStorage(), memory = new Map(), mirror = mirroredStorage(() => raw, memory);
+    const scoped = scopedStorage(() => mirror, "private:");
+    scoped.setItem("cooking", "old saved progress");
+    const write = raw.setItem;
+    raw.setItem = () => { throw new Error("Quota exceeded"); };
+    assert.throws(() => scoped.setItem("cooking", "my unsaved progress"), /Quota/);
+    raw.setItem = write;
+    if (saved === null) raw.removeItem("private:cooking"); else raw.setItem("private:cooking", saved);
+    assert.equal(readStorageForWrite(scoped, "cooking"), saved);
+    assert.equal(scoped.getItem("cooking"), "my unsaved progress", "comparison alone retains the recovery draft");
+    assert.equal(discardPendingStorageItem(scoped, "cooking"), saved);
+    assert.equal(scoped.getItem("cooking"), saved);
+    raw.getItem = () => { throw new Error("Storage denied"); };
+    assert.equal(scoped.getItem("cooking"), saved, "later fallback never resurrects a discarded draft");
+  }
+});
+
+test("revoking a browser scope aborts requests as well as storage access", () => {
+  const scope = browserScope("local:one"), requestSignal = scope.signal;
+  scope.revoke();
+  assert.equal(requestSignal.aborted, true); assert.equal(scope.isActive(), false);
+  scope.activate();
+  assert.equal(scope.signal.aborted, false);
+  assert.equal(requestSignal.aborted, true, "effect replay never revives an already aborted request");
 });

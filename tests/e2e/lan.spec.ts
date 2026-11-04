@@ -82,7 +82,7 @@ test("private HTTP devices save pantry and dinners, ask grounded cooking questio
   await cooking.getByRole("button", { name: "← Exit cooking", exact: true }).click();
 
   const beforePreview = await kitchen(request);
-  await page.getByRole("button", { name: "Kitchen assistant", exact: true }).click();
+  await page.getByRole("button", { name: "Ask Chef: kitchen assistant", exact: true }).click();
   const assistant = page.getByRole("dialog", { name: "Kitchen assistant", exact: true });
   await assistant.getByRole("textbox", { name: "Your request", exact: true }).fill("Add 2 onions");
   const assistantReply = page.waitForResponse(response => response.url().endsWith("/api/assistant") && response.request().method() === "POST");

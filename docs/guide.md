@@ -251,10 +251,14 @@ trust settings automatically.
    On **Android**, use the system's **Install a certificate → CA certificate**
    setting; its location varies by Android version and manufacturer. Follow the
    phone's certificate-management prompts.
-3. Open the HTTPS link on the same Wi-Fi. The browser asks for a username and
-   password; find both in `.wrangler/local-https/credentials.json` on the server.
-   Do not put credentials into URLs. The server receives only a password hash
-   through its configuration, and never returns login details to the app.
+3. Run `pnpm db:migrate` after updating, then open the HTTPS link on the same
+   Wi-Fi. Enter the username and password on the RAG Chef sign-in screen; find
+   both in `.wrangler/local-https/credentials.json` on the server. The password
+   is submitted only to this HTTPS kitchen and is not stored by the app in browser
+   storage. The server configuration contains its hash. Never put credentials in URLs.
+4. Leave **Remember this device** unchecked for a session with a 12-hour maximum,
+   or select it to stay signed in for 30 days. Expiry is fixed from sign-in.
+   The friendly name and IP fallback have separate browser sessions.
 
 Do not transfer `root-ca-key.pem` or `server-key.pem`. The public certificate's
 SHA-256 fingerprint is printed by the launcher so it can be compared before
@@ -267,7 +271,22 @@ The protected app requires HTTPS, the exact configured hostname/IP, and the
 shared login. Requests that modify state also require the matching Origin.
 Hosted Google sign-in stays separate. Authenticated app pages use `no-store`, and
 protected mode disables the offline shell. Browser storage still retains local
-kitchen drafts on devices you have authorized.
+kitchen drafts on devices you have authorized. Expired sessions hide the kitchen
+and pause saves; sign in again to recover a draft and review any save conflict.
+If browser storage is unavailable, keep the tab open until your work is saved.
+
+**Sign out of this device** is available in the header and Access settings.
+Unsaved work offers Keep working, Save and sign out, or Discard and sign out.
+Successful logout revokes the session, signs out other tabs on that origin, and
+clears private browser drafts, cooking state, and history references. Theme
+preferences and the saved server kitchen remain. A failed network logout does
+not claim to have revoked the server session.
+
+For API maintenance over secure LAN, explicit Basic authentication is supported
+only with `X-Rag-Chef-Client: cli` and no browser Fetch Metadata headers. Writes
+also require an `Origin` equal to the kitchen URL. Browser pages never use Basic
+authentication. Both form and CLI credential failures share a limit of ten per
+fifteen minutes; a limited response includes `Retry-After`.
 
 All authorized devices share this kitchen with edit access; the shared password
 is not a separate account for each family member. You can set a custom username
@@ -303,7 +322,8 @@ For an intentionally unprotected trusted-network session, `pnpm start:lan`
 retains the previous HTTP mode on port 3000. It gives every reachable device
 shared edit access and does not require a password. Ordinary `pnpm dev` and
 `pnpm start` keep their existing loopback defaults. Use the separate localhost admin workflow for catalog imports; the shared
-HTTPS password does not grant catalog-administrator access.
+HTTPS password allows loading the original starter recipes. Other catalog
+administration still requires the catalog administrator token.
 
 ### Production-style local preview
 
@@ -915,6 +935,9 @@ in an isolated Python environment. No separate vector database is required.
 | `POST /api/chef` | Grounded answer or labeled catalog suggestions |
 | `POST /api/chef/plan` | Read-only conversational or manual dinner-plan preview |
 | `POST /api/chef/plan/apply` | Revalidate and atomically save a reviewed plan |
+| `GET /api/session` | Authentication status; secure local session identity and expiry after login |
+| `POST /api/local-auth/sign-in` | Secure local login: username, password, and `remember` boolean |
+| `POST /api/local-auth/sign-out` | Revoke this secure local browser session and expire its cookie |
 | `GET /api/kitchen`, `PUT /api/kitchen` | Revision-checked kitchen persistence |
 | `GET /api/admin/catalog` | Catalog and embedding status |
 | `POST /api/admin/catalog/demo` | Add original starters without AI or downloads |

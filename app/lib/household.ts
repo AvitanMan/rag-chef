@@ -8,6 +8,8 @@ export interface HouseholdContext {
   assistantEnabled: boolean;
   /** Internal session identity, rechecked by atomic writes. Never sent to clients. */
   sessionId?: string;
+  localAccess?: { sessionId: string; credentialVersion: string; origin: string };
+  localCli?: boolean;
 }
 
 export class HouseholdAuthError extends Error {
@@ -58,25 +60,11 @@ export function requireLocalRequest(request: Request): void {
   }
 }
 
-/** Basic credentials are verified only over HTTPS; the stored setting is a
- * SHA-256 hash of username:password, never the reusable password itself. */
-export async function requireSecureLanAccess(request: Request): Promise<void> {
-  if (!secureLanMode()) return;
-  const expected = householdSetting("RAG_CHEF_LAN_PASSWORD_SHA256").toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(expected)) throw new HouseholdAuthError("LAN_AUTH_NOT_CONFIGURED", "Secure local access is not configured. Restart using the secure local launcher.", 503);
-  requireLocalRequest(request);
-  const denied = () => { throw new HouseholdAuthError("LAN_SIGN_IN_REQUIRED", "Enter the kitchen username and password.", 401); };
-  const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.length <= 1024 ? authorization.match(/^Basic ([A-Za-z0-9+/]+={0,2})$/i) : null;
-  if (!match || match[1].length % 4 !== 0) return denied();
-  let credentials: string;
-  try { credentials = atob(match[1]); } catch { return denied(); }
-  if (!/^[A-Za-z0-9_-]{1,64}:[\x21-\x7e]{6,128}$/.test(credentials) || btoa(credentials) !== match[1]) return denied();
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(credentials)));
-  // Both values have fixed length, and every byte participates in the comparison.
-  let difference = 0;
-  for (let index = 0; index < digest.length; index++) difference |= digest[index] ^ parseInt(expected.slice(index * 2, index * 2 + 2), 16);
-  if (difference !== 0) denied();
+/** Browser access uses an opaque session cookie; explicit CLI calls may use Basic. */
+export async function requireSecureLanAccess(request: Request): Promise<HouseholdContext["localAccess"] | null> {
+  if (!secureLanMode()) return null;
+  const { requireLocalAccess } = await import("./local-auth");
+  return requireLocalAccess(request);
 }
 export async function householdDb(): Promise<D1Database> {
   const binding = runtimeBindings?.DB ?? ((await import("cloudflare:workers")).env as unknown as Bindings).DB;
@@ -104,7 +92,7 @@ export function requireOwner(context: HouseholdContext): void {
 }
 export function householdError(error: unknown): Response {
   const known = error instanceof HouseholdAuthError;
-  return Response.json({ error: { code: known ? error.code : "HOUSEHOLD_UNAVAILABLE", message: known ? error.message : "The household is temporarily unavailable." } }, { status: known ? error.status : 503, headers: { "Cache-Control": "no-store", ...(known && error.code === "LAN_SIGN_IN_REQUIRED" ? { "WWW-Authenticate": 'Basic realm="RAG Chef", charset="UTF-8"' } : {}) } });
+  return Response.json({ error: { code: known ? error.code : "HOUSEHOLD_UNAVAILABLE", message: known ? error.message : "The household is temporarily unavailable." } }, { status: known ? error.status : 503, headers: { "Cache-Control": "no-store", ...(known && "retryAfter" in error && typeof error.retryAfter === "number" ? { "Retry-After": String(error.retryAfter) } : {}) } });
 }
 
 export async function requireIdentity(request: Request) {
@@ -123,7 +111,15 @@ export async function membershipFor(userId: string): Promise<Membership | null> 
 }
 export async function requireHousehold(request: Request): Promise<HouseholdContext> {
   await initializeHouseholdRuntime();
-  if (!hostedMode()) { if (request) { await requireSecureLanAccess(request); requireLocalRequest(request); requireSameOrigin(request); } return localHousehold(); }
+  if (!hostedMode()) {
+    if (!request) {
+      if (secureLanMode()) throw new HouseholdAuthError("LAN_SIGN_IN_REQUIRED", "Sign in to your kitchen to continue.", 401);
+      return localHousehold();
+    }
+    requireLocalRequest(request); requireSameOrigin(request);
+    const access = await requireSecureLanAccess(request);
+    return { ...localHousehold(), ...(secureLanMode() ? access ? { localAccess: access } : { localCli: true } : {}) };
+  }
   requireSameOrigin(request);
   const session = await requireIdentity(request);
   const membership = await membershipFor(session.user.id);
@@ -136,7 +132,14 @@ export async function requireHousehold(request: Request): Promise<HouseholdConte
 
 export async function validateHouseholdContext(context?: HouseholdContext): Promise<HouseholdContext> {
   await initializeHouseholdRuntime();
-  if (!hostedMode()) return context?.mode === "hosted" ? context : localHousehold();
+  if (!hostedMode()) {
+    if (secureLanMode()) {
+      if (!context || context.mode !== "local") throw new HouseholdAuthError("LAN_SIGN_IN_REQUIRED", "Sign in to your kitchen to continue.", 401);
+      const { validateLocalContext } = await import("./local-auth");
+      await validateLocalContext(context); return context;
+    }
+    return context?.mode === "hosted" ? context : localHousehold();
+  }
   if (!context || context.mode !== "hosted" || !context.sessionId) throw new HouseholdAuthError("SIGN_IN_REQUIRED", "An authenticated household context is required.", 401);
   const row = await (await householdDb()).prepare(`SELECT m.role,h.timezone,h.assistantEnabled FROM member m JOIN session s ON s.userId=m.userId JOIN user u ON u.id=m.userId JOIN household_settings h ON h.organizationId=m.organizationId WHERE m.userId=? AND m.organizationId=? AND s.id=? AND s.expiresAt>? AND u.emailVerified=1`).bind(context.userId, context.householdId, context.sessionId, new Date().toISOString()).first<{ role: string; timezone: string; assistantEnabled: number }>();
   if (!row || row.role !== context.role || row.timezone !== context.timezone || Boolean(row.assistantEnabled) !== context.assistantEnabled) throw new HouseholdAuthError("MEMBERSHIP_CHANGED", "Your household access or settings changed. Refresh before continuing.", 403);
@@ -149,8 +152,15 @@ export function isPlatformAdminRequest(request: Request): boolean { return platf
 export async function authorizeApplicationRequest(request: Request): Promise<Response | null> {
   try {
     await initializeHouseholdRuntime();
-    await requireSecureLanAccess(request);
     const path = new URL(request.url).pathname;
+    if (secureLanMode()) {
+      requireLocalRequest(request); requireSameOrigin(request);
+      const read = request.method === "GET" || request.method === "HEAD";
+      const publicRead = read && (path === "/" || path === "/api/session" || path === "/favicon.svg" || path === "/og.png" || /^\/assets\/[^/]+\.(?:js|css|woff2?|ttf|svg|png|webp)$/.test(path));
+      const publicAction = request.method === "POST" && ["/api/local-auth/sign-in", "/api/local-auth/sign-out"].includes(path);
+      if (publicRead || publicAction) return null;
+      await requireSecureLanAccess(request);
+    }
     if (!path.startsWith("/api/")) { if (secureLanMode()) requireSameOrigin(request); return null; }
     requireSameOrigin(request);
     if (!hostedMode()) { if (!path.startsWith("/api/admin/")) requireLocalRequest(request); return null; }

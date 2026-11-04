@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { localCredentials, parseSecureServerArgs, secureServerArgs } from "../tools/secure-local-server.mjs";
+import { localCredentials, secureSchemaCheckArgs, parseSecureServerArgs, secureServerArgs } from "../tools/secure-local-server.mjs";
 
 test("secure launcher accepts only explicit private hosts and local names with HTTPS defaults", () => {
   assert.deepEqual(parseSecureServerArgs([]), { name: "ragchef.local", host: undefined, port: 3443, help: false });
@@ -61,4 +61,13 @@ test("configured local credentials reject empty, control-character and out-of-bo
       assert.deepEqual(JSON.parse(await readFile(path, "utf8")), login, "Invalid saved credentials must not be silently replaced");
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("secure launcher checks session schema without applying migrations or querying credentials", () => {
+  const args = secureSchemaCheckArgs();
+  assert.ok(args.includes("--local")); assert.ok(!args.includes("--remote"));
+  const query = args[args.indexOf("--command") + 1];
+  assert.match(query, /FROM local_auth_sessions LIMIT 0/); assert.match(query, /FROM local_auth_attempts LIMIT 0/);
+  assert.ok(!/INSERT|UPDATE|DELETE|CREATE|ALTER/.test(query));
 });

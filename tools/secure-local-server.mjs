@@ -52,6 +52,10 @@ export async function localCredentials(directory) {
   return { path, hash: createHash("sha256").update(`${login.username}:${login.password}`).digest("hex") };
 }
 
+export function secureSchemaCheckArgs() {
+  return ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", ".wrangler/state", "--command", "SELECT id,token_hash,origin,credential_version,created_at,expires_at,remembered FROM local_auth_sessions LIMIT 0; SELECT id,credential_version,window_started,failures FROM local_auth_attempts LIMIT 0;", "--json"];
+}
+
 export function secureServerArgs({ address, port, name, tls, passwordHash }) {
   const options = parseSecureServerArgs(["--host", address, "--port", String(port), "--name", name]);
   if (!/^[a-f0-9]{64}$/.test(passwordHash)) throw new Error("A valid local password hash is required.");
@@ -87,6 +91,8 @@ async function main() {
     active.once("exit", (code, signal) => { active = undefined; if (stopping || signal) reject(new Error("Server stopped.")); else if (code !== 0) reject(new Error(`Command exited with status ${code}.`)); else accept(); });
   });
   try {
+    try { await run(secureSchemaCheckArgs()); }
+    catch (error) { if (stopping) throw error; throw new Error("Local sign-in needs its database migration. Run pnpm db:migrate, then retry pnpm start:secure."); }
     console.log("Building the current app for protected local HTTPS…");
     await run(["node_modules/vinext/dist/cli.js", "build"]);
     if (stopping) return;

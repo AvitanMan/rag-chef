@@ -6,7 +6,8 @@ import { scopedStorage } from "./private-storage";
 
 export type AppSession = {
   mode: "local" | "hosted";
-  localServer?: { origins: string[]; aiDefaults: AISelection; requiresPassword?: boolean };
+  localServer?: { origins?: string[]; aiDefaults?: AISelection; requiresPassword?: boolean };
+  localAccess?: { sessionId: string; expiresAt: string; remembered: boolean };
   authenticated: boolean;
   user?: { id: string; name: string; email: string };
   household?: { id: string; name: string; role: "owner" | "member"; timezone: string; assistantEnabled: boolean };
@@ -22,6 +23,14 @@ export type SessionContext = {
   fetch: typeof kitchenFetch;
   refreshSession: () => Promise<void>;
   signOut: () => Promise<void>;
+  registerSessionWork: (key: string, work: SessionWork) => () => void;
+};
+
+/** A component checkpoints synchronously before its authenticated scope ends. */
+export type SessionWork = {
+  hasPending: () => boolean;
+  checkpoint: () => void;
+  save: () => Promise<boolean>;
 };
 
 const localContext: SessionContext = {
@@ -32,9 +41,45 @@ const localContext: SessionContext = {
   fetch: kitchenFetch,
   refreshSession: async () => {},
   signOut: async () => {},
+  registerSessionWork: () => () => {},
 };
 export const AppSessionContext = createContext(localContext);
 export const useAppSession = () => useContext(AppSessionContext);
+
+/** Keep a fixed expiry scheduled even when it exceeds one browser timer. */
+export function scheduleSessionExpiry(expiresAt: string, expire: () => void): () => void {
+  const deadline = Date.parse(expiresAt);
+  let timer: number | undefined;
+  let cancelled = false;
+  const check = () => {
+    if (cancelled) return;
+    const remaining = deadline - Date.now();
+    if (!Number.isFinite(remaining) || remaining <= 0) { expire(); return; }
+    timer = window.setTimeout(check, Math.min(remaining, 2_147_000_000));
+  };
+  check();
+  return () => { cancelled = true; window.clearTimeout(timer); };
+}
+
+/** Run at the authentication boundary, including before an anonymous login. */
+export async function disablePrivateOfflineShell(): Promise<void> {
+  await Promise.allSettled([
+    (async () => {
+      if (!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.controller?.postMessage({ type: "DISABLE_SHELL" });
+      const rows = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rows.filter(row => [row.active, row.waiting, row.installing].some(worker => worker?.scriptURL.endsWith("/kitchen-sw.js"))).map(row => {
+        row.active?.postMessage({ type: "DISABLE_SHELL" });
+        return row.unregister();
+      }));
+    })(),
+    (async () => {
+      if (!("caches" in window)) return;
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith("rag-chef-shell-")).map(key => caches.delete(key)));
+    })(),
+  ]);
+}
 
 export async function kitchenFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const response = await fetch(input, { ...init, cache: "no-store" });
