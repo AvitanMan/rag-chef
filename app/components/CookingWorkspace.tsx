@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "../lib/random-id";
+
 import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -19,6 +21,7 @@ function timerDisplay(milliseconds: number): string {
   return `${hours ? `${hours}:` : ""}${Math.floor((remaining % 3600) / 60).toString().padStart(2, "0")}:${(remaining % 60).toString().padStart(2, "0")}`;
 }
 const labelProblem = (text: string) => !text.trim() || text.length > 80 || /[\x00-\x1f\x7f]/.test(text) ? "Enter a timer name of 1–80 characters." : "";
+const timerFields = (durationMs: number) => ({ minutes: String(Math.floor(durationMs / 60_000)), seconds: String(Math.floor(durationMs / 1000) % 60) });
 
 function ExtraCookingTimers({ session, now, onChange, sourceSeconds }: { session: CookingSession; now: number; onChange: (session: CookingSession) => void; sourceSeconds: number | null }) {
   const [adding, setAdding] = useState(false);
@@ -51,7 +54,7 @@ function ExtraCookingTimers({ session, now, onChange, sourceSeconds }: { session
       if (timers.length >= MAX_COOKING_TIMERS - 1) { setError("Remove a timer before adding another."); return; }
       try {
         const timer = timerAction({ ...session.timer, status: "idle" }, "start", Date.now(), parseTimerDuration(minutes, seconds) * 1000);
-        onChange({ ...session, extraTimers: [...timers, { ...timer, id: crypto.randomUUID(), label: label.trim() }] });
+        onChange({ ...session, extraTimers: [...timers, { ...timer, id: randomId(), label: label.trim() }] });
         setLabel(""); setAdding(false); setError("");
       } catch (error) { setError(error instanceof Error ? error.message : "Choose a valid duration."); }
     }}>
@@ -80,8 +83,14 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
   const [now, setNow] = useState(Date.now);
   const [helpQuestion, setHelpQuestion] = useState("");
   const [lastHelpRequest, setLastHelpRequest] = useState<{ question: string; step: number } | null>(null);
-  const [minutesInput, setMinutesInput] = useState(String(Math.floor(session.timer.durationMs / 60_000)));
-  const [secondsInput, setSecondsInput] = useState(String(Math.floor(session.timer.durationMs / 1000) % 60));
+  const [timerDraft, setTimerDraft] = useState(() => ({ source: session.timer.durationMs, ...timerFields(session.timer.durationMs) }));
+  if (timerDraft.source !== session.timer.durationMs) {
+    const previous = timerFields(timerDraft.source);
+    const edited = timerDraft.minutes !== previous.minutes || timerDraft.seconds !== previous.seconds;
+    // Follow another tab's timer unless this tab has an unfinished duration edit.
+    setTimerDraft({ ...(edited ? timerDraft : timerFields(session.timer.durationMs)), source: session.timer.durationMs });
+  }
+  const { minutes: minutesInput, seconds: secondsInput } = timerDraft;
   const [timerError, setTimerError] = useState("");
   const [timerSetupOpen, setTimerSetupOpen] = useState(false);
   const [pendingTimerSeconds, setPendingTimerSeconds] = useState<number | null>(null);
@@ -161,7 +170,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
     try {
       const time = Date.now();
       const timer = timerAction({ ...session.timer, status: "idle" }, "start", time, seconds * 1000);
-      setNow(time); setMinutesInput(String(Math.floor(seconds / 60))); setSecondsInput(String(seconds % 60)); setTimerError(""); setTimerSetupOpen(false); setPendingTimerSeconds(null); onChange({ ...session, timer });
+      setNow(time); setTimerDraft({ source: session.timer.durationMs, ...timerFields(seconds * 1000) }); setTimerError(""); setTimerSetupOpen(false); setPendingTimerSeconds(null); onChange({ ...session, timer });
     } catch (error) { setTimerError(error instanceof Error ? error.message : "Choose a valid duration."); }
   };
   return <Modal className="cooking-mode" label={`Cooking ${session.recipe.title}`} close={close}>
@@ -179,7 +188,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
     </section>
     <main ref={content}>
       {completionReview ?? <>
-      <div className="cook-step-number">Step {session.step + 1}</div><p>{session.instructions[session.step]}</p>
+      <div className="cook-step-number">Step {session.step + 1} of {session.instructions.length}</div><p>{session.instructions[session.step]}</p>
       <ExtraCookingTimers session={session} now={now} onChange={onChange} sourceSeconds={sourceSeconds} />
       <details className="cook-ingredients"><summary>Ingredients for this dinner</summary><section role="region" aria-label="Ingredients for this dinner">
         <p className="quantity-note">{session.plannedMeal ? session.plannedMeal.servings ? `${session.plannedMeal.servings} servings` : `${mealScale(session.plannedMeal)} recipe batches` : "Original recipe quantities"}. Source directions retain their original wording.</p>
@@ -204,7 +213,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
       {timerSetupOpen && <section ref={timerSetup} className="cook-timer timer-setup" aria-label="Timer setup">
         <h3>Set a timer</h3>
         <label>Timer name<ValidatedInput aria-label="Main timer name" value={session.timerLabel ?? "Main timer"} maxLength={80} validate={labelProblem} onCommit={timerLabel => onChange({ ...session, timerLabel })} /></label>
-        <div className="timer-duration"><label>Minutes<input type="number" min="0" max="1440" step="1" value={minutesInput} onChange={(event) => setMinutesInput(event.target.value)} /></label><label>Seconds<input type="number" min="0" max="59" step="1" value={secondsInput} onChange={(event) => setSecondsInput(event.target.value)} /></label></div>
+        <div className="timer-duration"><label>Minutes<input type="number" min="0" max="1440" step="1" value={minutesInput} onChange={(event) => setTimerDraft({ ...timerDraft, minutes: event.target.value })} /></label><label>Seconds<input type="number" min="0" max="59" step="1" value={secondsInput} onChange={(event) => setTimerDraft({ ...timerDraft, seconds: event.target.value })} /></label></div>
         <div className="timer-presets" aria-label="Quick timers">{[1, 5, 10, 15].map((minutes) => <button key={minutes} onClick={() => start(minutes * 60)}>Start {minutes} min timer</button>)}</div>
         {timerError && <p role="alert">{timerError}</p>}
         <button onClick={() => {

@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -24,9 +25,52 @@ test.beforeEach(async ({ page, request }) => {
   await save(request, empty());
 });
 
+test("main timer setup follows other tabs without replacing an unfinished duration draft", async ({ page, context, request }) => {
+  const recipe = (await recipes(request)).find(item => item.id === "fixture-tomato-rice")!;
+  await save(request, { ...empty(), meals: { [TODAY]: meal(recipe, TODAY) } });
+  await openChef(page);
+  await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  const remaining = cooking.getByRole("timer", { name: "Time remaining", exact: true });
+  await expect(remaining).toHaveText("05:00");
+  await page.clock.pauseAt(new Date(`${TODAY}T12:10:00+03:00`));
+  const other = await context.newPage();
+  await other.goto("/");
+  const changeFromOtherTab = async (seconds: number) => {
+    await other.evaluate(seconds => {
+      const session = JSON.parse(localStorage.getItem("rag-chef-cooking-v1")!);
+      session.timer = { durationMs: seconds * 1000, remainingMs: seconds * 1000, endAt: null, status: "idle" };
+      localStorage.setItem("rag-chef-cooking-v1", JSON.stringify(session));
+    }, seconds);
+  };
+  await changeFromOtherTab(600);
+  await expect(remaining).toHaveText("10:00");
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  const minutes = cooking.getByRole("spinbutton", { name: "Minutes", exact: true });
+  const seconds = cooking.getByRole("spinbutton", { name: "Seconds", exact: true });
+  await expect(minutes).toHaveValue("10");
+  await changeFromOtherTab(1230);
+  await expect(minutes).toHaveValue("20");
+  await expect(seconds).toHaveValue("30");
+  await minutes.fill("7"); await seconds.fill("15");
+  await changeFromOtherTab(720);
+  await expect(remaining).toHaveText("12:00");
+  await expect(minutes).toHaveValue("7");
+  await expect(seconds).toHaveValue("15");
+  await cooking.getByRole("button", { name: "Start custom timer", exact: true }).click();
+  await expect(remaining).toHaveText("07:15");
+  await expect.poll(() => other.evaluate(() => JSON.parse(localStorage.getItem("rag-chef-cooking-v1")!).timer.durationMs)).toBe(435000);
+  await changeFromOtherTab(585);
+  await expect(remaining).toHaveText("09:45");
+  await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
+  await expect(minutes).toHaveValue("9");
+  await expect(seconds).toHaveValue("45");
+  await other.close();
+});
+
 test("favorites persist across reloads, export with backups and remain subject to saved exclusions", async ({ page, request }) => {
   const catalogBefore = await recipes(request);
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
   await page.getByRole("button", { name: "Favorite: Tomato Rice", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.favoriteRecipeIds).toEqual(["fixture-tomato-rice"]);
@@ -64,7 +108,7 @@ test("Cook again deduplicates recent dinners and creates a new meal without chan
   const beans = catalog.find(recipe => recipe.id === "fixture-vegan-beans")!;
   const meals = Object.fromEntries([meal(rice, "2026-10-19", true), meal(pasta, "2026-10-20", true), meal(rice, "2026-10-21", true), meal(beans, "2026-10-23")].map(meal => [meal.date, meal]));
   await save(request, { ...empty(), meals, pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("button", { name: "Cook again", exact: true }).click();
   await expect(page.locator(".recipe-card")).toHaveCount(2);
   await expect(page.locator(".recipe-card").first()).toContainText("Tomato Rice");
@@ -84,7 +128,7 @@ test("main and additional timers share clear validation and accept long duration
   const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });
   const kitchenBefore = await read(request);
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   const minutes = cooking.getByRole("spinbutton", { name: "Minutes", exact: true });
@@ -130,7 +174,7 @@ test("labeled timers run independently, survive reloads, and require a choice be
   const rice = (await recipes(request)).find(recipe => recipe.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), meals: { [TODAY]: meal(rice, TODAY) } });
   const kitchenBefore = await read(request);
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
   await cooking.getByRole("textbox", { name: "Main timer name", exact: true }).fill("Sauce");

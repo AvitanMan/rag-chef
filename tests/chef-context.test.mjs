@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 const directory = await mkdtemp(join(tmpdir(), "jff-chef-context-"));
+await symlink(resolve("node_modules"), join(directory, "node_modules"));
 after(() => rm(directory, { recursive: true, force: true }));
 for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
@@ -16,6 +17,12 @@ const { chefMealPreview, chefRecipeHash, recipeEvidence, selectQuestionEvidence,
 const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
+test("Chef batch previews accept the same quarter-batch bounds as saved dinners", () => {
+  for (const batches of [0.25, 0.75, 1, 2.5, 20]) assert.equal(parseChefRequest({ query: "How much rice?", context: { batches } }).context.batches, batches);
+  for (const batches of [0, 0.1, 1.1, 20.25, 100, Infinity, NaN, "2.5"]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { batches } }), /context.batches/);
+  for (const servings of [0.25, 1.5, 101]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { servings } }), /context.servings/);
+  for (const kitchenRevision of [-1, 0.25, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => parseChefRequest({ query: "How much rice?", context: { kitchenRevision } }), /context.kitchenRevision/);
+});
 test("recipe version includes source quantities, directions and yield while ignoring display-only images", async () => {
   assert.equal(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, image: "new" }));
   assert.notEqual(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, servings: 4 }));
@@ -244,4 +251,17 @@ test("plain-English meaning requests explain the prohibited boiling state withou
   assert.doesNotMatch(focusedCookingMeaningAnswer(conditional, "Explain this step simply.", cookingTechniqueGuides(conditional.text, "Explain this step simply.")), /says to avoid boiling/);
   const positive = { ...step, text: "Do not drain the beans, but bring to a boil." };
   assert.doesNotMatch(focusedCookingMeaningAnswer(positive, "Explain this step simply.", cookingTechniqueGuides(positive.text, "Explain this step simply.")), /says to avoid boiling/);
+});
+
+test("recipe and meal fingerprints stay identical on HTTP LAN browsers without SubtleCrypto", async () => {
+  const { chefMealHash } = await load("chef-context");
+  const meal = { id: "meal", recipeId: recipe.id, recipe, servings: 2, baseServings: 2, batches: 1 };
+  const expectedRecipe = await chefRecipeHash(recipe), expectedMeal = await chefMealHash(meal);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: {} });
+  try {
+    assert.equal(await chefRecipeHash(recipe), expectedRecipe);
+    assert.equal(await chefMealHash(meal), expectedMeal);
+    assert.notEqual(await chefRecipeHash({ ...recipe, title: "Changed 🍚" }), expectedRecipe);
+  } finally { Object.defineProperty(globalThis, "crypto", descriptor); }
 });

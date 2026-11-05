@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect } from "@playwright/test";
 import type { RecipeMetadata } from "../../app/lib/recipe-types";
 
@@ -51,7 +52,7 @@ test("reviewed metadata previews, applies idempotently and drives public constra
   const chefDinner = await (await request.post("/api/chef", { data: { query: "Dinner without cheese", pantry: ["rice"], provider: "ollama" } })).json();
   expect(chefDinner.recipes[0].id).toBe(entry.recipeId);
   expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();

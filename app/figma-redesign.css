@@ -1,0 +1,205 @@
+/* RAG Chef's existing Figma direction, adapted to real kitchen data. */
+@font-face {
+  font-family: Lora;
+  src: url('/assets/fonts/lora-latin-variable.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: Inter;
+  src: url('/assets/fonts/inter-variable.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --serif: Lora, Georgia, serif;
+  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius: 6px;
+}
+:root:not([data-theme='dark']) {
+  --cream: #f7f4ea;
+  --paper: #fffdf7;
+  --paper-strong: #fffefa;
+  --ink: #253c30;
+  --ink-soft: #626b5f;
+  --green: #315c43;
+  --green-2: #254a34;
+  --green-solid: #315c43;
+  --green-pale: #e8eddf;
+  --neutral: #efebdd;
+  --warning: #f6ebd4;
+  --line: #dcddcf;
+  --line-dark: #949b8c;
+  --sidebar: #fffdf7;
+}
+.figma-kitchen .primary-button {
+  background: var(--green-solid);
+  border-color: var(--green-solid);
+  color: var(--on-green);
+}
+.figma-kitchen .primary-button:hover:not(:disabled) {
+  background: var(--green-2);
+  border-color: var(--green-2);
+  color: var(--paper);
+}
+:root[data-theme='dark'] .figma-kitchen .primary-button:hover:not(:disabled) { color: var(--cream); }
+.figma-kitchen .primary-button,
+.figma-kitchen .secondary-button { border-radius: 6px; padding: 10px 16px; font-weight: 600; }
+.figma-kitchen .secondary-button { background: transparent; }
+.figma-kitchen .eyebrow { color: var(--green); font-size: 11px; letter-spacing: .13em; }
+.figma-kitchen h2, .figma-kitchen h3 { font-family: var(--serif); font-weight: 400; }
+.figma-kitchen .kitchen-navigation {
+  position: relative;
+  z-index: 20;
+  background: var(--sidebar);
+  width: 100%;
+  min-height: 80px;
+  padding: 12px clamp(20px, 3.2vw, 48px);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: clamp(20px, 3vw, 44px);
+}
+.kitchen-navigation .brand { padding: 0; gap: 9px; flex-shrink: 0; }
+.kitchen-navigation .brand strong { font-size: 28px; font-weight: 400; letter-spacing: -.03em; white-space: nowrap; }
+.brand-sprout { flex: 0 0 27px; }
+:root[data-theme='dark'] .brand-sprout { filter: grayscale(1) brightness(3); }
+.kitchen-navigation .side-nav { display: flex; flex: 1 1 340px; flex-wrap: wrap; min-width: 0; gap: clamp(10px, 1.6vw, 26px); }
+.kitchen-navigation .nav-button {
+  min-height: 48px;
+  width: auto;
+  padding: 8px 0;
+  gap: 5px;
+  font-weight: 400;
+  font-size: 14px;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+.kitchen-navigation .nav-button .nav-icon { display: none; }
+.kitchen-navigation .nav-button.active { color: var(--green); background: transparent; border-bottom-color: var(--green); font-weight: 600; }
+.kitchen-navigation .nav-button:hover { transform: none; background: transparent; color: var(--green); }
+.kitchen-navigation .nav-count { min-width: 18px; height: 20px; font-size: 11px; padding: 1px 5px; background: var(--green-pale); color: var(--green); }
+.kitchen-navigation .topbar-actions { width: auto; padding: 0; gap: 6px; flex-wrap: nowrap; }
+.kitchen-navigation .global-chef-action { font-size: 13px; padding-inline: 12px; }
+.kitchen-navigation .theme-toggle, .kitchen-navigation .icon-button { background: transparent; border-color: transparent; }
+.figma-kitchen .main-content {
+  margin: 0 auto;
+  max-width: 1340px;
+  padding: 0 clamp(20px, 3.8vw, 48px) max(36px, var(--kitchen-overlay-inset, 12px));
+}
+.figma-kitchen .removal-recovery { left: 24px; right: 24px; }
+.kitchen-context {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 48px;
+  padding-block: 14px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.kitchen-context > span:first-child { text-transform: uppercase; letter-spacing: .04em; overflow-wrap: anywhere; }
+.kitchen-context .save-indicator { flex-shrink: 0; justify-content: flex-end; margin: 0; font-size: 12px; }
+.figma-kitchen .topbar { padding-top: 20px; margin-bottom: 28px; }
+.figma-kitchen .topbar h1 { font-weight: 400; font-size: clamp(32px, 3.6vw, 44px); letter-spacing: -.035em; margin-top: 8px; }
+.figma-kitchen .page-heading > p { margin-top: 10px; font-size: 15px; }
+.kitchen-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; border-top: 1px solid var(--line); margin-top: 36px; padding-top: 14px; color: var(--ink-soft); }
+.kitchen-footer > span { font-family: var(--serif); font-size: 14px; font-style: italic; }
+.kitchen-footer > button { font-size: 12px; color: var(--ink-soft); }
+.figma-kitchen .pantry-page { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(270px, 1fr); gap: 40px; align-items: start; }
+.pantry-page .inventory-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; min-height: 0; gap: 0; background: transparent; border: 0; border-radius: 0; padding: 0; }
+.inventory-panel > * { grid-column: 1 / -1; min-width: 0; }
+.inventory-panel > .section-heading { grid-column: 1; grid-row: 1; margin-bottom: 8px; }
+.inventory-panel > .section-heading h2 { margin: 0; font-size: 26px; }
+.inventory-panel > .section-heading p { font-size: 13px; margin-block: 6px; }
+.inventory-panel > .pantry-add { padding-block: 8px 14px; }
+.inventory-panel > .pantry-add:not([open]) { grid-column: 2; grid-row: 1; border: 0; padding: 0; margin-left: 12px; }
+.inventory-panel .pantry-add > summary { border-radius: 6px; font-size: 14px; }
+.inventory-panel .pantry-browser-controls { margin-top: 14px; grid-template-columns: minmax(0, 1fr) minmax(140px, .7fr); }
+.inventory-panel .pantry-filters { gap: 6px; }
+.inventory-panel .pantry-filters .secondary-button { border-color: transparent; background: var(--neutral); padding-inline: 10px; font-size: 13px; }
+.inventory-panel .pantry-filters .secondary-button[aria-pressed='true'] { background: var(--green-pale); color: var(--green); border-color: var(--green-pale); }
+.inventory-panel > .quantity-note { font-size: 12px; margin: 0 0 12px; }
+.pantry-ledger-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, .75fr) minmax(100px, 1fr) 32px; gap: 12px; background: var(--neutral); padding: 11px 12px; color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.inventory-panel .unified-pantry-list { margin-top: 0; }
+.inventory-panel .unified-pantry-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.inventory-panel .pantry-editor > summary { gap: 12px; min-height: 60px; }
+.inventory-panel .pantry-stock-summary { grid-template-columns: minmax(0, 1fr) minmax(90px, .75fr) minmax(100px, 1fr); gap: 12px; align-items: center; }
+.inventory-panel .pantry-stock-summary > strong { font-size: 14px; font-weight: 600; }
+.inventory-panel .pantry-stock-summary > span { text-align: left; font-size: 14px; }
+.inventory-panel .pantry-stock-summary > small { grid-column: auto; font-size: 12px; color: var(--ink-soft); }
+.inventory-panel .pantry-stock-summary > .stock-soon { color: var(--green); }
+.inventory-panel .pantry-stock-summary > .stock-past { color: var(--paprika-dark); }
+.inventory-panel .pantry-edit-label { width: 32px; font-size: 12px; }
+.inventory-panel .pantry-find-dinner { justify-self: start; margin: 0; padding: 0; font-size: 13px; }
+.inventory-panel .pantry-edit-fields { margin-bottom: 12px; }
+.pantry-context { display: grid; gap: 28px; min-width: 0; }
+.pantry-context section { min-width: 0; }
+.pantry-context h2 { margin: 0 0 14px; font-size: 25px; line-height: 1.25; }
+.pantry-context .eyebrow { margin-bottom: 8px; }
+.pantry-context h3 { margin: 0 0 8px; font-family: var(--sans); font-size: 16px; font-weight: 600; }
+.pantry-context p { margin: 0 0 16px; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+.pantry-context .quantity-note { margin-top: 12px; font-size: 12px; }
+.pantry-dinner-image { display: block; width: 100%; background: transparent; border: 0; padding: 0; margin-bottom: 16px; border-radius: 6px; overflow: hidden; }
+.pantry-dinner-image img { width: 100%; aspect-ratio: 1.9; object-fit: cover; }
+.pantry-date-note { padding: 18px; border-radius: 6px; background: var(--warning); }
+.pantry-date-note p { margin-bottom: 0; color: var(--ink); }
+.pantry-date-note .text-button { margin-top: 6px; text-align: left; }
+.figma-kitchen .catalog-search, .figma-kitchen .recipe-card, .figma-kitchen .settings-panel { border-radius: 6px; }
+.figma-kitchen .recipe-card h4 { font-weight: 400; }
+.figma-kitchen .catalog-search { background: transparent; padding: 20px 0; border-inline: 0; }
+@media (max-width: 1150px) {
+  .kitchen-navigation .global-chef-action span { display: none; }
+  .kitchen-navigation .global-chef-action { padding: 0; width: 44px; }
+  .figma-kitchen .pantry-page { gap: 28px; }
+}
+@media (max-width: 1000px) {
+  .figma-kitchen .pantry-page { grid-template-columns: minmax(0, 1fr); }
+  .pantry-context { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 24px; border-top: 1px solid var(--line); }
+}
+@media (max-width: 860px) {
+  .figma-kitchen .kitchen-navigation { min-height: 68px; padding: 10px 20px; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+  .kitchen-navigation .side-nav { display: none; }
+  .kitchen-navigation .brand strong { font-size: 26px; }
+  .kitchen-navigation .topbar-actions { margin-left: auto; }
+  .figma-kitchen .main-content { padding-bottom: max(112px, var(--kitchen-overlay-inset, 12px)); }
+  .figma-kitchen .mobile-nav { border-radius: 8px; box-shadow: var(--shadow-soft); }
+  .figma-kitchen .mobile-nav .nav-button.active { background: var(--green-pale); color: var(--green); border-radius: 6px; }
+  .figma-kitchen .topbar { margin-bottom: 24px; padding-top: 12px; }
+}
+@media (max-width: 650px) {
+  .figma-kitchen .removal-recovery { left: 12px; right: 12px; }
+  .figma-kitchen .main-content { padding-inline: 16px; }
+  .figma-kitchen .kitchen-navigation { padding-inline: 16px; }
+  .kitchen-context { min-height: 42px; padding-block: 10px; font-size: 11px; }
+  .figma-kitchen .topbar h1 { font-size: 34px; }
+  .figma-kitchen .page-heading > p { font-size: 14px; }
+  .pantry-context { grid-template-columns: minmax(0, 1fr); }
+  .pantry-ledger-heading { display: none; }
+  .inventory-panel > .section-heading { grid-column: 1 / -1; }
+  .inventory-panel > .pantry-add:not([open]) { grid-column: 1 / -1; grid-row: auto; margin: 4px 0; justify-self: start; }
+  .inventory-panel .unified-pantry-item { padding-inline: 0; }
+  .inventory-panel .pantry-stock-summary { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }
+  .inventory-panel .pantry-stock-summary > small { grid-column: 1 / -1; }
+  .inventory-panel .pantry-stock-summary > .stock-undated { display: none; }
+  .inventory-panel .pantry-stock-summary > span { text-align: right; }
+  .inventory-panel .pantry-editor > summary { padding-block: 10px; }
+  .kitchen-footer { align-items: flex-start; flex-direction: column; gap: 0; }
+}
+@media (max-width: 350px) {
+  .figma-kitchen .main-content, .figma-kitchen .kitchen-navigation { padding-inline: 12px; }
+  .kitchen-navigation .brand { gap: 6px; }
+  .kitchen-navigation .brand strong { font-size: 23px; }
+  .kitchen-navigation .topbar-actions { gap: 0; }
+  .inventory-panel .pantry-browser-controls { grid-template-columns: minmax(0, 1fr); }
+  .inventory-panel .pantry-stock-summary { grid-template-columns: minmax(0, 1fr); }
+  .inventory-panel .pantry-stock-summary > span { text-align: left; }
+}
+@media print {
+  .figma-kitchen .kitchen-navigation, .figma-kitchen .kitchen-context, .figma-kitchen .kitchen-footer { display: none; }
+  .figma-kitchen .main-content { margin: 0; padding: 0; }
+}

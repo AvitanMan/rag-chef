@@ -8,8 +8,7 @@ RAG Chef is a local-first cooking app with a pantry, weekly plan, shopping list,
 and step-by-step cooking workspace. Optional AI answers use an approved recipe
 catalog, preserve source attribution, and withhold prose that cannot be verified.
 
-Built for one household on one Mac. Browsing, planning, shopping, starter recipes,
-and calculated dinner amounts work without an AI model.
+Standalone mode runs one household on your computer. An opt-in **hosted family beta** adds Google sign-in, shared kitchens, personal OpenAI keys, and browser-connected Ollama. Browsing, planning, shopping, and calculated dinner amounts work without an AI model. See [hosted beta setup and release gates](docs/hosted-beta.md).
 
 ## Try it
 
@@ -29,29 +28,48 @@ account, model, or recipe download. Your pantry starts empty; adding starters
 changes only the catalog. The larger third-party evaluation corpus is never
 loaded as application data.
 
+After pulling updates, run `pnpm db:migrate` before restarting the app. Reviewed
+assistant saves require the latest catalog consistency migration; ordinary
+manual controls remain available if the database still needs that update.
+
+The app opens on **Plan**. Desktop navigation sits across the top; phones keep
+five labeled destinations at the bottom: Plan, Chef, Recipes, Shopping, and
+Pantry. Tonight’s dinner and use-soon ingredients sit beside the weekly rows on
+desktop; tonight comes first on phones. The Settings gear stays in the header.
+
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
 2. Choose a dinner. Review portions and missing ingredients in its dinner panel.
-3. Open **Weekly shopping** to review, copy, or print the ingredients still needed.
-4. Select **Cook dinner** for directions, independent timers, and source-linked help.
+3. Open **Shopping** to check off ingredients; **List tools** contains copy and print.
+4. Select **Cook this dinner** on Plan for directions, independent timers, and source-linked help.
 5. Mark the dinner cooked. Pantry deductions are optional, and completion can be undone.
 
 ## See the flow
 
-These screenshots use the original starter recipes and an empty demonstration
-kitchen, not personal data.
+The working app follows the existing Figma direction: compact dinner and
+inventory rows, supporting information beside the main workspace, and light
+and neutral dark themes. These screenshots were captured from the app using
+disposable synthetic test recipes and pantry data.
 
-| Choose dinner | Review shopping | Cook step by step |
+| Plan your week | Review your pantry | Check off shopping |
 | --- | --- | --- |
-| ![Dinner and missing ingredients](docs/images/dinner.png) | ![Weekly shopping list](docs/images/shopping.png) | ![Cooking directions and timers](docs/images/cooking.png) |
+| ![Weekly dinner rows with tonight’s dinner alongside](docs/images/figma-plan.png) | ![Pantry ingredients, amounts, and entered dates](docs/images/figma-pantry.png) | ![Shopping checklist and purchase review](docs/images/figma-shopping.png) |
+
+[See the mobile Plan](docs/images/figma-plan-mobile.png) and
+[design implementation and validation notes](docs/ui-improvement-plan.md#november-5-figma-design-implementation).
 
 ## What it does
 
-- **Pantry to dinner:** ingredient search, measured stock coverage, due-soon food,
-  favorites, and recently cooked meals.
+- **Kitchen assistant:** reviewed pantry additions and corrections, cuisine-aware dinner plans, shopping previews, explicit taste feedback, and actual pantry usage after cooking. Every assistant change requires **Apply**.
+- **Pantry to dinner:** stock rows show amounts and entered dates, with editing
+  on demand and tonight’s saved dinner alongside. Ingredient search, measured
+  stock coverage, due-soon food, favorites, and recent meals help choose dinner.
 - **Weekly planning:** dated dinners, portions and amount overrides, copied or
-  locked meals, and suggestions that preserve existing plans.
+  locked meals, and suggestions that preserve existing plans. **Plan with Chef**
+  turns requests into editable drafts with whole-week shopping previews; nothing
+  is saved until **Apply plan**. Manual previews work without a model.
 - **Shopping:** combine requirements, reserve stock across dinners, flag unclear
-  amounts, and review purchases before adding them to the pantry.
+  amounts, and review purchases before adding them to the pantry. Checking an
+  item leaves pantry stock unchanged; the latest check can be undone.
 - **Cooking:** original directions, multiple recoverable timers, optional screen
   wake lock, and source-specific questions about the current step.
 - **Recovery:** local database persistence, browser drafts, conflict handling,
@@ -60,6 +78,29 @@ kitchen, not personal data.
 Known allergy, diet, equipment, and ingredient conflicts are filtered before
 ranking. Unknown suitability and quantities stay visible for review. These
 checks do not certify allergy safety or cross-contact conditions.
+
+## Use from your phone
+
+Run **`pnpm start:secure`** on the computer that runs your AI model. It builds
+and starts a password-protected HTTPS kitchen at **`https://ragchef.local:3443`**.
+Connect your phone to the same Wi-Fi. On macOS, the friendly name is announced
+automatically; an HTTPS IP fallback is printed too.
+
+On first use, transfer `.wrangler/local-https/root-ca.cer` to your phone and trust
+that public certificate. The username and randomly generated password are in
+`.wrangler/local-https/credentials.json`. These local files are ignored by Git;
+private keys stay on the server. Run `pnpm db:migrate` after updating, then enter
+the credentials on the RAG Chef sign-in screen. Sessions last 12 hours; select
+**Remember this device** for 30 days. **Sign out of this device** revokes the
+browser session and clears its private drafts after any unsaved-work review.
+[Certificate setup and LAN troubleshooting](docs/guide.md#use-from-a-phone-on-your-local-network).
+
+![Local kitchen sign-in](docs/images/login.png)
+
+Keep the computer and model running. The phone uses the computer's AI and shared
+kitchen; it does not need LM Studio or Ollama installed. Choose the provider in
+Settings, or set `RAG_CHEF_AI_PROVIDER` and the model in `.dev.vars` for new browsers.
+The older `pnpm start:lan` mode remains available for explicitly unprotected HTTP.
 
 ## Optional AI
 
@@ -72,8 +113,9 @@ ollama pull nomic-embed-text
 
 Use **Settings → Test connection** to check generation, search, and answer
 verification separately. Missing embeddings keep lexical/pantry search usable.
-OpenAI generation is optional, but verified source answers still require the
-local Ollama verifier. The app checks that dependency before paid generation.
+**LM Studio** is also supported for Chef answers, kitchen assistant drafts, and meal planning. Start its local server, choose **Settings → LM Studio**, and enter the model identifier shown in LM Studio. Generation and answer verification both use that model. Semantic embeddings remain a separate Ollama option; lexical/pantry search works without them.
+
+OpenAI generation is optional. Source-answer verification uses the same selected provider, so OpenAI does not require Ollama. Its separate verification request is also billed to your key. Hosted accounts configure their personal connection in Settings; the server never falls back to a platform key.
 
 [Configuration and model setup](docs/guide.md#enable-local-ai) explains local
 environment files, optional server-side keys, and production-style local preview.
@@ -83,23 +125,30 @@ environment files, optional server-side keys, and production-style local preview
 ```mermaid
 flowchart LR
   UI[Pantry / Plan / Recipes / Cook] --> Kitchen[Revision-checked kitchen state]
-  Kitchen --> DB[(Local D1 database)]
+  Kitchen --> DB[(Local or household D1 database)]
   Sources[Approved recipe sources] --> Catalog[Recipes + source evidence]
   Catalog --> DB
   Query[Chef request] --> Filter[Deterministic constraints]
   DB --> Filter
-  Filter --> Search[Lexical + semantic retrieval]
+  Filter --> Search[Lexical retrieval / standalone semantic search]
   Search --> Amounts[Calculated dinner amounts]
   Search --> Model[Optional generation]
-  Model --> Verify[Local evidence verification]
+  Model --> Verify[Source and selected-provider verification]
   Verify --> Answer[Verified answer or source fallback]
 ```
 
 React/Next.js-compatible app code runs through **Vinext/Vite** and Cloudflare's
-local runtime. **Drizzle** manages D1 migrations. **Ollama** supplies local models;
-OpenAI is an optional generation provider. No separate vector database is needed.
+local runtime. **Drizzle** manages D1 migrations. **Ollama** or **LM Studio** supplies local generation;
+OpenAI is an optional cloud provider. No separate vector database is needed.
 Original recipe text, selected evidence, calculated amounts, and suggested
 adaptations remain distinct; suggestions never silently rewrite saved meals.
+
+Lora headings, Inter body text, and the sprout mark are served from the app’s
+local assets. The fonts use the SIL Open Font License; their notices ship in
+[`public/assets/fonts`](public/assets/fonts). Unprotected standalone production
+builds include these assets in the offline shell. See the
+[offline-use limits](docs/guide.md#data-backups-and-offline-use), including the
+separate behavior of password-protected and hosted kitchens.
 
 ## Evidence and checks
 
@@ -139,14 +188,13 @@ state, configuration, and imported recipe runs are not copied into CI.
   backups, offline behavior, API routes, and troubleshooting.
 - [Evaluation](docs/evaluation.md): real-model commands, grading, and release evidence.
 - [Contributing](CONTRIBUTING.md): local verification and review expectations.
-- [NOTICE](NOTICE): recipe-source attribution and content licenses.
+- [NOTICE](NOTICE): recipe-source attribution and third-party font licenses.
 
 The [MIT license](LICENSE) covers original application work and starter recipes.
 Wikibooks content retains its attribution and CC BY-SA terms; TheMealDB content
 has separate terms. Neither the recipe corpus nor your local database becomes
 MIT-licensed merely by being used with this application.
 
-Keep the application bound to loopback. This prototype has no application-wide
-multi-user authentication; publishing the code does not deploy a public kitchen.
+Keep standalone mode bound to loopback. Public hosting requires the explicit hosted configuration, Google credentials, an approved recipe catalog, and the release checks in the [hosted beta guide](docs/hosted-beta.md). Publishing this repository does not deploy a kitchen.
 Never commit `.env.local`, `.dev.vars`, `.wrangler/`, kitchen backups, or other
 personal local state. See the guide for exact offline and backup limits.

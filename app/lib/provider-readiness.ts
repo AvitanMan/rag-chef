@@ -1,4 +1,5 @@
 import { DEFAULT_OLLAMA_CHAT_MODEL, DEFAULT_OLLAMA_EMBED_MODEL } from "./chef-schema";
+import { hostedMode } from "./household";
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const HEALTH_TIMEOUT_MS = 5_000;
@@ -23,6 +24,7 @@ export function verificationCapability(ollama: OllamaHealth): ProviderCapability
 
 /** A capability probe, not a generation call; never forwards credentials. */
 export async function checkLocalVerifier(signal?: AbortSignal): Promise<ProviderCapability> {
+  if (hostedMode()) return { ready: false, model: "", message: "Choose your personal AI connection. Verification uses the same connection as generation." };
   const baseUrl = env("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL);
   const model = env("OLLAMA_CHAT_MODEL", DEFAULT_OLLAMA_CHAT_MODEL);
   if (!isLoopback(baseUrl)) return { ready: false, model, message: "Answer verification requires Ollama on this Mac. Configure a loopback Ollama address." };
@@ -30,6 +32,7 @@ export async function checkLocalVerifier(signal?: AbortSignal): Promise<Provider
 }
 
 export async function checkOllamaReadiness(requestedModel = "", signal?: AbortSignal): Promise<OllamaHealth> {
+  if (hostedMode()) return { ok: false, configured: false, reachable: false, model: requestedModel || DEFAULT_OLLAMA_CHAT_MODEL, embedModel: "", baseUrl: "", chatModelInstalled: false, embedModelInstalled: false, message: "Local Ollama runs in your browser on this computer. Hosted search uses recipe keywords." };
   const baseUrl = env("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).replace(
     /\/+$/,
     "",

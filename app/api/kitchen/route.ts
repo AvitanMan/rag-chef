@@ -6,6 +6,7 @@ import {
   saveKitchenDocument,
   validateKitchenWrite,
 } from "@/app/lib/kitchen-store";
+import { requireHousehold, requireSameOrigin, HouseholdAuthError, householdError, type HouseholdContext } from "@/app/lib/household";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +25,22 @@ function unavailable(): Response {
   }, 503);
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   try {
-    return json(await getKitchenDocument());
-  } catch {
+    return json(await getKitchenDocument(await requireHousehold(request)));
+  } catch (error) {
+    if (error instanceof HouseholdAuthError) return householdError(error);
     return unavailable();
   }
 }
 
 export async function PUT(request: Request): Promise<Response> {
+  let context: HouseholdContext;
+  try {
+    requireSameOrigin(request);
+    context = await requireHousehold(request);
+    if (context.mode === "hosted" && (!request.headers.get("x-rag-chef-actor") || !request.headers.get("x-rag-chef-household"))) throw new HouseholdAuthError("SESSION_SCOPE_REQUIRED", "Refresh this tab before saving to the shared household.");
+  } catch (error) { return householdError(error); }
   const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
   if (contentType !== "application/json") {
     return json({ error: { code: "INVALID_CONTENT_TYPE", message: "Send the kitchen as application/json." } }, 415);
@@ -68,8 +76,9 @@ export async function PUT(request: Request): Promise<Response> {
 
   try {
     const { revision, state } = validateKitchenWrite(input);
-    return json(await saveKitchenDocument(revision, state));
+    return json(await saveKitchenDocument(revision, state, context));
   } catch (error) {
+    if (error instanceof HouseholdAuthError) return householdError(error);
     if (error instanceof KitchenValidationError) {
       return json({ error: { code: "INVALID_KITCHEN", message: error.message } }, 400);
     }

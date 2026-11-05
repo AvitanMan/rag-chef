@@ -1,3 +1,5 @@
+import { revealPantryEditors, revealPlanControls } from "./ui-controls";
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -19,31 +21,64 @@ async function recipeFixture(request: APIRequestContext, id = "fixture-tomato-ri
 function mealFixture(recipe: Recipe, date = TODAY, overrides: Partial<PlannedMeal> = {}): PlannedMeal {
   return { id: `meal-${date}`, date, recipeId: recipe.id, recipe, title: recipe.title, baseServings: recipe.servings ?? null, servings: recipe.servings ?? null, batches: 1, locked: false, status: "planned", ingredientOverrides: {}, ...overrides };
 }
-async function navigate(page: Page, name: string) { await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
+async function navigate(page: Page, name: string) { await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
 
 test.beforeEach(async ({ page, request }) => {
   await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });
   await saveFixture(request, emptyState());
 });
 
+test("navigation waits for client hydration before opening a planned dinner", async ({ page, request }) => {
+  const recipe = await recipeFixture(request);
+  await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
+  let release!: () => void;
+  let arrived!: () => void;
+  const scriptsHeld = new Promise<void>(resolve => { release = resolve; });
+  const scriptRequested = new Promise<void>(resolve => { arrived = resolve; });
+  await page.route(/\/assets\/[^/]+\.js(?:\?|$)/, async route => {
+    arrived(); await scriptsHeld; await route.continue();
+  });
+  try {
+    await page.goto("/", { waitUntil: "commit" });
+    await scriptRequested;
+    const plan = page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Plan/ }).filter({ visible: true }).first();
+    await expect(plan).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Kitchen assistant", exact: true })).toBeDisabled();
+    // A single interaction waits for usable controls instead of being lost
+    // against server-rendered markup before React's handlers are attached.
+    const clicked = plan.click();
+    release(); await clicked;
+    await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
+    await revealPlanControls(page);
+    await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
+    await expect(page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true })).toBeVisible();
+  } finally { release(); }
+});
+
 test("use-by edits persist and shared stock covers only dinners on eligible dates", async ({ page, request }) => {
   const recipe = await recipeFixture(request);
   const tomorrow = "2026-10-23";
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy: TODAY }, { id: "tomato", name: "tomato", measure: "4" }], meals: { [TODAY]: mealFixture(recipe), [tomorrow]: mealFixture(recipe, tomorrow) } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await navigate(page, "Shopping");
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   const date = page.getByLabel("Use by rice", { exact: true });
+  await revealPantryEditors(page);
   await date.fill("2026-10-21");
   await navigate(page, "Shopping");
   await expect(page.getByRole("checkbox", { name: "Bought rice 400 g", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await date.fill(tomorrow);
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBe(tomorrow);
   await page.reload(); await navigate(page, "Plan");
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await expect(date).toHaveValue(tomorrow);
+  await revealPantryEditors(page);
   await date.fill("");
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBeUndefined();
   await navigate(page, "Shopping");
@@ -56,12 +91,13 @@ for (const date of ["2026-10-21", "2026-10-23"]) {
     const early = date > TODAY;
     const useBy = early ? TODAY : date;
     await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy }, { id: "tomato", name: "tomato", measure: "4" }], meals: { [date]: mealFixture(recipe, date) } });
-    await page.goto("/"); await navigate(page, "Plan");
+    await openChef(page); await navigate(page, "Plan");
     if (!early) {
       await navigate(page, "Shopping");
       await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
       await navigate(page, "Plan");
     }
+    await revealPlanControls(page);
     await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
     await cooking.getByRole("button", { name: /Next step/ }).click();
@@ -79,7 +115,8 @@ test("cooking shows final amounts once and cooked undo restores dated stock", as
   const recipe = await recipeFixture(request);
   const planned = mealFixture(recipe, TODAY, { servings: 4, ingredientOverrides: { "0": "350 g" } });
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice", name: "rice", measure: "500 g", useBy: "2026-10-24" }, { id: "tomato", name: "tomato", measure: "8" }], meals: { [TODAY]: planned } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.locator(".cook-ingredients > summary").click();
@@ -101,7 +138,8 @@ test("cooking shows final amounts once and cooked undo restores dated stock", as
 test("source-duration timers pause, reset and keep their remaining time across step changes", async ({ page, request }) => {
   const recipe = await recipeFixture(request);
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: /Next step/ }).click();
@@ -123,7 +161,7 @@ test("source-duration timers pause, reset and keep their remaining time across s
 test("a source time range keeps manual timers available without offering an endpoint as the source duration", async ({ page, request }) => {
   const recipe = { ...await recipeFixture(request), instructions: ["Simmer between 5 and 10 minutes."] };
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
-  await page.goto("/"); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  await openChef(page); await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await expect(cooking).toContainText("Simmer between 5 and 10 minutes.");
   await expect(cooking.getByRole("button", { name: /from this step/ })).toHaveCount(0);
@@ -140,7 +178,8 @@ test("custom timer completion survives reload and an old cooking session cannot 
   const recipe = await recipeFixture(request);
   const planned = mealFixture(recipe);
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: planned } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
@@ -151,6 +190,7 @@ test("custom timer completion survives reload and an old cooking session cannot 
   await expect(cooking.getByRole("status")).toContainText("Timer finished");
   expect((await readKitchen(request)).state.meals[TODAY].status).toBe("planned");
   await page.reload(); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await expect(page.getByRole("button", { name: /^Cook Tomato Rice / })).toBeVisible();
   await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
   await expect(cooking.getByRole("timer")).toContainText("00:00");
@@ -158,6 +198,7 @@ test("custom timer completion survives reload and an old cooking session cannot 
   const replacement = { ...planned, id: "replacement-dinner" };
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: replacement } });
   await page.reload(); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await expect(page.getByRole("button", { name: /^Cook Tomato Rice / })).toBeVisible();
   await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
   await cooking.getByRole("button", { name: /Next step/ }).click();
@@ -175,7 +216,7 @@ test("waste-aware filling preserves saved dinners and leaves past empty days unt
   const savedDate = "2026-10-23";
   const saved = mealFixture(recipe, savedDate, { locked: true });
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "reserved-rice", name: "rice", measure: "200 g", useBy: savedDate }, { id: "beans-soon", name: "beans", measure: "400 g", useBy: TODAY }, { id: "garlic", name: "garlic", measure: "2 cloves" }], meals: { [savedDate]: saved } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
   await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals).length).toBeGreaterThan(1);
   const meals = (await readKitchen(request)).state.meals;
@@ -190,7 +231,8 @@ test("starting another dinner asks before replacing saved cooking progress and i
   const beans = await recipeFixture(request, "fixture-vegan-beans");
   const tomorrow = "2026-10-23";
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(rice), [tomorrow]: mealFixture(beans, tomorrow) } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const riceSession = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await riceSession.getByRole("button", { name: /Next step/ }).click();
@@ -223,13 +265,15 @@ test("same-ID amount edits invalidate cooking completion without deducting stock
   const planned = mealFixture(recipe);
   const pantry = [{ id: "rice", name: "rice", measure: "500 g" }];
   await saveFixture(request, { ...emptyState(), pantry, meals: { [TODAY]: planned } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await cooking.getByRole("button", { name: /Exit cooking/ }).click();
   const edited = { ...planned, servings: 4, ingredientOverrides: { "0": "350 g" } };
   await saveFixture(request, { ...emptyState(), pantry, meals: { [TODAY]: edited } });
   await page.reload(); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await expect(page.getByRole("spinbutton", { name: "Servings Thu, Oct 22", exact: true })).toHaveValue("4");
   await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
   await cooking.locator(".cook-ingredients > summary").click();
@@ -248,7 +292,8 @@ test("a long cooking recipe uses one scrolling area and keeps step navigation vi
   const recipe = await recipeFixture(request);
   const longRecipe = { ...recipe, ingredients: Array.from({ length: 40 }, (_, index) => ({ name: `ingredient ${index + 1}`, measure: "100 g" })) };
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(longRecipe) } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: /^Cook Tomato Rice / }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await expect(cooking.locator(".cook-ingredients")).not.toHaveAttribute("open");
@@ -282,7 +327,7 @@ test("refilling cleared days draws a new plan while preserving locked dinners", 
   const recipe = await recipeFixture(request);
   const saved = mealFixture(recipe, "2026-10-26", { locked: true });
   await saveFixture(request, { ...emptyState(), meals: { [saved.date]: saved } });
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Next week", exact: true }).click();
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
   await expect(page.locator(".day-card.filled")).toHaveCount(7);

@@ -27,6 +27,13 @@ export function setShoppingItemBought(state: KitchenState, key: string, bought: 
     ...(bought ? { shoppingCycles: { ...state.shoppingCycles, [key]: cycleId } } : {}) };
 }
 
+/** Undo only this check, preserving later checks and reviewed pantry additions. */
+export function undoShoppingCheck(state: KitchenState, key: string, cycleId: string): KitchenState {
+  if (!state.shoppingChecked[key] || state.shoppingCycles?.[key] !== cycleId ||
+      state.shoppingPurchases?.some(purchase => purchase.items.some(item => item.key === key && item.cycleId === cycleId))) return state;
+  return setShoppingItemBought(state, key, false, cycleId);
+}
+
 export function purchasePreviewProblem(state: KitchenState, week: string, today: string, drafts: PurchaseDraft[]): string {
   if (!drafts.length) return "Choose bought items to add.";
   if (state.pantry.length + drafts.length > 500) return "Make room in your pantry before adding these purchases.";

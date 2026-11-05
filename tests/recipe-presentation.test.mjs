@@ -14,10 +14,14 @@ const directory = await mkdtemp(join(tmpdir(), "jff-recipe-presentation-"));
 after(() => rm(directory, { recursive: true, force: true }));
 const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
+  ["lib", "app-session", "tsx"],
+  ["lib", "assistant-controls", "ts"],
+  ["lib", "kitchen-change-preview", "ts"],
+  ["components", "LocalDeviceAccess", "tsx"], ["components", "KitchenChangeReview", "tsx"],
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
-  ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
-  ...["recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
+  ["components", "KitchenIcon", "tsx"], ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
+  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences", "ChefPlanWorkspace", "AIConnections", "HouseholdSettings", "KitchenAssistant"].map((name) => ["components", name, "tsx"]),
+  ...["random-id", "private-storage", "browser-ai", "kitchen-merge", "recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -144,14 +148,15 @@ test("no match stops without fabricating evidence, and missing semantic scores d
   assert.doesNotMatch(grounding({ retrieval: { method: "precomputed_embeddings", ranked: [{ semanticScore: null }] } }), /Meaning, keywords/);
 });
 
-test("text-first recipe cards show real counts and explicit view/add actions without fake imagery", () => {
+test("recipe cards show real counts and explicit actions with an honest image placeholder", () => {
   const html = renderToStaticMarkup(createElement(RecipeCard, { recipe, details: recipePantryDetails(recipe, []), featured: false, open: noop, add: noop, addLabel: "Add to Monday" }));
   assert.match(html, /0 of 2 ingredients in pantry/);
   assert.match(html, /Names only · amounts not checked/);
   assert.match(html, /View recipe/);
   assert.match(html, /Add to Monday/);
   assert.match(html, /href="https:\/\/en.wikibooks.org\/wiki\/Cookbook:Test_Rice"/);
-  assert.doesNotMatch(html, /recipe-image|food-placeholder|pantry match|42%|<img/);
+  assert.match(html, /recipe-placeholder/);
+  assert.doesNotMatch(html, /food-placeholder|pantry match|42%|<img/);
 });
 
 test("real photos remain optional and coverage uses the same counts in cards and details", () => {
@@ -270,7 +275,7 @@ test("compact weekly plan marks only today and provides a current-week shortcut"
   assert.match(html, /class="today-badge">Today/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>This week<\/button>/);
   assert.match(html, /0 of 7 dinners planned/);
-  assert.doesNotMatch(html, /Make the week easier|empty-day|day-image/);
+  assert.doesNotMatch(html, /Make the week easier|class="empty-day"|class="day-image"/);
   const otherWeek = plan({ week: "2026-10-26" });
   assert.doesNotMatch(otherWeek, /aria-current="date"|today-badge/);
   assert.match(otherWeek, /<button class="secondary-button">This week<\/button>/);
@@ -341,7 +346,10 @@ test("shopping check, uncheck and reset actions alter only checks in the selecte
   let state = { pantry: [{ id: "rice", name: "Rice", measure: "100 g" }], meals: { saved: true }, shoppingChecked: { "2026-10-19:rice": true, "2026-10-26:rice": true } };
   const pantry = state.pantry, meals = state.meals;
   const props = { ...shoppingProps, update: (change) => { state = change(state); } };
-  const nodes = children(DurableShoppingView(props));
+  let tree;
+  function CaptureShopping() { tree = DurableShoppingView(props); return tree; }
+  renderToStaticMarkup(createElement(CaptureShopping));
+  const nodes = children(tree);
   nodes.find((node) => node.props?.["aria-label"] === "Bought Salt Review amount").props.onChange({ target: { checked: true } });
   assert.equal(state.shoppingChecked["2026-10-19:salt"], true);
   nodes.find((node) => node.props?.["aria-label"] === "Bought Rice 200 g").props.onChange({ target: { checked: false } });

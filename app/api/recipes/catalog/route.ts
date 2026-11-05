@@ -1,6 +1,8 @@
 import { listCatalogRecipes } from "@/app/lib/recipe-store";
+import { requireHousehold, householdError } from "@/app/lib/household";
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  try { await requireHousehold(request); } catch (error) { return householdError(error); }
   try {
     const stored = await listCatalogRecipes(1000);
     return Response.json({ recipes: stored.map((item) => item.recipe), contentHashesByRecipeId: Object.fromEntries(stored.map(item => [item.recipe.id, item.contentHash])), metadataByRecipeId: Object.fromEntries(stored.flatMap((item) => item.metadata ? [[item.recipe.id, item.metadata]] : [])) }, { headers: { "Cache-Control": "no-store" } });

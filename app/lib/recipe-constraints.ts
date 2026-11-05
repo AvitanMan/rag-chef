@@ -14,9 +14,9 @@ type ConstraintInput = {
 };
 
 const DIETS: Record<string, Diet> = { vegan: "vegan", vegetarian: "vegetarian", "gluten free": "gluten_free", "low carb": "low_carb" };
-const MEAT_TERMS = ["meat", "beef", "veal", "pork", "bacon", "ham", "chicken", "turkey", "duck", "lamb", "mutton", "sausage", "chorizo", "pepperoni", "lard", "suet", "gelatin", "gelatine", "fish", "salmon", "tuna", "cod", "anchovy", "anchovies", "sardine", "sardines", "trout", "haddock", "shrimp", "prawn", "prawns", "crab", "lobster", "clam", "clams", "mussel", "mussels", "oyster", "oysters", "scallop", "scallops", "squid", "octopus", "worcestershire"];
+const MEAT_TERMS = ["meat", "beef", "veal", "pork", "bacon", "ham", "chicken", "turkey", "duck", "lamb", "mutton", "sausage", "chorizo", "pepperoni", "lard", "suet", "gelatin", "gelatine", "fish", "salmon", "tuna", "cod", "anchovy", "anchovies", "sardine", "sardines", "trout", "haddock", "halibut", "tilapia", "shrimp", "prawn", "prawns", "crab", "lobster", "clam", "clams", "mussel", "mussels", "oyster", "oysters", "scallop", "scallops", "crayfish", "squid", "octopus", "worcestershire"];
 const DAIRY_TERMS = ["milk", "cream", "butter", "cheese", "whey", "casein", "yogurt", "yoghurt", "ghee", "lactose", "mozzarella", "parmesan", "parmigiano", "pecorino", "feta", "ricotta", "cheddar", "paneer", "buttermilk", "mascarpone", "brie", "gorgonzola"];
-const GLUTEN_TERMS = ["gluten", "wheat", "flour", "barley", "rye", "spelt", "semolina", "couscous", "breadcrumbs", "bread crumbs", "bread", "pasta", "farfalle", "ziti", "penne", "macaroni", "spaghetti", "fettuccine", "lasagne", "lasagna", "orzo", "soy sauce", "seitan", "bulgur", "udon"];
+const GLUTEN_TERMS = ["gluten", "wheat", "flour", "barley", "rye", "spelt", "semolina", "couscous", "breadcrumbs", "bread crumbs", "bread", "pasta", "farfalle", "ziti", "penne", "macaroni", "spaghetti", "fettuccine", "lasagne", "lasagna", "orzo", "gnocchi", "soy sauce", "seitan", "bulgur", "bulghur", "udon"];
 
 export function normalizeEquipmentName(value: string): string {
   const name = normalizeIngredientText(value);
@@ -54,7 +54,7 @@ export function ingredientDietConflicts(recipe: Pick<Recipe, "ingredients">, die
       .replace(/\b(?:vegan|dairy free|plant based) (?:cheese|yogurt|yoghurt|cream|milk)\b/g, "");
     return [...DAIRY_TERMS, "egg", "eggs", "mayonnaise", "meringue", "albumen", "honey"].some((term) => containsIngredientTerm(dairyText, term));
   }
-  const glutenText = text.replace(/\bgluten free (?:flour|bread|pasta|noodles|soy sauce|spaghetti|penne|lasagne|lasagna)\b/g, "")
+  const glutenText = text.replace(/\bgluten free (?:flour|bread|pasta|noodles|soy sauce|spaghetti|penne|lasagne|lasagna|gnocchi)\b/g, "")
     .replace(/\b(?:rice|corn|maize|chickpea|gram|almond|coconut|buckwheat|tapioca|potato) flour\b/g, "");
   return GLUTEN_TERMS.some((term) => containsIngredientTerm(glutenText, term));
 }

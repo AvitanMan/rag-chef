@@ -23,13 +23,28 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Chef**. If tonight already has a saved dinner, its panel
-shows portions, measured pantry coverage, missing ingredients, and **Cook dinner**.
-Otherwise, choose an instant suggestion or ask Chef for ideas. **Choose for
-tonight** saves the dinner and shows that panel without visiting Plan or a date
-picker. Recipes uses the same selection action. **Dinner day and portions** is
-shared across Chef and Recipes; choose another day before selecting when needed.
+The app opens on **Weekly plan**. The five destinations—Plan, Chef, Recipes,
+Shopping, and Pantry—appear in the top navigation on desktop and in the bottom
+navigation on phones. The Settings gear, theme control, and Kitchen assistant
+remain in the header; kitchen save status appears above the page title.
+Tonight’s dinner sits beside the weekly rows on desktop and comes first on
+phones. Use **Cook this dinner** for a saved meal or **Choose tonight’s dinner**
+to find one. The **Chef**
+navigation item opens **Dinner ideas** for individual dinners and recipe questions;
+**Find dinner ideas** in Recipes opens the same screen. **Choose for tonight**
+saves a selection and shows its dinner panel. **Dinner day and portions** is shared
+across Chef and Recipes; choose another day before selecting when needed.
 Source quantities are the default, and unknown yields use recipe batches.
+
+For several dinners, use **Plan with Chef** on Weekly plan. For groceries bought
+or used, cooked dinners, or taste preferences, open the global **Kitchen assistant**.
+Both prepare changes for review before you apply them.
+
+Current app screenshots: [desktop Plan](images/figma-plan.png),
+[mobile Plan](images/figma-plan-mobile.png), [Pantry](images/figma-pantry.png),
+and [Shopping](images/figma-shopping.png). They use disposable synthetic test
+recipes and pantry data. The layout follows the existing Figma designs while
+showing actual kitchen state and calculated amounts.
 
 In **Recipe details → Personal amounts**, save measured quantities for the
 source's serving yield, or one recipe batch when yield is unknown. For example,
@@ -63,10 +78,10 @@ weekly filling, copying, locking, and manual completion.
 
 Recipe search, filters, and list position stay intact during the current session.
 Return links preserve the originating plan or recipe browser, and browser Back
-and Forward restore the section and dinner context. Reloading starts at today’s
-dinner. Browsing and choosing dinner do not require an AI model.
+and Forward restore the section and dinner context. Reloading opens Weekly plan
+with tonight’s dinner available. Browsing and choosing dinner do not require an AI model.
 
-Chef opens with up to three **Pantry picks**, or **Dinner ideas** when your pantry
+Chef opens with up to three **Pantry picks**, or **Ideas to start with** when your pantry
 is empty, using the loaded catalog without a model call. Saved exclusions and
 dislikes still apply. Use **Find my dinner** for a specific request, or leave it
 blank for the default pantry-dinner question. Weekly filling stays on **Plan**.
@@ -156,7 +171,7 @@ cooking session still requires confirmation.
 
 ### Populate a fresh installation
 
-Use **Load starter recipes** on Chef or Recipes to add three original MIT-licensed
+Use **Load starter recipes** on Plan, Chef, or Recipes to add three original MIT-licensed
 recipes without a model, account, or external download. Retrying is safe and does
 not add duplicate recipes. The action changes only the catalog.
 
@@ -201,6 +216,142 @@ copy `.env.example` there instead when configuring that mode. Both local files
 are ignored. Maintenance scripts read exported shell variables rather than
 automatically loading either file.
 
+#### Use LM Studio
+
+1. Download a model in LM Studio and start the server in its **Developer** tab.
+2. In RAG Chef **Settings**, select **LM Studio** and enter its exact model identifier.
+3. Use **Test connection**, then ask Chef or prepare an assistant/meal-plan draft.
+
+The standalone app connects to `http://127.0.0.1:1234/v1` by default. Override
+`LMSTUDIO_BASE_URL` and `LMSTUDIO_MODEL` in your local environment file if needed.
+The endpoint must be on loopback. If LM Studio requires authentication, set
+`LMSTUDIO_API_KEY` server-side. Restart the app after changing environment values.
+Choose a model that passes the structured JSON output check; model capabilities
+vary. See [LM Studio structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output).
+
+Chef generation and verification use LM Studio together. Ollama embeddings are
+independent, so keyword/pantry search still works when Ollama is stopped.
+For hosted accounts, use the browser setup in [hosted beta setup](hosted-beta.md#browser-lm-studio).
+
+### Use from a phone on your local network
+
+For HTTPS, a friendly local name, and a shared password, run this on the computer
+that stores the kitchen and runs LM Studio or Ollama:
+
+```bash
+pnpm start:secure
+# Optional private interface, name, or port:
+pnpm start:secure --host 192.168.1.20 --name ragchef.local --port 3443
+# Direct Node equivalent:
+node tools/secure-local-server.mjs
+```
+
+The command builds the current app and serves **https://ragchef.local:3443** on
+the selected private network interface. On macOS it advertises `ragchef.local`
+using Bonjour/mDNS without renaming the computer. It also prints an HTTPS IP
+address that matches the certificate. OpenSSL is required for local certificate
+creation. Other operating systems can use the IP URL or configure local DNS.
+
+The first launch creates a local certificate authority and random login under
+`.wrangler/local-https/`. The directory is private to your OS account and ignored
+by Git. The launcher does not install system certificates or change a phone's
+trust settings automatically.
+
+1. Transfer **only `root-ca.cer`** to the phone through a trusted channel, such as
+   AirDrop for an iPhone or a USB file transfer for Android.
+2. Install the certificate. On **iPhone**, install the downloaded profile in
+   Settings, then enable **RAG Chef Local CA** under **General → About →
+   Certificate Trust Settings**. Apple requires this additional trust step for
+   manually installed certificates. [Apple instructions](https://support.apple.com/en-gb/102390).
+   On **Android**, use the system's **Install a certificate → CA certificate**
+   setting; its location varies by Android version and manufacturer. Follow the
+   phone's certificate-management prompts.
+3. Run `pnpm db:migrate` after updating, then open the HTTPS link on the same
+   Wi-Fi. Enter the username and password on the RAG Chef sign-in screen; find
+   both in `.wrangler/local-https/credentials.json` on the server. The password
+   is submitted only to this HTTPS kitchen and is not stored by the app in browser
+   storage. The server configuration contains its hash. Never put credentials in URLs.
+4. Leave **Remember this device** unchecked for a session with a 12-hour maximum,
+   or select it to stay signed in for 30 days. Expiry is fixed from sign-in.
+   Using the kitchen does not extend it, and an unremembered session may end
+   sooner when the browser closes. The friendly name and IP fallback have
+   separate browser sessions.
+
+The sign-in screen’s **Need help signing in?** points household members to the
+person running the kitchen for its shared username and password. If the kitchen
+does not respond, check that the household computer is awake, RAG Chef is running,
+and both devices are on the same Wi-Fi. Return to the same kitchen address.
+
+In **Settings → Devices & access**, **Your signed-in device** shows whether this
+browser is remembered, its sign-in end date and time in the device’s local time
+zone, and **This browser’s kitchen address**. The displayed end time is the fixed
+session deadline; a different address needs a separate sign-in.
+
+Do not transfer `root-ca-key.pem` or `server-key.pem`. The public certificate's
+SHA-256 fingerprint is printed by the launcher so it can be compared before
+trusting it. Trust is specific to this CA; remove it from the phone when you no
+longer use this kitchen. Server certificates renew as needed without replacing
+the CA, so normal renewals do not require repeating phone setup. A changed IP
+needs a server restart so the certificate and advertised address can be updated.
+
+The protected app requires HTTPS, the exact configured hostname/IP, and the
+shared login. Requests that modify state also require the matching Origin.
+Hosted Google sign-in stays separate. Authenticated app pages use `no-store`, and
+protected mode disables the offline shell. Browser storage still retains local
+kitchen drafts on devices you have authorized. Expired sessions hide the kitchen
+and pause saves; sign in again to recover a draft and review any save conflict.
+If browser storage is unavailable, keep the tab open until your work is saved.
+
+**Sign out of this device** is available in the header menu and **Devices & access** settings.
+Unsaved work offers Keep working, Save and sign out, or Discard and sign out.
+Successful logout revokes the session, signs out other tabs on that origin, and
+clears private browser drafts, cooking state, and history references. Theme
+preferences and the saved server kitchen remain. A failed network logout does
+not claim to have revoked the server session.
+
+For API maintenance over secure LAN, explicit Basic authentication is supported
+only with `X-Rag-Chef-Client: cli` and no browser Fetch Metadata headers. Writes
+also require an `Origin` equal to the kitchen URL. Browser pages never use Basic
+authentication. Both form and CLI credential failures share a limit of ten per
+fifteen minutes; a limited response includes `Retry-After`.
+
+All authorized devices share this kitchen with edit access; the shared password
+is not a separate account for each family member. You can set a custom username
+and password in the private `credentials.json` file, then restart the secure
+server. New setups still generate a random password. To revoke a password, stop
+the secure server, remove **only** `credentials.json`, and restart it. A new
+password is generated; devices must sign in again. Keep the CA and its key.
+
+AI requests go from the phone to RAG Chef, then to the model on the server computer.
+Leave LM Studio/Ollama on loopback; model CORS is unnecessary for this mode.
+Select **LM Studio** and its model identifier in Settings. To set defaults for
+new browsers, put these values in `.dev.vars` before launching:
+
+```dotenv
+RAG_CHEF_AI_PROVIDER=lmstudio
+LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LMSTUDIO_MODEL=your-installed-model-id
+```
+
+Use **Settings → Open your kitchen on a phone** to find the current links.
+Keep the terminal and computer running; Ctrl+C stops the server and Bonjour
+advertisement. Do not run the older unprotected LAN server alongside it: that
+would still expose the same kitchen without the password. No router port
+forwarding or public tunnel is needed.
+
+If the name does not resolve, try the printed HTTPS IP URL. Both devices must
+be on the same network; guest Wi-Fi may isolate devices or block mDNS. Allow
+incoming traffic through the computer's firewall if prompted. A certificate
+warning means trust/name/validity still needs fixing; using HTTP is not a fix
+for a protected connection.
+
+For an intentionally unprotected trusted-network session, `pnpm start:lan`
+retains the previous HTTP mode on port 3000. It gives every reachable device
+shared edit access and does not require a password. Ordinary `pnpm dev` and
+`pnpm start` keep their existing loopback defaults. Use the separate localhost admin workflow for catalog imports; the shared
+HTTPS password allows loading the original starter recipes. Other catalog
+administration still requires the catalog administrator token.
+
 ### Production-style local preview
 
 ```bash
@@ -214,9 +365,58 @@ disposable copies and leave this preview and its database untouched.
 
 ## Planning and shopping rules
 
+### Plan dinners with Chef
+
+Open **Plan with Chef** from Weekly plan. Ask for several dinners, portions,
+exclusions, or a priority such as using food due soon, then choose **Preview dinner
+plan**. The selected AI provider interprets your request. The application selects
+approved recipes and calculates stock coverage and shopping requirements.
+
+Review the dates, portions or recipe batches, dietary requirements, exclusions,
+and ranking priority. Edit those controls and select **Preview plan** to produce
+a new preview without a model call. **Revise dinner plan** carries the structured
+draft into a follow-up request; refer to dates when keeping or replacing dinners.
+
+Each dinner shows its original source, measured pantry coverage, missing
+ingredients and amounts requiring review. The shopping preview covers the whole
+selected week, including saved dinners. **Apply plan** saves the reviewed changes
+in one revision-checked operation. **Discard draft** does not change the kitchen.
+Drafts remain in this tab only and are not included in kitchen backups.
+
+Saved dinners stay in place unless their replacement is explicitly selected.
+Locked and cooked dinners cannot be replaced through this workspace. If another
+tab changes the kitchen or a recipe changes, refresh the kitchen and review a new
+preview. A repeated Apply cannot save the same draft twice. Pantry quantities and
+purchase status are not changed by applying a dinner plan.
+
+Planning understands dates, portions, exclusions, dietary requirements, and
+shopping priorities. Use Recipes search to choose a particular dish or cuisine.
+Planning is limited to upcoming dates in one selected week. A partial preview
+explains dates it could not fill; its eligible dinners can still be applied.
+Explicit serving requests require known recipe yield; use recipe batches for
+unknown yields. Time limits require verified source totals. Unknown amounts and
+diet suitability remain labeled for review. Shopping priorities compare needed
+ingredient rows, not prices, and entered use-by dates are planning information.
+
+If Ollama is unavailable, use the manual controls and **Preview plan** or the
+existing **Fill empty days** flow.
+
+### Update your kitchen
+
+The global **Kitchen assistant** opens **Update your kitchen**. Describe purchases,
+ingredients used, a cooked dinner, or taste preferences in **Kitchen update**, then
+choose **Preview kitchen changes**. Review the interpreted actions and the resulting
+pantry, dinner, and weekly shopping changes. You can include dinner planning in
+the same request when it depends on those updates.
+
+Use **Revise kitchen changes** to refine a request. **Enter updates manually** lets
+you choose actions and amounts without a model; **Preview edited changes** recalculates
+their effect. Only **Apply changes** saves the reviewed updates. Editing a preview
+or a change to the saved kitchen requires a fresh preview before applying.
+
 ### Use food that is due soon
 
-Chef’s **Use soon** section shows up to five nonzero pantry items with entered
+The **Use soon** section on Plan and Chef shows up to five nonzero pantry items with entered
 use-by dates from today through three days ahead; **Review pantry** opens the
 complete list. Select an ingredient to see three matching dinners, then use
 **Show more dinners** for further matches. Normal dinner selection, replacement
@@ -244,8 +444,12 @@ The app follows your system preference until you choose a theme, then remembers
 that choice in this browser. Theme preferences are separate from kitchen backups.
 
 An empty week offers optional preferences and pantry shortcuts beside a short
-next-step hint. One **Today’s dinner** card offers cooking, changing dinner, and
-shopping actions. Mobile week entries are compact; **Fill options** contains
+next-step hint. Desktop Plan uses compact dinner rows, with **Today’s dinner**
+and **Use soon** alongside them. The tonight card offers cooking, changing dinner,
+and shopping actions. Desktop portion controls remain directly available;
+mobile week entries show the dinner and portions first. Open **Details** on a
+phone to change portions, cook, or review amounts. **Earlier this week**
+reveals past days in the current week. **Fill options** contains
 advanced filling preferences. **Today’s dinner** gives immediate access to tonight;
 saving a dinner opens its Chef panel. Recipe selection defaults to today;
 choose a historical or future date in the shared dinner context when needed.
@@ -255,7 +459,12 @@ In **Settings**, cooking preferences come first. Enter allergies and dislikes as
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
-In **Pantry**, paste ingredients separated by new lines, commas, or semicolons.
+**Pantry** starts with your saved stock in aligned **Ingredient**, **On hand**,
+and **Use by** columns on desktop; phones stack the same information. Select an
+ingredient’s **Edit** row to change its amount or date, or remove it. The supporting
+panel shows tonight’s saved dinner, entered-date reminders, and **Find dinner
+ideas**. When no dinner is planned for today, it offers **Browse recipes**.
+Open **Add ingredients** to paste ingredients separated by new lines, commas, or semicolons.
 Amounts are optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported.
 Multiple ingredients and measured entries open an editable confirmation preview
 whose actions remain visible while the ingredient rows scroll.
@@ -318,7 +527,12 @@ their own identities. No cooked-to-dry weight or volume ratio is assumed.
 Shopping flags a preparation mismatch for review instead of subtracting the
 wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
 
-Checked items move into **Bought** without changing pantry stock. Use **Add bought
+Shopping opens on the checklist, with the remaining-item count and latest-check
+Undo staying visible while scrolling. The side panel shows this week’s counts,
+purchase review, **List tools** for copy and print, and purchase history; on
+phones this panel follows the checklist. Checked items move into **Bought**
+without changing pantry stock. The latest check offers **Undo**, which cannot
+reverse a later check or an already applied pantry purchase. Use **Add bought
 items to pantry** to review actual purchased amounts, then **Confirm pantry
 additions**. Each purchase adds separate batches, preserving existing quantities,
 use-by dates, and cooked/uncooked identities. Unknown and note-only amounts remain
@@ -433,9 +647,7 @@ material and correct recipe. Generic nonfactual discovery prose may have no
 support refs; factual questions still require positive source support. The
 verifier cannot rewrite an answer or turn kitchen facts into original quotes.
 
-Verification uses the selected Ollama generation model, or `OLLAMA_CHAT_MODEL`
-when generation uses OpenAI. It always uses a loopback Ollama endpoint and never
-adds a paid verification call. The check has a 30-second timeout for multi-recipe
+Verification uses the same selected provider as generation. Ollama and LM Studio checks run locally; OpenAI checks use the same personal or standalone server key and add a separate billed API request. Hosted browser checks are labeled **Checked on this device**; the server still independently validates source identities and calculations. See [hosted beta setup](hosted-beta.md) for account and connection configuration. The check has a 30-second timeout for multi-recipe
 answers and no automatic repair attempt. Rejected or unavailable checks withhold
 the answer, retain source access and offer **Retry answer** or **Retry step
 answer**. **Answer evidence checked** describes a model-assisted review, not a
@@ -602,9 +814,21 @@ preferences and require review before restoration.
 It validates the file and previews counts before replacement, preserves the
 current kitchen as a recoverable draft, and uses the current revision when saving.
 Replacement is blocked if the recovery copy cannot be written. Catalog data and
-model preferences are not restored. **Unsaved kitchens found** lets you review
-closed-tab drafts with dates, counts and differences; recovery copies a draft
-without deleting another tab's work. Offline restores stay pending until saved.
+model preferences are not restored. Offline restores stay pending until saved.
+
+In **Unsaved kitchens found**, choose **Review this draft** to compare **This
+kitchen** with the **Browser draft** before recovering it. The review shows pantry
+amounts and dates, dinner and cooking-preference changes, and summaries of other
+affected data. Expand additional changes when a category has more than four rows.
+**Cancel** leaves the kitchen untouched. **Recover this draft** preserves a copy
+of the current kitchen and keeps the original draft. If either the kitchen or
+draft changes after preview, recovery is blocked until you review the latest
+differences. A newer server revision may still require a save-conflict decision.
+
+Local save conflicts show **Saved kitchen** beside **This browser draft**, including
+the actual ingredient amounts and cooking preferences that differ. Choose **Load
+saved version** or **Save this draft** after reviewing them. Hosted households keep
+their existing row-by-row merge choices for independent and conflicting edits.
 
 ### Reviewed recipe metadata
 
@@ -693,13 +917,19 @@ change requires a fresh metadata review; older metadata cannot silently carry
 forward to a new source version. The collector displays source notes during
 approval and includes them in the review hash.
 
-The production-style preview can cache the app shell after an online visit.
-Cached kitchen data and unsaved edits can survive a temporary server outage and
+In unprotected standalone mode, the production-style preview can cache the app
+shell after an online visit. Password-protected local kitchens and hosted
+kitchens disable this offline shell. Cached kitchen data and unsaved edits in
+unprotected standalone mode can survive a temporary server outage and
 sync when the server returns. The service worker does not cache recipe API
 responses: offline support does **not** guarantee full-catalog browsing or AI
 generation. Development mode needs its server to load the page. Production builds publish an
 asset manifest so Chromium and WebKit can cache the complete app shell even when
-Resource Timing entries are unavailable. `pnpm test:smoke` checks actual offline
+Resource Timing entries are unavailable. The manifest includes the locally served
+Lora and Inter fonts and the sprout mark; these UI assets do not require a font
+CDN or Figma connection. Font licenses are included in
+[`public/assets/fonts`](../public/assets/fonts) and listed in [NOTICE](../NOTICE).
+`pnpm test:smoke` checks actual offline
 reload, timer recovery, and shopping copy/print behavior in both engines. This is
 automated WebKit coverage, not physical-device or Safari-app certification.
 
@@ -775,6 +1005,11 @@ in an isolated Python environment. No separate vector database is required.
 | `GET /api/recipes/catalog` | Full approved catalog |
 | `GET /api/recipes` | Ranked search; setup-time live-source fallback |
 | `POST /api/chef` | Grounded answer or labeled catalog suggestions |
+| `POST /api/chef/plan` | Read-only conversational or manual dinner-plan preview |
+| `POST /api/chef/plan/apply` | Revalidate and atomically save a reviewed plan |
+| `GET /api/session` | Authentication status; secure local session identity and expiry after login |
+| `POST /api/local-auth/sign-in` | Secure local login: username, password, and `remember` boolean |
+| `POST /api/local-auth/sign-out` | Revoke this secure local browser session and expire its cookie |
 | `GET /api/kitchen`, `PUT /api/kitchen` | Revision-checked kitchen persistence |
 | `GET /api/admin/catalog` | Catalog and embedding status |
 | `POST /api/admin/catalog/demo` | Add original starters without AI or downloads |

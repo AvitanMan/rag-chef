@@ -56,10 +56,18 @@ export function chefMealPreview(meal: PlannedMeal, context: ChefDinnerContext): 
   };
 }
 
+/** Private HTTP LAN origins lack SubtleCrypto; preserve the exact SHA-256 fingerprint. */
+async function contextHash(text: string): Promise<string> {
+  const input = new TextEncoder().encode(text);
+  const bytes = globalThis.crypto?.subtle
+    ? new Uint8Array(await crypto.subtle.digest("SHA-256", input))
+    : (await import("@noble/hashes/sha2.js")).sha256(input);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function chefRecipeHash(recipe: Recipe): Promise<string> {
   const text = JSON.stringify([recipe.id, recipe.title, recipe.ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return contextHash(text);
 }
 
 export function recipeEvidence(recipe: Recipe) {
@@ -123,6 +131,5 @@ export function cookingSourceStep(recipe: Recipe, instructions: string[], step: 
 
 export async function chefMealHash(meal: import("./kitchen-types").PlannedMeal): Promise<string> {
   const text = JSON.stringify([meal.id, meal.recipeId, meal.recipe, meal.planningIngredients ?? null, meal.personalAmountIndices ?? null, meal.baseServings, meal.servings, meal.batches, meal.ingredientOverrides]);
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return contextHash(text);
 }

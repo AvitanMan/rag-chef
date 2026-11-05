@@ -16,15 +16,21 @@ them. The default chat model is `qwen3.5:9b`; reports record its installed diges
 | `pnpm test:e2e` | Desktop/mobile Chromium with synthetic recipes and a model stub | Browser journeys and failure/recovery behavior pass |
 | `pnpm test:setup` | Empty disposable databases on desktop/mobile | Starter setup, retry, and dinner selection need no AI |
 | `pnpm test:smoke` | Chromium and WebKit with actual service workers | Offline reload/timer recovery and shopping copy/print behavior |
+| `pnpm test:hosted` / `pnpm test:hosted-dev` | Disposable signed sessions and shared D1 kitchens, in built and development runtimes | Household isolation, private storage, shared-edit recovery, and reviewed AI actions pass |
+| `pnpm test:dev` | Development server with disconnected HMR | Theme and navigation remain usable during development |
 | `pnpm recipes:test` | Python recipe collector | Parsing and import contracts pass |
+| `pnpm recipes:planning-eval` | Forty real-model requests through the planning API | Planning revisions, constraints, calculated shopping, and HTTP latency meet the fixed gates |
 | `pnpm recipes:grounding-eval` | Eight fixed real-model/source checks | All expected answer, uncertainty, and guard contracts pass; useful answers and withholding are reported separately |
 | `pnpm recipes:rag-eval` | Forty synthetic retrieval/claim cases | Complete development and held-out splits independently meet retrieval and verification thresholds |
 | `pnpm recipes:journey-eval` | Nine fixed API journeys, 24 Chef turns | Full journey expectations, latency budget, and unchanged-data checks pass |
 | `pnpm recipes:relevance-eval` | Frozen 166-recipe corpus; 40 calibration and 40 held-out queries, plus 20 retrieval regressions | Deployed ranking and abstention behavior meet the fixed labels in both semantic and forced-lexical modes |
 
-GitHub Actions runs the first three categories, type checking, and lint. It uses
-no downloaded model or personal database. Run the real-model checks against the
-release candidate separately and attach their reports to release evidence.
+GitHub Actions runs the source, build, browser, hosted, development, setup, smoke,
+and Python collector checks, plus type checking and lint. It uses no downloaded
+model or personal database. Run the real-model checks against the release
+candidate separately and attach their reports to release evidence. The shared
+assistant's pantry/planning evaluation and remaining deployment gates are
+recorded in the [shared kitchen validation report](shared-kitchen-validation.md).
 
 ## Source answering and safe withholding
 
@@ -162,6 +168,63 @@ checks those conditions and records non-regression results.
 
 The attributed corpus is a test fixture, not an application seed. See
 [NOTICE](../NOTICE) for source terms.
+
+## Conversational dinner planning
+
+```bash
+pnpm recipes:planning-eval
+pnpm recipes:planning-eval --model qwen3.5:9b
+```
+
+Planning and RAG regression evaluations accept `OLLAMA_BASE_URL` for a separate
+loopback Ollama server. The default is `http://127.0.0.1:11434`.
+
+This isolated track exercises `POST /api/chef/plan` against synthetic recipes and
+kitchen state with the real local model. Forty fixed requests are divided into
+20 development and 20 held-out cases. Both splits require at least 18 correct
+outcomes, with zero saved-constraint violations, changes to protected dinners,
+or writes during preview. An unnecessary clarification fails an answerable case.
+The report independently recalculates the full-week shopping preview and checks
+recipe identity and the interpreted request against fixed expectations.
+
+The latency target is warm end-to-end p95 below 15 seconds. The first model request
+is reported separately; setup and embedding refresh are excluded. Results include
+model, corpus, source and evaluator fingerprints in
+`output/playwright/planning-*/planning-results.json`. These small fixed cases are
+not a general natural-language accuracy benchmark. Source and browser tests
+separately cover Apply, cancellation, stale revisions and duplicate submissions.
+
+### Planning implementation check — November 3, 2026
+
+The first valid local-model run passed 20/20 development and 19/20 held-out
+requests, with no safety or preview-write failures. The missed case lost the
+count in “two gluten-free dinners”; the explicit count parser was corrected and
+covered with a regression test. Subsequent runs are regression evidence: the
+held-out labels had already been inspected, so they are not new independent
+accuracy estimates.
+
+The reviewed planning change passed all 40 fixed requests with `qwen3.5:9b`:
+36 successful model requests, 5.889-second warm p95, and a 7.631-second first
+request after unloading the model. No preview writes or saved-constraint
+violations occurred; the disposable kitchen and catalog stayed unchanged.
+The evaluator checks expected dates independently and requires a proposal when
+eligible choices exist. A no-choice draft passes only when the catalog has no
+eligible dinner and every omitted date has an explanation.
+
+Validation of the scoped commit candidate: 468 source tests; type checking and
+lint; isolated build/render checks; 179 desktop and 179 mobile browser checks
+(including 30 planning checks); four WebKit/offline checks; two fresh-install
+checks; and two development/HMR checks. The real-model retrieval/claim regression
+also passed all 40 fixed cases, with zero unsupported claims accepted. Earlier
+unrelated cooking/timer edits were excluded from this candidate.
+
+The final planning report is saved locally under
+`output/playwright/planning-2026-11-03T19-43-34-964Z/planning-results.json`;
+its runtime and evaluator fingerprints match the staged source. The grounding
+report is `output/playwright/planning-review-rag.json`. These model runs used a
+separate loopback test daemon via `OLLAMA_BASE_URL`, with the installed model
+files. The initial held-out result remains under
+`output/playwright/planning-2026-11-03T19-07-18-549Z/planning-results.json`.
 
 ## Preparing release evidence
 

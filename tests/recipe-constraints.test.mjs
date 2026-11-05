@@ -23,6 +23,36 @@ test("allergies expand the same aliases used across browsing, Chef and planning"
   assert.equal(decide(["eggplant", "rice vinegar"], { allergies: ["egg", "peanut"] }).eligible, true);
 });
 
+test("new fish names and wheat ingredients are excluded by their food families", () => {
+  for (const ingredient of ["fresh whole tilapia", "halibut fillet"]) {
+    assert.equal(decide([ingredient], { allergies: ["fish"] }).eligible, false, ingredient);
+    assert.equal(decide([ingredient], { excludedIngredients: ["fish"] }).eligible, false, ingredient);
+    for (const diet of ["Vegan", "Vegetarian"]) assert.equal(decide([ingredient], { diet }).eligible, false, `${diet}: ${ingredient}`);
+  }
+  const ingredient = "bulghur";
+  for (const allergy of ["wheat", "gluten"]) assert.equal(decide([ingredient], { allergies: [allergy] }).eligible, false, `${allergy}: ${ingredient}`);
+  assert.equal(decide([ingredient], { diet: "Gluten-free" }).eligible, false, ingredient);
+  assert.equal(decide([ingredient], { excludedIngredients: ["gluten"] }).eligible, false, ingredient);
+  assert.equal(decide([ingredient], { excludedIngredients: ["wheat"] }).eligible, false, ingredient);
+  assert.equal(decide(["olive oil", "tomato"], { allergies: ["fish", "wheat"] }).eligible, true);
+});
+
+test("wheat exclusions conservatively recognize soy sauce and gnocchi", () => {
+  for (const ingredient of ["soy sauce", "potato gnocchi"]) {
+    for (const profile of [{ allergies: ["wheat"] }, { allergies: ["gluten"] }, { excludedIngredients: ["wheat"] }, { diet: "Gluten-free" }]) {
+      assert.equal(decide([ingredient], profile).eligible, false, `${ingredient}: ${JSON.stringify(profile)}`);
+    }
+  }
+  assert.equal(ingredientDietConflicts(recipe("gluten-free gnocchi"), "gluten_free"), false);
+});
+
+test("ground crayfish conflicts with vegetarian and vegan diets without reviewed metadata", () => {
+  for (const diet of ["Vegetarian", "Vegan"]) {
+    assert.equal(decide(["ground crayfish (optional)"], { diet }).eligible, false, diet);
+  }
+  assert.equal(decide(["ground crayfish (optional)"], { allergies: ["shellfish"] }).eligible, false);
+});
+
 test("generic nut allergies cover peanuts and tree nuts without broadening explicit families", () => {
   for (const allergy of ["nut", "nuts", "Nut allergy"]) {
     for (const name of ["peanut butter", "peanuts", "groundnuts", "almonds", "walnuts"]) {

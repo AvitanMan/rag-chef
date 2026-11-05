@@ -1,11 +1,14 @@
 # v0.2.0 release evidence
 
-Evaluated locally on November 1, 2026, using `qwen3.5:9b` and
-`nomic-embed-text`. The application is commit
+This historical v0.2.0 evidence was evaluated locally on November 1, 2026, using
+`qwen3.5:9b` and `nomic-embed-text`. The evaluated application is commit
 `72212b93fa57453c3dd2089c6c69ebc38e6d21f3`;
 the grading implementation is commit
 `d92e8058ea75ba838e946517138813485ac983e5`.
-Later presentation and CI configuration changes do not alter these application files.
+The results and fingerprints below apply to those evaluated commits. Later
+application changes are outside this evidence; see the
+[shared-kitchen review](shared-kitchen-validation.md) and
+[UI implementation record](ui-improvement-plan.md) for subsequent validation.
 
 ## Application checks
 
@@ -59,7 +62,7 @@ Journey application fingerprint: `f2d79b97a5bb4bee3d36832c0302ac2414dd18bf1db320
 Journey evaluator fingerprint: `b63e00247bec82706ec8c8e3b427c4ab19acca66ba04fea058951f721615ec42`.
 
 The evaluators hash different documented file sets, so their application hashes
-need not equal one another. Each was recomputed against the final files before
-publication. Full synthetic reports are attached to the
+need not equal one another. Each was recomputed against the evaluated v0.2.0 files
+before that release's publication. Full synthetic reports are attached to the
 [v0.2.0 release](https://github.com/AvitanMan/rag-chef/releases/tag/v0.2.0).
 Personal recipes, kitchen snapshots, configuration and keys are excluded.
