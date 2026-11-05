@@ -95,7 +95,8 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   });
 
   return (
-    <>
+    <div className="plan-workspace">
+      <aside className="plan-context" aria-label="Tonight and your pantry">
       {today && weekStart(today) === week && <section className="panel today-summary" aria-label="Today’s dinner">
         <div className="today-copy"><span className="eyebrow">Today · {dateLabel(today)}</span><strong>{meals[today]?.title ?? "What’s for dinner tonight?"}</strong>
           {!meals[today] && <p>Start with what’s in your pantry. We’ll help with the rest.</p>}
@@ -112,8 +113,10 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
       </section>}
       {setup}
       {useSoon}
+      </aside>
+      <div className="plan-main">
       <section className="planner-intro" aria-label="Plan actions">
-        <div><span className="eyebrow">Make room for good food</span><h2>Your week, at a glance</h2><p>Choose a day to add dinner.</p></div>
+        <div><h2>Your week, at a glance</h2><p>{count} of 7 dinners planned · Choose a day to add dinner.</p></div>
         <div className="planner-actions">{planWithChef && <button className="primary-button" onClick={planWithChef}><KitchenIcon name="chef" />Plan with Chef</button>}<button className="secondary-button" onClick={generatePlan} disabled={count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
         <details className="fill-options"><summary>Fill options</summary><label className="planner-preference"><input type="checkbox" checked={preferReviewedMains} onChange={(event) => setPreferReviewedMains(event.target.checked)} />Prefer reviewed mains</label>
         <p className="quantity-note">{preferReviewedMains ? "Reviewed mains come first. If they run out, unreviewed recipes can fill the remaining days; known sides and desserts stay out." : "Use the wider collection, including sides and desserts. Check that each choice makes a complete dinner."}</p></details>
@@ -138,11 +141,13 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
           const expanded = expandedDays.has(date) || focusDate === date || reviewDate === date;
           return <article className={`day-card ${meal ? "filled" : ""} ${date === today ? "is-today" : ""}${currentWeek && today && date < today ? " is-past" : ""}${expanded ? " day-expanded" : ""}`} key={date} id={`dinner-${date}`} tabIndex={-1} aria-label={dateLabel(date)} aria-current={date === today ? "date" : undefined}>
             <div className="day-heading"><span className="day-name">{dateLabel(date)}</span>{date === today && <span className="today-badge">Today</span>}{meal && <span className={`meal-status ${meal.status}`}>{meal.status === "cooked" ? "Cooked" : meal.locked ? "Locked" : "Planned"}</span>}</div>
-            {recipe ? <>{recipe.image && <button className="day-image" onClick={() => openMeal(date)} aria-label={`View photo of ${meal.title}`}><img src={recipe.image} alt="" /></button>}<button className="day-recipe-title" onClick={() => openMeal(date)} aria-label={`Open ${meal.title} on ${dateLabel(date)}`}>{meal.title}</button></> : meal ? <div className="missing-recipe"><strong>{meal.title}</strong><p>Recipe unavailable. Choose a replacement to recover its shopping amounts.</p></div> : null}
+            <div className="day-row-main">
+            {recipe ? <>{recipe.image && <button className="day-image" onClick={() => openMeal(date)} aria-label={`View photo of ${meal.title}`}><img src={recipe.image} alt="" /></button>}<button className="day-recipe-title" onClick={() => openMeal(date)} aria-label={`Open ${meal.title} on ${dateLabel(date)}`}>{meal.title}</button></> : meal ? <div className="missing-recipe"><strong>{meal.title}</strong><p>Recipe unavailable. Choose a replacement to recover its shopping amounts.</p></div> : <div className="open-dinner"><strong>Keep it open</strong><small>No dinner planned</small></div>}
             {meal && <div className="day-compact-summary"><small>{meal.servings ? `${meal.servings} servings` : `${mealScale(meal)} recipe batches`}{needsReview.includes(date) ? " · Amounts need review" : ""}</small><button className="text-button day-options-toggle" aria-label={`${expanded ? "Close details" : "Details"} for ${dateLabel(date)}`} aria-expanded={expanded} aria-controls={`day-actions-${date}`} onClick={() => {
               setExpandedDays(previous => { const next = new Set(previous); if (expanded) next.delete(date); else next.add(date); return next; });
               if (expanded && reviewDate === date) setReviewDate(null);
             }}>{expanded ? "Close details" : "Details"}</button></div>}
+            </div>
             <div id={`day-actions-${date}`} className={`day-actions${!meal ? " empty-day-actions" : ""}`}>
             {!immutable && <button className={meal ? "text-button" : "primary-button"} onClick={() => chooseDay(date)} aria-label={`${meal ? "Change dinner" : "Choose dinner"} ${dateLabel(date)}`}>{meal ? "Change dinner" : "Choose dinner"}</button>}
             {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
@@ -166,8 +171,9 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
         })}
       </section>
       <div className="plan-footer"><p><strong>{count} of 7 dinners planned.</strong></p>{(!today || weekStart(today) !== week) && <button className="primary-button" onClick={goShopping}>Review shopping</button>}</div>
+      </div>
       {pending && <Modal className="kitchen-modal-backdrop" label="Replace dinner" close={() => setPending(null)}><section className="panel kitchen-modal"><h2>Replace this dinner?</h2><p>{meals[pending.date]?.title} on {dateLabel(pending.date)} will be replaced with {pending.recipe.title}.</p>{(meals[pending.date]?.id !== pending.expectedId || meals[pending.date]?.locked || meals[pending.date]?.status === "cooked") && <p>This dinner changed or became protected. Cancel and choose again.</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setPending(null)}>Keep current dinner</button><button className="primary-button" disabled={meals[pending.date]?.id !== pending.expectedId || meals[pending.date]?.locked || meals[pending.date]?.status === "cooked"} onClick={() => { if (chooseMeal(pending.date, pending.recipe, pending.template, pending.expectedId)) setPending(null); }}>Replace dinner</button></div></section></Modal>}
-    </>
+    </div>
   );
 }
 
@@ -185,7 +191,7 @@ export function DurableShoppingView({ items, checked, cycles, purchases, update,
           <details className="calculation-details"><summary>See calculation</summary><small>Plan: {item.requiredMeasure}{item.pantryMeasure ? ` · Pantry: ${item.pantryMeasure}` : ""}</small>{item.notes.map((note, index) => <small key={index}>{note}</small>)}<small>For: {item.recipeTitles.join(", ")}</small></details>
         </div>
       </div>;
-  return <div className="shopping-layout focused-shopping">
+  return <div className="shopping-layout focused-shopping shopping-workspace">
     <section className="panel shopping-panel" onFocusCapture={event => {
       const panel = event.currentTarget, target = event.target;
       if (target.closest(".shopping-progress")) return;
@@ -200,16 +206,25 @@ export function DurableShoppingView({ items, checked, cycles, purchases, update,
       <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
       {canUndoCheck && <div className="shopping-check-undo"><span role="status">Checked {lastCheck.name}</span><button className="text-button" aria-label={`Undo checked ${lastCheck.name}`} onClick={() => { update(state => undoShoppingCheck(state, lastCheck.key, lastCheck.cycleId)); setLastCheck(null); }}>Undo</button></div>}
       </div>
-      {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review before adding to your pantry.</small></div>}
       {reviewCount > 0 && <p className="quantity-note" role="status">{reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review. You can still use this list.</p>}
       {items.length ? <>
-        {toBuy.length ? <section className="shopping-list" aria-label="To buy">{toBuy.map(renderItem)}</section> : <p role="status">Everything on this list is checked.</p>}
+        {toBuy.length ? <section className="shopping-list" aria-label="To buy"><div className="shopping-column-headings" aria-hidden="true"><span>Ingredient</span><span>Amount to buy</span><span>Details</span></div>{toBuy.map(renderItem)}</section> : <p role="status">Everything on this list is checked.</p>}
         {bought.length > 0 && <details className="bought-items"><summary>Bought ({bought.length})</summary><section className="shopping-list" aria-label="Bought items">{bought.map(renderItem)}</section><button className="text-button" onClick={() => update((state) => ({ ...state, shoppingChecked: Object.fromEntries(Object.entries(state.shoppingChecked).filter(([key]) => !key.startsWith(`${week}:`))) }))}>Uncheck all</button></details>}
-        <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry.</p></details>
       </> : <div className="empty-state"><strong>{hasPlan ? "No remaining shopping for these dinners." : "Plan a few dinners first."}</strong><p>{hasPlan ? "Known quantities are covered or the meals have been cooked." : "Choose dinners to build your shopping totals."}</p><button className="primary-button" onClick={goPlan}>Go to weekly plan</button></div>}
+    </section>
+    <aside className="shopping-context" aria-label="Shopping context">
+      <section className="shopping-week-summary">
+        <span className="eyebrow">For your dinners</span>
+        <h2>This week’s shop</h2>
+        <p>Week of {dateLabel(week)}</p>
+        <dl><div><dt>Still to buy</dt><dd>{toBuy.length}</dd></div><div><dt>Checked off</dt><dd>{bought.length}</dd></div>{reviewCount > 0 && <div><dt>Need review</dt><dd>{reviewCount}</dd></div>}</dl>
+      </section>
+      {purchaseAction && <div className="purchase-action">{purchaseAction}<small>Review before adding to your pantry.</small></div>}
+      <p className="shopping-context-note">Checking an item means it’s picked up. Review your purchases to add actual amounts to the pantry.</p>
+      <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry.</p></details>
       <details className="shopping-tools"><summary>List tools</summary><ShoppingExport items={toBuy} week={week} /></details>
       {purchaseHistory}
-    </section>
+    </aside>
   </div>;
 }
 

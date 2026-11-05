@@ -1,4 +1,12 @@
-Third-party recipe content
+Third-party content
+
+UI fonts
+Lora and Inter in public/assets/fonts are distributed under the SIL Open Font
+License 1.1. Their copyright notices and license terms are included alongside
+the font files in OFL-Lora.txt and OFL-Inter.txt. The fonts are served locally;
+the application does not request them from Google Fonts at runtime.
+https://github.com/google/fonts/tree/main/ofl/lora
+https://github.com/google/fonts/tree/main/ofl/inter
 
 Original starter recipes
 app/lib/demo-recipes.ts contains original RAG Chef starter recipes distributed

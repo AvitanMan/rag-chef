@@ -39,7 +39,8 @@ test("server-renders the RAG Chef application shell", async () => {
   assert.match(html, /Weekly plan/);
   assert.match(html, /Loading your weekly plan/);
   assert.doesNotMatch(html, /class="day-card/);
-  assert.match(html, /Your everyday kitchen/);
+  assert.match(html, /aria-label="Primary navigation"/);
+  assert.match(html, /id="source-note"/);
   assert.doesNotMatch(html, /Find my dinner|Dinner day and portions/);
   assert.doesNotMatch(html, /Codex is working|loading skeleton|codex-preview/i);
 });

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./figma-redesign.css";
+import "./plan-redesign.css";
 import { initializeHouseholdRuntime, secureLanMode } from "./lib/household";
 
 export async function generateMetadata(): Promise<Metadata> {

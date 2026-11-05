@@ -1,5 +1,47 @@
 # UI review and improvement plan
 
+## November 5 Figma design implementation
+
+The existing [RAG Chef Figma screens](https://www.figma.com/design/T3FnVA0yQZJ8p8r2tSS47T/Untitled)
+now guide the working app's navigation, Plan, Pantry, and Shopping views:
+
+- A slim top navigation, paper-colored light surfaces, Lora headings, Inter body
+  text, restrained green actions, and the original Figma sprout mark replace the
+  desktop sidebar. Phones keep the five labeled bottom destinations.
+- The weekly plan uses compact dinner rows with tonight's dinner and use-soon
+  ingredients alongside them on desktop. Phones put tonight first; existing
+  portions, locks, amount review, and cooking controls remain available.
+- Pantry presents ingredients, on-hand amounts, and entered dates in aligned
+  rows, with actual tonight's dinner and pantry guidance alongside the inventory.
+- Shopping uses a flat checklist, persistent checked-item Undo, and a side area
+  for purchase review and list tools. All totals still come from the existing
+  stock calculations; the design's sample reservations and meals are not data.
+
+The neutral near-black dark theme is retained. Fonts are served locally, with
+their OFL notices included, and the offline shell manifest includes the fonts
+and sprout asset. Keyboard focus, 44px targets, mobile disclosures, source links,
+and before-and-after recovery remain part of the working flow.
+
+The follow-up review removes the retired sidebar and source-note styles,
+unused brand selectors, and redundant redesign overrides. The top navigation
+owns its styling directly; shared login, mobile, and dark-theme rules remain.
+
+Screenshots use disposable synthetic kitchens: [desktop Plan](images/figma-plan.png),
+[mobile Plan](images/figma-plan-mobile.png), [Pantry](images/figma-pantry.png),
+and [Shopping](images/figma-shopping.png).
+
+Validation: TypeScript, ESLint, whitespace checks, and all 661 source checks
+passed. The full desktop/mobile run passed 408 cases, with 38 mode-specific or
+duplicate matrix cases skipped and no retries. The matrix covers
+320/390/768/1440px in both themes. Chromium/WebKit
+offline and export checks (4), development theme/HMR checks (2), built-worker
+checks (3), and the focused service-worker/LAN source checks (19) also passed.
+Tests use disposable data; screenshots are responsive browser checks rather
+than physical-device certification. Validation used the available Node 24 runtime.
+After the CSS cleanup, all 38 applicable redesign, everyday-layout, and use-soon
+browser checks passed (8 duplicate viewport cases skipped), along with a fresh
+source run, lint, and type checking with unused-local and unused-parameter checks.
+
 ## November 4 darker neutral theme
 
 Dark mode now uses a near-black canvas, charcoal cards, neutral gray navigation,

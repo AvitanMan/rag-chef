@@ -28,7 +28,14 @@ export function sites(): Plugin {
       if (this.environment.name !== "client") return;
       // Resource Timing is not consistently exposed by WebKit. Publish the
       // complete built shell so offline startup does not depend on that API.
-      const urls = Object.keys(bundle).filter(name => /^assets\/.*\.(?:js|css|woff2?)$/.test(name)).sort().map(name => `/${name}`);
+      const urls = [
+        ...Object.keys(bundle).filter(name => /^assets\/.*\.(?:js|css|woff2?)$/.test(name)).sort().map(name => `/${name}`),
+        // Public brand assets are not included in Rollup's bundle inventory.
+        // Precache them too so WebKit gets the same local typography offline.
+        "/assets/figma/ragchef-sprout.svg",
+        "/assets/fonts/lora-latin-variable.ttf",
+        "/assets/fonts/inter-variable.ttf",
+      ];
       this.emitFile({ type: "asset", fileName: "kitchen-shell.json", source: JSON.stringify({ urls }) });
     },
     async closeBundle() {

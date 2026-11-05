@@ -1137,13 +1137,12 @@ export default function RagChefApp() {
       deduct={deductStock} setDeduct={setDeductStock} confirm={confirmCompletion} cancel={() => setCompletionDate(null)} pending={Boolean(pendingCompletion)} retry={kitchen.retrySave} /> : null;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="Primary navigation">
+    <div className="app-shell figma-kitchen">
+      <header className="kitchen-navigation" aria-label="Primary navigation">
         <button className="brand" disabled={!hydrated} onClick={() => navigate("plan")}>
-          <span className="brand-mark"><KitchenIcon name="chef" /></span>
+          <img className="brand-sprout" src="/assets/figma/ragchef-sprout.svg" width="27" height="27" alt="" />
           <span>
             <strong>RAG Chef</strong>
-            <small>Cook with what you have</small>
           </span>
         </button>
 
@@ -1155,28 +1154,24 @@ export default function RagChefApp() {
           <NavButton disabled={!hydrated} active={view === "pantry"} icon="pantry" label="Pantry" onClick={() => navigate("pantry")} count={pantry.length} />
         </nav>
 
-        <div className="source-mini" id="source-note">
-          <KitchenIcon name="leaf" />
-          <div>
-            <strong>Your everyday kitchen</strong>
-            <small>Good food. Less waste.</small>
-          </div>
+        <div className="topbar-actions">
+          {assistantEnabled && <button className="secondary-button global-chef-action" aria-label="Kitchen assistant" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}><KitchenIcon name="chef" /><span>Kitchen assistant</span></button>}
+          <ThemeToggle />
+          <button className="secondary-button icon-button" aria-label="Settings" disabled={!hydrated} onClick={() => navigate("settings")}><KitchenIcon name="settings" /></button>
+          {(session.mode === "hosted" || session.localServer?.requiresPassword) && <details className="kitchen-menu"><summary aria-label="Kitchen menu"><KitchenIcon name="logout" /></summary><div><strong>{session.household?.name ?? "This kitchen"}</strong><button className="text-button" onClick={() => void signOut()}>Sign out of this device</button></div></details>}
         </div>
-      </aside>
+      </header>
 
       <main className="main-content">
+        <div className="kitchen-context">
+          <span>{session.household?.name ?? "Your kitchen"}</span>
+          <span className={`save-indicator save-${kitchen.saveState}`} role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
+        </div>
         <header className="topbar">
           <div className="page-heading">
-            <span className="eyebrow">{session.household?.name ?? "Your kitchen"}</span>
+            <span className="eyebrow">{viewPurpose(view)}</span>
             <h1>{viewTitle(view)}</h1>
             <p>{viewDescription(view)}</p>
-          </div>
-          <div className="topbar-actions">
-            <span className={`save-indicator save-${kitchen.saveState}`} role="status" title={kitchen.status}>{kitchen.saveState === "saved" ? "Saved" : kitchen.saveState === "loading" ? "Loading…" : kitchen.saveState === "saving" || kitchen.saveState === "pending" ? "Saving…" : kitchen.saveState === "offline" ? "Offline" : kitchen.saveState === "conflict" ? "Save conflict" : "Save failed"}</span>
-            {assistantEnabled && <button className="secondary-button global-chef-action" disabled={!hydrated} onClick={() => { setAssistantPreset(null); setAssistantOpen(true); }}><KitchenIcon name="chef" /><span>Kitchen assistant</span></button>}
-            <ThemeToggle />
-            <button className="secondary-button icon-button" aria-label="Settings" disabled={!hydrated} onClick={() => navigate("settings")}><KitchenIcon name="settings" /></button>
-            {(session.mode === "hosted" || session.localServer?.requiresPassword) && <details className="kitchen-menu"><summary aria-label="Kitchen menu"><KitchenIcon name="logout" /></summary><div><strong>{session.household?.name ?? "This kitchen"}</strong><button className="text-button" onClick={() => void signOut()}>Sign out of this device</button></div></details>}
           </div>
         </header>
 
@@ -1288,6 +1283,10 @@ export default function RagChefApp() {
         {view === "pantry" && (
           <PantryView
             pantry={kitchen.state.pantry}
+            tonight={kitchen.state.meals[today]}
+            openTonight={() => showDinner(today)}
+            browseRecipes={() => navigate("recipes")}
+            findIdeas={() => { newDinnerSearch(); navigate("chef"); }}
             today={today} filter={pantryFilter} setFilter={setPantryFilter} focusId={pantryFocusId} select={selectUseSoon}
             search={pantrySearch} setSearch={setPantrySearch} sort={pantrySort} setSort={setPantrySort}
             draft={pantryDraft}
@@ -1404,6 +1403,7 @@ export default function RagChefApp() {
         {undoNotice && !removals.length && <p role="status">{undoNotice}</p>}
         </fieldset>
         {!!kitchen.state.recentActionReceipts?.length && <details className="panel household-activity"><summary>Recent kitchen changes</summary>{kitchen.state.recentActionReceipts.slice(-10).reverse().map(receipt => <article key={receipt.id}><strong>{receipt.memberId === (session.user?.id ?? "local-user") ? "You" : memberNames[receipt.memberId] ?? "Family member"}</strong><time dateTime={receipt.appliedAt}>{new Date(receipt.appliedAt).toLocaleString(undefined, { timeZone: session.household?.timezone })}</time><ul>{receipt.summary.map((line, index) => <li key={index}>{line}</li>)}</ul></article>)}</details>}
+        <footer className="kitchen-footer" id="source-note"><span>A little less waste. A good dinner.</span><button className="text-button" disabled={!hydrated} onClick={() => navigate("settings")}>Preferences &amp; kitchen settings</button></footer>
       </main>
 
       <nav ref={mobileNavRef} className="mobile-nav" aria-label="Mobile navigation">
@@ -1547,13 +1547,17 @@ function viewTitle(view: View) {
 
 function viewDescription(view: View) {
   return {
-    plan: "A little planning. A week of good dinners.",
+    plan: "A week with room to breathe.",
     chef: "Find one dinner or ask about a recipe.",
     recipes: "Find something you’ll love to cook.",
-    pantry: "Know what you have. Make the most of it.",
-    shop: "Just what your dinners need.",
+    pantry: "Good dinners start here. Make the most of what you have.",
+    shop: "Just what’s missing for your week of dinners.",
     settings: "A kitchen that works for you.",
   }[view];
+}
+
+function viewPurpose(view: View) {
+  return { plan: "Choose your dinners", pantry: "Stock & discover", recipes: "From your recipe collection", chef: "A little help in the kitchen", shop: "Review your shopping", settings: "Make yourself at home" }[view];
 }
 
 function ChefView({
@@ -1829,6 +1833,7 @@ export function RecipeCard({
 function PantryView({
   today, filter, setFilter, focusId, select,
   search, setSearch, sort, setSort,
+  tonight, openTonight, browseRecipes, findIdeas,
   pantry,
   draft,
   setDraft,
@@ -1836,6 +1841,10 @@ function PantryView({
   remove,
   update,
 }: {
+  tonight?: PlannedMeal;
+  openTonight: () => void;
+  browseRecipes: () => void;
+  findIdeas: () => void;
   today: string; filter: PantryFilter; setFilter: (filter: PantryFilter) => void; focusId: string | null; select: (id: string) => void;
   search: string; setSearch: (value: string) => void; sort: PantrySort; setSort: (value: PantrySort) => void;
   pantry: PantryStock[];
@@ -1880,11 +1889,12 @@ function PantryView({
             <button key={value} className="secondary-button" aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({groups[value].length})</button>)}
         </div>
         <p className="quantity-note" role="status">Showing {visibleItems.length} of {groups[filter].length} items in this view.</p>
+        <div className="pantry-ledger-heading" aria-hidden="true"><span>Ingredient</span><span>On hand</span><span>Use by</span><span>Edit</span></div>
         <div className="unified-pantry-list">
           {visibleItems.map((item) => (
             <div className="unified-pantry-item" key={item.id} id={`pantry-row-${item.id}`} data-pantry-name={item.name}>
               <details className="pantry-editor">
-              <summary><span className="pantry-stock-summary"><strong>{item.name}</strong><span>{item.measure || "Amount unknown"}</span>{item.useBy && <small className={item.useBy < today ? "stock-past" : groups.soon.some(row => row.id === item.id) ? "stock-soon" : ""}>{item.useBy < today ? "Past entered date" : item.useBy === today ? "Use by today" : `Use by ${dateLabel(item.useBy)}`}</small>}</span><span className="pantry-edit-label">Edit</span></summary>
+              <summary><span className="pantry-stock-summary"><strong>{item.name}</strong><span>{item.measure || "Amount unknown"}</span>{item.useBy ? <small className={item.useBy < today ? "stock-past" : groups.soon.some(row => row.id === item.id) ? "stock-soon" : ""}>{item.useBy < today ? "Past entered date" : item.useBy === today ? "Use by today" : `Use by ${dateLabel(item.useBy)}`}</small> : <small className="stock-undated">Not set</small>}</span><span className="pantry-edit-label">Edit</span></summary>
               <div className="pantry-edit-fields">
               <label>Available<ValidatedInput validate={measureInputProblem} aria-label={`Available ${item.name}`} placeholder="Amount unknown" value={item.measure} onCommit={(measure) => {
                 update((state) => ({ ...state, pantry: state.pantry.map((stock) => stock.id === item.id ? { ...stock, measure } : stock) }));
@@ -1906,6 +1916,30 @@ function PantryView({
         </div>
         {!pantry.length ? <p>Your pantry is empty. Start with a few ingredients you use often.</p> : !groups[filter].length ? <p>No items in this view. Choose All items to review the rest of your pantry.</p> : !visibleItems.length && <p>No pantry items match your search in this view. Clear the search or choose another date group.</p>}
       </section>
+      <aside className="pantry-context" aria-label="Make the most of your pantry">
+        <section className="pantry-dinner">
+          <span className="eyebrow">From pantry to plate</span>
+          <h2>Tonight’s dinner</h2>
+          {tonight ? <>
+            {tonight.recipe?.image && <button className="pantry-dinner-image" onClick={openTonight} aria-label={`View ${tonight.title}`}><img src={tonight.recipe.image} alt="" loading="lazy" /></button>}
+            <h3>{tonight.title}</h3>
+            <p>{tonight.status === "cooked" ? "Cooked" : tonight.servings ? `${tonight.servings} servings` : `${mealScale(tonight)} recipe batches`}{tonight.locked ? " · Locked" : ""}</p>
+            <button className="primary-button" onClick={openTonight}>Review dinner <span aria-hidden="true">→</span></button>
+          </> : <><p>Start with what’s in your kitchen. Choose a recipe, then review what you’ll need.</p><button className="primary-button" onClick={browseRecipes}>Browse recipes <span aria-hidden="true">→</span></button></>}
+        </section>
+        <section className="pantry-date-note">
+          <h3>Use these first</h3>
+          <p>{groups.soon.length ? `${groups.soon.length} ${groups.soon.length === 1 ? "ingredient is" : "ingredients are"} dated within the next three days.` : "No ingredients with an entered date are due in the next three days."}</p>
+          {groups.soon.length > 0 && <button className="text-button" onClick={() => setFilter("soon")}>Review use-soon ingredients</button>}
+          {groups.past.length > 0 && <button className="text-button" onClick={() => setFilter("past")}>Past entered date: {groups.past.length} · Review</button>}
+        </section>
+        <section>
+          <h2>Need another idea?</h2>
+          <p>Find a dinner around your ingredients, or ask Chef about a recipe.</p>
+          <button className="secondary-button" onClick={findIdeas}>Find dinner ideas</button>
+          <p className="quantity-note">You choose what goes into your plan.</p>
+        </section>
+      </aside>
     </div>
   );
 }

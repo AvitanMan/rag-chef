@@ -1,5 +1,5 @@
 /* The production app shell stays available when the local server is offline. */
-const CACHE = "rag-chef-shell-v6";
+const CACHE = "rag-chef-shell-v7";
 let shellAllowed = true;
 const noStore = response => /(?:^|,)\s*no-store\b/i.test(response.headers.get("cache-control") ?? "");
 async function disableShell() {

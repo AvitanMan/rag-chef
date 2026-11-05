@@ -21,7 +21,7 @@ for (const disconnected of [false, true]) {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const background = await page.locator("body").evaluate(el => getComputedStyle(el).backgroundColor);
-    expect(background).toBe("rgb(16, 23, 19)");
+    expect(background).toBe("rgb(10, 10, 10)");
     await page.reload();
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     await toggle.click();

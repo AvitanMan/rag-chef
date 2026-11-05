@@ -159,20 +159,6 @@ img {
   min-height: 100vh;
 }
 
-.sidebar {
-  align-items: stretch;
-  background: var(--sidebar);
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  inset: 0 auto 0 0;
-  padding: 32px 16px 24px;
-  position: fixed;
-  width: 216px;
-  z-index: 20;
-  backdrop-filter: blur(16px);
-}
-
 .brand {
   align-items: center;
   background: transparent;
@@ -197,8 +183,7 @@ img {
   width: 44px;
 }
 
-.brand strong,
-.brand small {
+.brand strong {
   display: block;
 }
 
@@ -206,12 +191,6 @@ img {
   font-family: var(--serif);
   font-size: 19px;
   letter-spacing: -0.02em;
-}
-
-.brand small {
-  color: var(--ink-soft);
-  font-size: 14px;
-  margin-top: 3px;
 }
 
 .side-nav {
@@ -274,32 +253,6 @@ img {
   background: rgba(255, 255, 255, 0.15);
 }
 
-.source-mini {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 14px;
-  display: flex;
-  gap: 10px;
-  margin-top: auto;
-  padding: 12px;
-}
-
-.source-mini strong,
-.source-mini small {
-  display: block;
-}
-
-.source-mini strong {
-  font-size: 14px;
-}
-
-.source-mini small {
-  color: var(--ink-soft);
-  font-size: 14px;
-  margin-top: 2px;
-}
-
 .status-dot {
   background: #54a86e;
   border: 3px solid rgba(84, 168, 110, 0.2);
@@ -311,7 +264,6 @@ img {
 }
 
 .main-content {
-  margin-left: 216px;
   min-height: 100vh;
   padding: 36px clamp(24px, 4vw, 64px) max(80px, var(--kitchen-overlay-inset, 12px));
 }
@@ -1626,12 +1578,7 @@ img {
 }
 
 @media (max-width: 860px) {
-  .sidebar {
-    display: none;
-  }
-
   .main-content {
-    margin-left: 0;
     padding: 20px 18px max(92px, var(--kitchen-overlay-inset, 12px));
   }
 
@@ -2357,12 +2304,8 @@ fieldset.form-grid { border: 0; padding: 0; margin: 0; }
 
 /* Everyday kitchen: shared controls, quiet surfaces, and a clear next action. */
 .kitchen-icon { display: inline-block; flex: 0 0 auto; width: 22px; height: 22px; vertical-align: middle; }
-.brand-mark .kitchen-icon { width: 28px; height: 28px; }
 .brand { gap: 10px; padding-inline: 2px; }
 .brand strong { font-size: 22px; }
-.brand small { font-size: 14px; line-height: 1.3; max-width: 128px; }
-.source-mini { padding: 20px 5px 0; border-top: 1px solid var(--line); border-radius: 0; }
-.source-mini small { margin-top: 4px; line-height: 1.4; }
 .topbar { align-items: flex-start; gap: 20px; }
 .page-heading { min-width: 0; }
 .page-heading > p { color: var(--ink-soft); margin: 10px 0 0; font-size: 16px; }
@@ -2521,8 +2464,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .topbar h1 { font-size: 34px; }
   .page-heading > p { font-size: 14px; margin-top: 8px; }
   .topbar-actions { justify-content: flex-end; gap: 7px; padding-top: 0; }
-  /* Save status changes must not rewrap the controls and shift the page. */
-  .topbar-actions .save-indicator { flex-basis: 100%; min-height: 20px; margin-right: 0; }
   .global-chef-action { padding-inline: 12px; }
   .today-summary { padding: 24px; gap: 20px; }
   .today-summary strong { font-size: 30px; }
@@ -2560,7 +2501,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .main-content { padding-inline: 12px; }
   .topbar-actions { gap: 5px; }
   .global-chef-action { padding-inline: 8px; gap: 5px; }
-  .topbar-actions .save-indicator { font-size: 14px; }
   .today-summary { padding: 20px; }
   .today-summary strong { font-size: 28px; }
   .cooking-mode > header { grid-template-columns: 1fr auto; }
@@ -2664,8 +2604,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .shopping-progress .section-heading { margin: 0; flex-direction: row; align-items: center; }
 .shopping-progress .section-heading h2 { font-size: 28px; margin: 4px 0 0; }
 .shopping-progress .section-heading p { margin: 0; font-size: 14px; }
-.shopping-panel > .purchase-action { margin: 8px 0; }
-.shopping-panel > .purchase-action small { font-size: 14px; }
 .shopping-check-undo { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
 .shopping-check-undo > span { overflow-wrap: anywhere; }
 .shopping-panel .shopping-item { padding-block: 10px; }
