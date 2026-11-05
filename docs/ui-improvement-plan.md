@@ -49,6 +49,12 @@ After the CSS cleanup in `d9337c0`, all 38 applicable redesign, everyday-layout,
 and use-soon browser checks passed (8 duplicate viewport cases skipped), along with a fresh
 source run, lint, and type checking with unused-local and unused-parameter checks.
 
+The first GitHub push run reached the ten-minute suite limit after 391 passed
+checks, with 17 still unrun and no failed assertions; the parallel PR run
+completed the full browser suite. The suite limit is now twenty minutes to
+accommodate slower shared runners. The thirty-second per-test default and zero
+retries remain unchanged.
+
 ## November 4 darker neutral theme
 
 Dark mode now uses a near-black canvas, charcoal cards, neutral gray navigation,

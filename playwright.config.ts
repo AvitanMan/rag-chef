@@ -19,8 +19,9 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   timeout: 30_000,
-  // Both device projects run serially; shared CI runners need time for the full suite.
-  globalTimeout: 600_000,
+  // More than 400 checks run serially across both devices. Shared CI runners
+  // can exceed ten minutes without a failed test; keep the per-test limit above.
+  globalTimeout: 1_200_000,
   reporter: [["list"], ["json", { outputFile: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/results.json` }]],
   outputDir: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/test-results`,
   use: {
