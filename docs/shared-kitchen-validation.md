@@ -1,17 +1,22 @@
 # Shared kitchen and assistant validation
 
-Pre-commit review completed November 4, 2026. The automated review gates below
-passed; final source and browser suites were rerun after the parser corrections. Hosted deployment and live external-provider
-checks remain separate rollout gates.
+Historical pre-commit review completed November 4, 2026, for the shared-kitchen
+implementation committed as `d8d2be5`. The automated review gates below passed;
+the source and browser suites were rerun after that review's parser corrections.
+These results describe the evaluated snapshots and fingerprints below, not later
+application changes. Newer UI validation is recorded in the
+[UI implementation record](ui-improvement-plan.md).
+Hosted deployment and live external-provider checks remain separate rollout gates.
 
-Artifacts linked here are local, ignored test output; they are not part of a
-fresh checkout. Tests used disposable application/D1 state and synthetic users.
+Paths under `output/playwright/` are repository-root-relative references to local,
+Git-ignored test output, not GitHub links or files available in a fresh checkout.
+Tests used disposable application/D1 state and synthetic users.
 Per-run model checks recorded unchanged original databases. The final whole-review
 fingerprint did change: a separately running normal development app issued a
 kitchen save while isolated browser tests used another port and disposable D1.
 The originating browser action was not established. This report therefore makes
 no whole-session unchanged-database claim; tests did not migrate the normal
-database. [Local audit](../output/playwright/review-local-data-check.json).
+database. Local audit (`output/playwright/review-local-data-check.json`).
 
 ## Review fixes
 
@@ -42,15 +47,15 @@ database. [Local audit](../output/playwright/review-local-data-check.json).
 | --- | --- | --- |
 | Source tests | 563 passed, zero failures/skips | `pnpm test:source` |
 | TypeScript and full ESLint | Passed | `pnpm typecheck`, `pnpm lint` |
-| Isolated build and rendered shell | 2/2 passed | [Results](../output/playwright/integration-2026-11-03T23-36-37-691Z-e928b931/rendered-html.log) |
-| Full desktop/mobile browser suite | 374 passed, 12 hosted-only skips, zero failures/flakes | [Results](../output/playwright/e2e-2026-11-03T23-36-32-883Z-4c9a277e/results.json) |
-| Hosted built Worker, desktop/mobile | 12/12 passed | [Results](../output/playwright/hosted-2026-11-03T23-25-39-641Z-6f5b89be/results.json) |
-| Hosted development server, desktop/mobile | 12/12 passed | [Results](../output/playwright/hosted-dev-2026-11-03T23-26-23-408Z-1fca2524/results.json) |
-| Development server/HMR | 2/2 passed | [Results](../output/playwright/dev-2026-11-03T23-27-14-848Z-48233f5b/results.json) |
-| Chromium offline and WebKit | 4/4 passed | [Results](../output/playwright/smoke-2026-11-03T23-27-32-986Z-e4795606/results.json) |
-| Clean-install setup, desktop/mobile | 1/1 each | [Desktop](../output/playwright/clean-setup-2026-11-03T23-26-01-607Z-0bc61f89/results.json), [mobile](../output/playwright/clean-setup-2026-11-03T23-26-18-465Z-cd368ade/results.json) |
+| Isolated build and rendered shell | 2/2 passed | Results (`output/playwright/integration-2026-11-03T23-36-37-691Z-e928b931/rendered-html.log`) |
+| Full desktop/mobile browser suite | 374 passed, 12 hosted-only skips, zero failures/flakes | Results (`output/playwright/e2e-2026-11-03T23-36-32-883Z-4c9a277e/results.json`) |
+| Hosted built Worker, desktop/mobile | 12/12 passed | Results (`output/playwright/hosted-2026-11-03T23-25-39-641Z-6f5b89be/results.json`) |
+| Hosted development server, desktop/mobile | 12/12 passed | Results (`output/playwright/hosted-dev-2026-11-03T23-26-23-408Z-1fca2524/results.json`) |
+| Development server/HMR | 2/2 passed | Results (`output/playwright/dev-2026-11-03T23-27-14-848Z-48233f5b/results.json`) |
+| Chromium offline and WebKit | 4/4 passed | Results (`output/playwright/smoke-2026-11-03T23-27-32-986Z-e4795606/results.json`) |
+| Clean-install setup, desktop/mobile | 1/1 each | Desktop (`output/playwright/clean-setup-2026-11-03T23-26-01-607Z-0bc61f89/results.json`), mobile (`output/playwright/clean-setup-2026-11-03T23-26-18-465Z-cd368ade/results.json`) |
 | Python recipe collectors | 19/19 passed | `pnpm recipes:test` |
-| Real Ollama grounding | 8/8 passed, zero execution failures | [Results](../output/playwright/chef-2026-11-03T23-01-51-298Z-5494be06/grounding-results.json) |
+| Real Ollama grounding | 8/8 passed, zero execution failures | Results (`output/playwright/chef-2026-11-03T23-01-51-298Z-5494be06/grounding-results.json`) |
 | Clean frozen-lockfile install | Passed with a separate package store | `pnpm install --frozen-lockfile` |
 | Publishable source scan and whitespace | No secrets found; passed | Gitleaks with redaction; `git diff --check` |
 
@@ -117,12 +122,12 @@ these artifacts can be called current.
 
 Recorded artifacts:
 
-- [Evaluation summary](../output/playwright/assistant-evaluation-summary.json)
-- [Development model run](../output/playwright/assistant-development-final.json)
-- [Held-out model run](../output/playwright/assistant-held-out.json)
-- [Cold-start probe](../output/playwright/assistant-cold-start.json)
-- [Development replay](../output/playwright/assistant-development-regression.json)
-  and [held-out replay](../output/playwright/assistant-held-out-regression.json)
+- Evaluation summary (`output/playwright/assistant-evaluation-summary.json`)
+- Development model run (`output/playwright/assistant-development-final.json`)
+- Held-out model run (`output/playwright/assistant-held-out.json`)
+- Cold-start probe (`output/playwright/assistant-cold-start.json`)
+- Development replay (`output/playwright/assistant-development-regression.json`)
+  and held-out replay (`output/playwright/assistant-held-out-regression.json`)
 
 The fixed corpus digest is
 `aaca58f14cb4e0cbe27ac3c9c3d4e830ef8e77989f5048f544a96a5b43b48264`;
@@ -137,7 +142,7 @@ Full per-case outputs and evaluated-module lists remain in the JSON reports.
 Fresh `qwen3.5:9b` output passed all 80 fixed requests after the explicit-planning
 fallback and main topic fixes. The development/held-out labels were already known:
 this is regression evidence, not a new blind holdout. No model or prompt tuning
-was performed during this run. The earlier [79/80 regression](../output/playwright/assistant-precommit-live.json)
+was performed during this run. The earlier 79/80 regression (`output/playwright/assistant-precommit-live.json`)
 remains retained as evidence of the unnecessary soup clarification before its fix.
 
 | Track | Existing split | Fresh output | Final-code replay |
@@ -161,8 +166,8 @@ Both reports record unchanged kitchen inputs and original catalog files, with
 zero kitchen writes. The final replay establishes deterministic regression
 behavior; it does not supply another independent model or latency measurement.
 
-[Fresh model report](../output/playwright/assistant-precommit-final.json) ·
-[Final-code replay](../output/playwright/assistant-precommit-final-replay.json).
+Fresh model report (`output/playwright/assistant-precommit-final.json`) ·
+Final-code replay (`output/playwright/assistant-precommit-final-replay.json`).
 
 ## Retained planning, cooking and retrieval regressions
 
@@ -173,10 +178,10 @@ on known cases, not a newly blinded evaluation.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Legacy planning API | 40/40; all saved-constraint, quantity, shopping and no-write checks passed | [Results](../output/playwright/planning-2026-11-03T23-25-47-256Z-09f34462/planning-results.json) |
-| Multi-turn Chef API journeys | 9/9 journeys, 24/24 answer turns, zero blocked turns or execution failures | [Results](../output/playwright/journeys-2026-11-03T23-29-43-522Z-0a1fde4f/journey-results.json) |
-| Retrieval relevance | 80/80 in each semantic and forced-lexical mode; 20/20 legacy regressions; 7/7 guards | [Results](../output/playwright/final-model-regressions-2026-11-03T23-20-09Z-94aa6d78/relevance-results.json) |
-| Factual-claim RAG | 40/40 covered; evidence recall and supported-claim acceptance 100%, unsupported-claim acceptance 0% in each split | [Results](../output/playwright/final-model-regressions-2026-11-03T23-20-09Z-94aa6d78/rag-results.json) |
+| Legacy planning API | 40/40; all saved-constraint, quantity, shopping and no-write checks passed | Results (`output/playwright/planning-2026-11-03T23-25-47-256Z-09f34462/planning-results.json`) |
+| Multi-turn Chef API journeys | 9/9 journeys, 24/24 answer turns, zero blocked turns or execution failures | Results (`output/playwright/journeys-2026-11-03T23-29-43-522Z-0a1fde4f/journey-results.json`) |
+| Retrieval relevance | 80/80 in each semantic and forced-lexical mode; 20/20 legacy regressions; 7/7 guards | Results (`output/playwright/final-model-regressions-2026-11-03T23-20-09Z-94aa6d78/relevance-results.json`) |
+| Factual-claim RAG | 40/40 covered; evidence recall and supported-claim acceptance 100%, unsupported-claim acceptance 0% in each split | Results (`output/playwright/final-model-regressions-2026-11-03T23-20-09Z-94aa6d78/rag-results.json`) |
 
 Planning warm HTTP p95 was **7.049 seconds** over 35 samples, below the existing
 15-second gate; its first model request was 6.825 seconds. Journey model-attempted
@@ -186,8 +191,8 @@ latency. All measured kitchen reads and catalog comparisons remained unchanged.
 
 Relevance used 246 cached embeddings verified against the installed model digest;
 it made no new embedding or chat calls. Source, labels and corpus fingerprints
-match the checked checkout. Grounding, planning and journey reports identify
-their exact evaluated snapshots. The last priority-phrase normalization followed
+match the checkout evaluated during this review. Grounding, planning and journey
+reports identify their exact evaluated snapshots. The last priority-phrase normalization followed
 these API runs; it is covered by 48 parser combinations, complete draft/Apply
 tests, the final 80-case replay, and the final full browser suite.
 

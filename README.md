@@ -32,35 +32,44 @@ After pulling updates, run `pnpm db:migrate` before restarting the app. Reviewed
 assistant saves require the latest catalog consistency migration; ordinary
 manual controls remain available if the database still needs that update.
 
-The app opens on **Plan**, with tonight’s dinner first. Use the five navigation
-choices to move between Plan, Chef, Recipes, Shopping, and Pantry.
+The app opens on **Plan**. Desktop navigation sits across the top; phones keep
+five labeled destinations at the bottom: Plan, Chef, Recipes, Shopping, and
+Pantry. Tonight’s dinner and use-soon ingredients sit beside the weekly rows on
+desktop; tonight comes first on phones. The Settings gear stays in the header.
 
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
 2. Choose a dinner. Review portions and missing ingredients in its dinner panel.
-3. Open **Weekly shopping** to review, copy, or print the ingredients still needed.
-4. Select **Cook dinner** for directions, independent timers, and source-linked help.
+3. Open **Shopping** to check off ingredients; **List tools** contains copy and print.
+4. Select **Cook this dinner** on Plan for directions, independent timers, and source-linked help.
 5. Mark the dinner cooked. Pantry deductions are optional, and completion can be undone.
 
 ## See the flow
 
-These screenshots use the original starter recipes and an empty demonstration
-kitchen, not personal data.
+The working app follows the existing Figma direction: compact dinner and
+inventory rows, supporting information beside the main workspace, and light
+and neutral dark themes. These screenshots were captured from the app using
+disposable synthetic test recipes and pantry data.
 
-| Choose dinner | Review shopping | Cook step by step |
+| Plan your week | Review your pantry | Check off shopping |
 | --- | --- | --- |
-| ![Dinner and missing ingredients](docs/images/dinner.png) | ![Weekly shopping list](docs/images/shopping.png) | ![Cooking directions and timers](docs/images/cooking.png) |
+| ![Weekly dinner rows with tonight’s dinner alongside](docs/images/figma-plan.png) | ![Pantry ingredients, amounts, and entered dates](docs/images/figma-pantry.png) | ![Shopping checklist and purchase review](docs/images/figma-shopping.png) |
+
+[See the mobile Plan](docs/images/figma-plan-mobile.png) and
+[design implementation and validation notes](docs/ui-improvement-plan.md#november-5-figma-design-implementation).
 
 ## What it does
 
 - **Kitchen assistant:** reviewed pantry additions and corrections, cuisine-aware dinner plans, shopping previews, explicit taste feedback, and actual pantry usage after cooking. Every assistant change requires **Apply**.
-- **Pantry to dinner:** ingredient search, measured stock coverage, due-soon food,
-  favorites, and recently cooked meals.
+- **Pantry to dinner:** stock rows show amounts and entered dates, with editing
+  on demand and tonight’s saved dinner alongside. Ingredient search, measured
+  stock coverage, due-soon food, favorites, and recent meals help choose dinner.
 - **Weekly planning:** dated dinners, portions and amount overrides, copied or
   locked meals, and suggestions that preserve existing plans. **Plan with Chef**
   turns requests into editable drafts with whole-week shopping previews; nothing
   is saved until **Apply plan**. Manual previews work without a model.
 - **Shopping:** combine requirements, reserve stock across dinners, flag unclear
-  amounts, and review purchases before adding them to the pantry.
+  amounts, and review purchases before adding them to the pantry. Checking an
+  item leaves pantry stock unchanged; the latest check can be undone.
 - **Cooking:** original directions, multiple recoverable timers, optional screen
   wake lock, and source-specific questions about the current step.
 - **Recovery:** local database persistence, browser drafts, conflict handling,
@@ -134,6 +143,13 @@ OpenAI is an optional cloud provider. No separate vector database is needed.
 Original recipe text, selected evidence, calculated amounts, and suggested
 adaptations remain distinct; suggestions never silently rewrite saved meals.
 
+Lora headings, Inter body text, and the sprout mark are served from the app’s
+local assets. The fonts use the SIL Open Font License; their notices ship in
+[`public/assets/fonts`](public/assets/fonts). Unprotected standalone production
+builds include these assets in the offline shell. See the
+[offline-use limits](docs/guide.md#data-backups-and-offline-use), including the
+separate behavior of password-protected and hosted kitchens.
+
 ## Evidence and checks
 
 | Check | What it establishes |
@@ -172,7 +188,7 @@ state, configuration, and imported recipe runs are not copied into CI.
   backups, offline behavior, API routes, and troubleshooting.
 - [Evaluation](docs/evaluation.md): real-model commands, grading, and release evidence.
 - [Contributing](CONTRIBUTING.md): local verification and review expectations.
-- [NOTICE](NOTICE): recipe-source attribution and content licenses.
+- [NOTICE](NOTICE): recipe-source attribution and third-party font licenses.
 
 The [MIT license](LICENSE) covers original application work and starter recipes.
 Wikibooks content retains its attribution and CC BY-SA terms; TheMealDB content

@@ -23,8 +23,13 @@ pnpm dev
 
 Open [localhost:3000](http://localhost:3000).
 
-The app opens on **Weekly plan**, with tonight’s dinner first. Use **Cook this
-dinner** for a saved meal or **Choose tonight’s dinner** to find one. The **Chef**
+The app opens on **Weekly plan**. The five destinations—Plan, Chef, Recipes,
+Shopping, and Pantry—appear in the top navigation on desktop and in the bottom
+navigation on phones. The Settings gear, theme control, and Kitchen assistant
+remain in the header; kitchen save status appears above the page title.
+Tonight’s dinner sits beside the weekly rows on desktop and comes first on
+phones. Use **Cook this dinner** for a saved meal or **Choose tonight’s dinner**
+to find one. The **Chef**
 navigation item opens **Dinner ideas** for individual dinners and recipe questions;
 **Find dinner ideas** in Recipes opens the same screen. **Choose for tonight**
 saves a selection and shows its dinner panel. **Dinner day and portions** is shared
@@ -34,6 +39,12 @@ Source quantities are the default, and unknown yields use recipe batches.
 For several dinners, use **Plan with Chef** on Weekly plan. For groceries bought
 or used, cooked dinners, or taste preferences, open the global **Kitchen assistant**.
 Both prepare changes for review before you apply them.
+
+Current app screenshots: [desktop Plan](images/figma-plan.png),
+[mobile Plan](images/figma-plan-mobile.png), [Pantry](images/figma-pantry.png),
+and [Shopping](images/figma-shopping.png). They use disposable synthetic test
+recipes and pantry data. The layout follows the existing Figma designs while
+showing actual kitchen state and calculated amounts.
 
 In **Recipe details → Personal amounts**, save measured quantities for the
 source's serving yield, or one recipe batch when yield is unknown. For example,
@@ -68,7 +79,7 @@ weekly filling, copying, locking, and manual completion.
 Recipe search, filters, and list position stay intact during the current session.
 Return links preserve the originating plan or recipe browser, and browser Back
 and Forward restore the section and dinner context. Reloading opens Weekly plan
-with today’s dinner first. Browsing and choosing dinner do not require an AI model.
+with tonight’s dinner available. Browsing and choosing dinner do not require an AI model.
 
 Chef opens with up to three **Pantry picks**, or **Ideas to start with** when your pantry
 is empty, using the loaded catalog without a model call. Saved exclusions and
@@ -433,9 +444,11 @@ The app follows your system preference until you choose a theme, then remembers
 that choice in this browser. Theme preferences are separate from kitchen backups.
 
 An empty week offers optional preferences and pantry shortcuts beside a short
-next-step hint. One **Today’s dinner** card offers cooking, changing dinner, and
-shopping actions. Mobile week entries show the dinner and portions first; open
-**Details** to change portions, cook, or review amounts. **Earlier this week**
+next-step hint. Desktop Plan uses compact dinner rows, with **Today’s dinner**
+and **Use soon** alongside them. The tonight card offers cooking, changing dinner,
+and shopping actions. Desktop portion controls remain directly available;
+mobile week entries show the dinner and portions first. Open **Details** on a
+phone to change portions, cook, or review amounts. **Earlier this week**
 reveals past days in the current week. **Fill options** contains
 advanced filling preferences. **Today’s dinner** gives immediate access to tonight;
 saving a dinner opens its Chef panel. Recipe selection defaults to today;
@@ -446,8 +459,11 @@ In **Settings**, cooking preferences come first. Enter allergies and dislikes as
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
-**Pantry** starts with your saved stock, amounts, and entered dates. Select an
-ingredient’s **Edit** row to change its amount or date, or remove it.
+**Pantry** starts with your saved stock in aligned **Ingredient**, **On hand**,
+and **Use by** columns on desktop; phones stack the same information. Select an
+ingredient’s **Edit** row to change its amount or date, or remove it. The supporting
+panel shows tonight’s saved dinner, entered-date reminders, and **Find dinner
+ideas**. When no dinner is planned for today, it offers **Browse recipes**.
 Open **Add ingredients** to paste ingredients separated by new lines, commas, or semicolons.
 Amounts are optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported.
 Multiple ingredients and measured entries open an editable confirmation preview
@@ -511,8 +527,10 @@ their own identities. No cooked-to-dry weight or volume ratio is assumed.
 Shopping flags a preparation mismatch for review instead of subtracting the
 wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
 
-The remaining-item count stays visible while scrolling. **List tools** below the
-checklist contains copy and print actions. Checked items move into **Bought**
+Shopping opens on the checklist, with the remaining-item count and latest-check
+Undo staying visible while scrolling. The side panel shows this week’s counts,
+purchase review, **List tools** for copy and print, and purchase history; on
+phones this panel follows the checklist. Checked items move into **Bought**
 without changing pantry stock. The latest check offers **Undo**, which cannot
 reverse a later check or an already applied pantry purchase. Use **Add bought
 items to pantry** to review actual purchased amounts, then **Confirm pantry
@@ -899,13 +917,19 @@ change requires a fresh metadata review; older metadata cannot silently carry
 forward to a new source version. The collector displays source notes during
 approval and includes them in the review hash.
 
-The production-style preview can cache the app shell after an online visit.
-Cached kitchen data and unsaved edits can survive a temporary server outage and
+In unprotected standalone mode, the production-style preview can cache the app
+shell after an online visit. Password-protected local kitchens and hosted
+kitchens disable this offline shell. Cached kitchen data and unsaved edits in
+unprotected standalone mode can survive a temporary server outage and
 sync when the server returns. The service worker does not cache recipe API
 responses: offline support does **not** guarantee full-catalog browsing or AI
 generation. Development mode needs its server to load the page. Production builds publish an
 asset manifest so Chromium and WebKit can cache the complete app shell even when
-Resource Timing entries are unavailable. `pnpm test:smoke` checks actual offline
+Resource Timing entries are unavailable. The manifest includes the locally served
+Lora and Inter fonts and the sprout mark; these UI assets do not require a font
+CDN or Figma connection. Font licenses are included in
+[`public/assets/fonts`](../public/assets/fonts) and listed in [NOTICE](../NOTICE).
+`pnpm test:smoke` checks actual offline
 reload, timer recovery, and shopping copy/print behavior in both engines. This is
 automated WebKit coverage, not physical-device or Safari-app certification.
 

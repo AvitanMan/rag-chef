@@ -1,6 +1,13 @@
 # UI review and improvement plan
 
+Each dated section records the implementation and checks from that review.
+Paths under `output/playwright/` are repository-root-relative references to local,
+Git-ignored artifacts, not GitHub links or files available in a fresh checkout.
+The selected screenshots under `docs/images/` are included in the repository.
+
 ## November 5 Figma design implementation
+
+The implementation and CSS cleanup are recorded in commit `d9337c0`.
 
 The existing [RAG Chef Figma screens](https://www.figma.com/design/T3FnVA0yQZJ8p8r2tSS47T/Untitled)
 now guide the working app's navigation, Plan, Pantry, and Shopping views:
@@ -38,8 +45,8 @@ offline and export checks (4), development theme/HMR checks (2), built-worker
 checks (3), and the focused service-worker/LAN source checks (19) also passed.
 Tests use disposable data; screenshots are responsive browser checks rather
 than physical-device certification. Validation used the available Node 24 runtime.
-After the CSS cleanup, all 38 applicable redesign, everyday-layout, and use-soon
-browser checks passed (8 duplicate viewport cases skipped), along with a fresh
+After the CSS cleanup in `d9337c0`, all 38 applicable redesign, everyday-layout,
+and use-soon browser checks passed (8 duplicate viewport cases skipped), along with a fresh
 source run, lint, and type checking with unused-local and unused-parameter checks.
 
 ## November 4 darker neutral theme
@@ -88,20 +95,20 @@ Screenshots from disposable kitchens: [Dinner ideas](images/dinner-ideas.png)
 and [draft comparison](images/draft-recovery.png).
 
 Validation: all 661 source tests, TypeScript, ESLint, and whitespace checks passed.
-All [10 recovery browser checks](../output/playwright/e2e-2026-11-04T18-34-14-165Z-b0af29fe/results.json)
+All 10 recovery browser checks (`output/playwright/e2e-2026-11-04T18-34-14-165Z-b0af29fe/results.json`)
 passed after the review fixes.
-The final [full desktop/mobile run](../output/playwright/e2e-2026-11-04T18-34-54-270Z-c6318c20/results.json)
+The final full desktop/mobile run (`output/playwright/e2e-2026-11-04T18-34-54-270Z-c6318c20/results.json`)
 passed all 408 applicable cases, with 38 mode-specific or duplicate matrix cases
 intentionally skipped and no failures or retries. The screenshot matrix covers
 320/390/768/1440px in light and dark themes; the documentation images above use
 this final layout.
 The scroll and keyboard-focus checks passed
-[18 repeated desktop/mobile cases](../output/playwright/e2e-2026-11-04T18-15-35-287Z-2ea67850/results.json).
+18 repeated desktop/mobile cases (`output/playwright/e2e-2026-11-04T18-15-35-287Z-2ea67850/results.json`).
 Separate disposable runs passed
-[26 secure-login checks](../output/playwright/secure-lan-2026-11-04T18-39-00-685Z-277023ed/results.json),
-[14 hosted-account checks](../output/playwright/hosted-2026-11-04T18-34-57-848Z-2f2f3f1a/results.json),
+26 secure-login checks (`output/playwright/secure-lan-2026-11-04T18-39-00-685Z-277023ed/results.json`),
+14 hosted-account checks (`output/playwright/hosted-2026-11-04T18-34-57-848Z-2f2f3f1a/results.json`),
 four Chromium/WebKit offline and export checks, both fresh-install journeys,
-and [three built-worker checks](../output/playwright/integration-2026-11-04T18-35-20-474Z-d6d46e58/rendered-html.log).
+and three built-worker checks (`output/playwright/integration-2026-11-04T18-35-20-474Z-d6d46e58/rendered-html.log`).
 The secure run includes device-access checks at 320px. The logout/Back test now
 waits for the router's login-page navigation before testing a separate reload;
 its private-screen and revoked-session assertions remain intact. That sequence
@@ -132,12 +139,12 @@ Screenshots from a disposable synthetic kitchen:
 [Shopping checklist](images/shopping-checklist.png).
 
 Validation: 649 source tests, TypeScript, ESLint, and whitespace checks passed.
-The [full desktop/mobile run](../output/playwright/e2e-2026-11-04T17-29-22-947Z-64405970/results.json)
+The full desktop/mobile run (`output/playwright/e2e-2026-11-04T17-29-22-947Z-64405970/results.json`)
 finished with 395 passes and one test still clicking a collapsed dinner control.
 After updating that interaction, all 14 affected Chef selection/replacement cases
-[passed on rerun](../output/playwright/e2e-2026-11-04T17-37-37-864Z-d04de286/results.json).
+passed on rerun (`output/playwright/e2e-2026-11-04T17-37-37-864Z-d04de286/results.json`).
 All eight new layout/accessibility cases also
-[passed against the final UI](../output/playwright/e2e-2026-11-04T17-33-48-291Z-13203725/results.json).
+passed against the final UI (`output/playwright/e2e-2026-11-04T17-33-48-291Z-13203725/results.json`).
 Separate disposable runs passed 22 secure-login checks, 14 hosted-account checks,
 four Chromium/WebKit offline and export checks, both fresh-install journeys,
 and the built-worker checks. The responsive screenshot matrix covers
@@ -187,8 +194,8 @@ phone or native browser-zoom certification. All browser data and credentials are
 disposable, and model responses are deterministic test fixtures.
 
 The full browser run and final secure-login checks are recorded in
-[the browser report](../output/playwright/e2e-2026-11-04T16-06-44-643Z-3562fdca/results.json)
-and [the secure-login report](../output/playwright/secure-lan-2026-11-04T16-29-58-573Z-fb714f1f/results.json).
+the browser report (`output/playwright/e2e-2026-11-04T16-06-44-643Z-3562fdca/results.json`)
+and the secure-login report (`output/playwright/secure-lan-2026-11-04T16-29-58-573Z-fb714f1f/results.json`).
 Generated test artifacts are intentionally ignored by Git. TypeScript, ESLint,
 and whitespace checks also passed.
 
@@ -196,7 +203,7 @@ and whitespace checks also passed.
 
 **Implementation status:** F1–F9 are implemented, with a persistent dark mode toggle added. The original review is retained below; see the implementation record at the end for verification and screenshots.
 
-Reviewed October 25, 2026, against the current working tree, including the recent usability changes. This is a browser-tested review. No application code was changed during this review.
+Reviewed October 25, 2026, against the working tree at that time, including the then-recent usability changes. This is a historical browser-tested review. No application code was changed during that review.
 
 Start with save reliability, the dinner picker’s default date, and visible removal recovery. The main journey works, but these three issues can undermine confidence even while the existing regression suite passes.
 
@@ -214,7 +221,7 @@ Start with save reliability, the dinner picker’s default date, and visible rem
 
 The original local database’s SHA-256 was checked before and after testing and was unchanged. The manual copy used a deterministic local model stub; this review does **not** assess real Ollama/OpenAI answer quality. The automated suite used its separate synthetic fixtures. Safari, physical touch behavior, screen-reader output, browser zoom, and a formal accessibility audit were not tested.
 
-Local screenshots are in [the evidence folder](../output/playwright/ui-review-2026-10-25/). The fresh regression result is [results.json](../output/playwright/e2e-2026-10-25T11-38-35-646Z/results.json). These generated artifacts are intentionally ignored by Git.
+Local screenshots are in the evidence folder (`output/playwright/ui-review-2026-10-25/`). The fresh regression result is results.json (`output/playwright/e2e-2026-10-25T11-38-35-646Z/results.json`). These generated artifacts are intentionally ignored by Git.
 
 ## Priorities
 
@@ -244,7 +251,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** Negative amounts and invalid fractions show a readable row error without placing invalid data in kitchen state. Other valid edits still save. Correction clears the error. Servings can be cleared and replaced using the keyboard, with chosen bounds enforced consistently. No internal state paths appear in user-facing errors.
 
-**Scope:** [Pantry fields](../app/components/RagChefApp.tsx#L1144), [servings fields](../app/components/WeeklyKitchenViews.tsx#L91), amount validation and kitchen persistence. [Screenshot](../output/playwright/ui-review-2026-10-25/07-invalid-pantry-mobile.png).
+**Scope:** [Pantry fields](../app/components/RagChefApp.tsx#L1144), [servings fields](../app/components/WeeklyKitchenViews.tsx#L91), amount validation and kitchen persistence. Screenshot (`output/playwright/ui-review-2026-10-25/07-invalid-pantry-mobile.png`).
 
 ### F2 — Default the dinner picker to a useful date
 
@@ -254,7 +261,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** A fixed-clock Sunday test never silently defaults to the previous Monday. Cover today occupied, future weeks, historical weeks, and a full week. A user-selected date always wins.
 
-**Scope:** [PlanPicker](../app/components/WeeklyKitchenViews.tsx#L127). [Screenshot](../output/playwright/ui-review-2026-10-25/10-default-past-day-mobile.png).
+**Scope:** [PlanPicker](../app/components/WeeklyKitchenViews.tsx#L127). Screenshot (`output/playwright/ui-review-2026-10-25/10-default-past-day-mobile.png`).
 
 ### F3 — Put Undo where the action happened
 
@@ -264,7 +271,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** Undo is visible immediately after removal from anywhere in a long pantry or plan. It does not overlap navigation or the focused field. Preserve the current safeguards: later edits survive, occupied dinner dates are not overwritten, and bulk removal retains locked/cooked dinners. Recovery remains available until dismissed or reload, unless durable recovery is added explicitly.
 
-**Scope:** [Removal notifications](../app/components/RagChefApp.tsx#L780), shared notification styling. [Screenshot of the viewport after removal](../output/playwright/ui-review-2026-10-25/06-removed-pantry-mobile.png).
+**Scope:** [Removal notifications](../app/components/RagChefApp.tsx#L780), shared notification styling. Screenshot of the viewport after removal (`output/playwright/ui-review-2026-10-25/06-removed-pantry-mobile.png`).
 
 ### F4 — Make chip removal independent of blur
 
@@ -274,7 +281,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** One click removes the intended chip during editing. Test unchanged edits, changed edits, removing a different chip, Enter, Escape, and keyboard activation. Recheck that typing `milk,peanut` still creates two saved exclusions and that saved exclusions remain enforced.
 
-**Scope:** [IngredientChips](../app/components/IngredientChips.tsx#L24). [Resulting chips after the failed removal](../output/playwright/ui-review-2026-10-25/15-chip-remove-after-edit.png).
+**Scope:** [IngredientChips](../app/components/IngredientChips.tsx#L24). Resulting chips after the failed removal (`output/playwright/ui-review-2026-10-25/15-chip-remove-after-edit.png`).
 
 ### F5 — Make today visible on mobile
 
@@ -284,7 +291,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** At 390 × 844, the initial current-week screen exposes a direct action for today in both empty and populated states. Saving a dinner reveals its card. Older dates remain accessible; future-week actions continue to use the viewed week.
 
-**Scope:** [Onboarding](../app/components/RagChefApp.tsx#L717), week navigation and selected-card scrolling. [Empty plan](../output/playwright/ui-review-2026-10-25/04-empty-plan-mobile.png).
+**Scope:** [Onboarding](../app/components/RagChefApp.tsx#L717), week navigation and selected-card scrolling. Empty plan (`output/playwright/ui-review-2026-10-25/04-empty-plan-mobile.png`).
 
 ### F6 — Put preferences ahead of maintenance controls
 
@@ -294,7 +301,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** The initial preferences screen exposes allergy entry without passing the backup section. Primary touch controls meet the chosen design target at 320 and 390 px without clipping. Keyboard order matches the visual order.
 
-**Scope:** [Settings section order](../app/components/RagChefApp.tsx#L1209), chip and button styles. [Screenshot](../output/playwright/ui-review-2026-10-25/03-settings-mobile.png).
+**Scope:** [Settings section order](../app/components/RagChefApp.tsx#L1209), chip and button styles. Screenshot (`output/playwright/ui-review-2026-10-25/03-settings-mobile.png`).
 
 ### F7 — Keep import actions visible in a long preview
 
@@ -304,7 +311,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** Confirm and Cancel stay visible for 1, 18, and 50 rows at both mobile widths. Invalid/duplicate entries disable confirmation with an understandable reason. Escape cancels, preserves the original draft, and returns focus to Add to pantry. These cancellation and keyboard behaviors already passed for the current short preview and must be retained.
 
-**Scope:** [Pantry preview](../app/components/RagChefApp.tsx#L792), modal layout. [Screenshot](../output/playwright/ui-review-2026-10-25/05-pantry-preview-mobile.png).
+**Scope:** [Pantry preview](../app/components/RagChefApp.tsx#L792), modal layout. Screenshot (`output/playwright/ui-review-2026-10-25/05-pantry-preview-mobile.png`).
 
 ### F8 — Lead broad dinner suggestions with reviewed mains
 
@@ -314,7 +321,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** When suitable reviewed mains exist, the default dinner shortlist favors them. Explicit requests for potatoes or a salad still return relevant side dishes. Re-run allergy, equipment, named-recipe, and dislike-ordering checks.
 
-**Scope:** [Instant-pick ranking](../app/components/RagChefApp.tsx#L368), existing reviewed dinner metadata. [Observed list in Recipes](../output/playwright/ui-review-2026-10-25/08-recipes-mobile.png); the same three titles appeared as Chef’s instant picks.
+**Scope:** [Instant-pick ranking](../app/components/RagChefApp.tsx#L368), existing reviewed dinner metadata. Observed list in Recipes (`output/playwright/ui-review-2026-10-25/08-recipes-mobile.png`); the same three titles appeared as Chef’s instant picks.
 
 ### F9 — Preserve useful local picks during a Chef API failure
 
@@ -324,7 +331,7 @@ Separately, clearing the planned dinner’s servings field immediately restored 
 
 **Acceptance:** With the catalog loaded and Chef unavailable, browsing suggestions remain actionable. Retry recovers, cancellation stays responsive, late results stay suppressed, and changes to allergies/pantry invalidate incompatible suggestions.
 
-**Scope:** Chef error handling and answer/list presentation. [Screenshot](../output/playwright/ui-review-2026-10-25/16-chef-api-error-desktop.png).
+**Scope:** Chef error handling and answer/list presentation. Screenshot (`output/playwright/ui-review-2026-10-25/16-chef-api-error-desktop.png`).
 
 ## Proposed implementation batches
 
@@ -360,8 +367,8 @@ Manual review used a disposable copy of the 166-recipe catalog. All five main vi
 
 Selected local evidence:
 
-- [Light mobile plan](../output/playwright/ui-implementation/plan-mobile-light.png) and [dark mobile plan](../output/playwright/ui-implementation/plan-mobile-dark.png).
-- [Long import preview](../output/playwright/ui-implementation/import-mobile-dark.png) and [visible Undo](../output/playwright/ui-implementation/undo-mobile-dark.png).
-- [Dark desktop recipes](../output/playwright/ui-implementation/recipes-1440-dark.png) and [mobile preferences](../output/playwright/ui-implementation/settings-320-dark.png).
-- [Cooking at 320 px](../output/playwright/ui-implementation/cooking-320-dark.png).
-- [Final browser results](../output/playwright/e2e-2026-10-25T12-14-26-725Z/results.json).
+- Light mobile plan (`output/playwright/ui-implementation/plan-mobile-light.png`) and dark mobile plan (`output/playwright/ui-implementation/plan-mobile-dark.png`).
+- Long import preview (`output/playwright/ui-implementation/import-mobile-dark.png`) and visible Undo (`output/playwright/ui-implementation/undo-mobile-dark.png`).
+- Dark desktop recipes (`output/playwright/ui-implementation/recipes-1440-dark.png`) and mobile preferences (`output/playwright/ui-implementation/settings-320-dark.png`).
+- Cooking at 320 px (`output/playwright/ui-implementation/cooking-320-dark.png`).
+- Final browser results (`output/playwright/e2e-2026-10-25T12-14-26-725Z/results.json`).
