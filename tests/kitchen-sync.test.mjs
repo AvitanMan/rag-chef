@@ -32,7 +32,7 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["random-id", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-change-preview", "kitchen-merge", "private-storage", "app-session"]) {
+for (const name of ["random-id", "shopping-purchases", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-change-preview", "kitchen-merge", "private-storage", "app-session"]) {
   const source = await readFile(new URL(`../app/lib/${name}.${name === "app-session" ? "tsx" : "ts"}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
@@ -42,7 +42,9 @@ const { runtime } = await import(pathToFileURL(join(dir, "react.mjs")).href);
 const { useKitchen } = await import(pathToFileURL(join(dir, "use-kitchen.mjs")).href);
 const { AppSessionContext, disablePrivateOfflineShell, scheduleSessionExpiry } = await import(pathToFileURL(join(dir, "app-session.mjs")).href);
 const localSessionContext = AppSessionContext.value;
-const { KITCHEN_CACHE_KEY } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
+const { shoppingForWeek, applyBoughtItems, setShoppingItemBought } = await import(pathToFileURL(join(dir, "shopping-purchases.mjs")).href);
+const { validateKitchenWrite } = await import(pathToFileURL(join(dir, "kitchen-validation.mjs")).href);
+const { KITCHEN_CACHE_KEY, createPlannedMeal } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
 const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage, document: globalThis.document };
 after(async () => { runtime.reset(); Object.assign(globalThis, old); await rm(dir, { recursive: true, force: true }); });
 
@@ -286,6 +288,91 @@ test("conflicts preserve the draft until the saved version is explicitly selecte
   h.result.resolveConflict(false); await h.pump(); await h.tick();
   assert.equal(h.result.saveState, "saved");
   assert.equal(h.result.state.pantry.length, 1);
+});
+
+function purchaseFixture() {
+  const week = "2026-10-26", today = "2026-10-27";
+  const recipe = { id: "test:rice", title: "Rice", image: null, category: "", cuisine: "", tags: [], ingredients: ["rice", "onion", "carrot"].map(name => ({ name, measure: "200 g" })), instructions: ["Cook."], source: { name: "Test", url: "https://example.com/rice" }, sourceUrl: "https://example.com/rice" };
+  let base = { ...state(), pantry: [], meals: { [today]: createPlannedMeal(today, recipe) } };
+  for (const item of shoppingForWeek(base, week, today)) base = setShoppingItemBought(base, item.key, true, "cycle");
+  const buy = (names, id) => applyBoughtItems(base, week, today, shoppingForWeek(base, week, today).filter(item => names.includes(item.name)).map(item => ({ key: item.key, cycleId: base.shoppingCycles[item.key], name: item.name, measure: item.measure, pantryId: `${id}-${item.name}` })), id, "2026-10-27T12:00:00.000Z");
+  return { base, buy };
+}
+
+async function hostedConflict(base, browser, saved) {
+  for (const value of [base, browser, saved]) validateKitchenWrite({ revision: 1, state: value });
+  const h = await setup({ hosted: true, fetch: () => Response.json(document(1, base)) });
+  h.result.update(() => browser); await h.pump();
+  h.respond(() => Response.json({ current: document(2, saved) }, { status: 409 }));
+  await h.tick();
+  assert.equal(h.result.saveState, "conflict");
+  return h;
+}
+
+async function assertFailedMergePreserved(h, pattern) {
+  const before = { state: structuredClone(h.result.state), conflict: structuredClone(h.result.conflict), revision: h.result.getRevision(), local: [...h.local.values], session: [...h.session.values], recoverable: h.result.recoverable };
+  const calls = h.calls.length;
+  for (const prefer of [false, true]) {
+    const cachedBeforeResolution = [...h.local.values];
+    assert.doesNotThrow(() => h.result.resolveConflict(prefer));
+    await h.pump();
+    assert.match(h.result.conflictError, pattern);
+    assert.match(h.result.conflictError, /Export.*retry/);
+    assert.equal(h.result.saveState, "conflict");
+    assert.equal(h.result.busy, true);
+    assert.deepEqual(h.result.state, before.state);
+    assert.deepEqual(h.result.conflict, before.conflict);
+    assert.equal(h.result.getRevision(), before.revision);
+    assert.equal(h.result.recoverable, before.recoverable);
+    assert.deepEqual([...h.local.values], cachedBeforeResolution, "cached draft and base remain unchanged");
+    assert.deepEqual([...h.session.values], before.session);
+    h.result.retrySave(); await h.pump(); await h.tick();
+    assert.equal(await h.result.refreshSavedKitchen(), null);
+    assert.equal(h.calls.length, calls, "failed resolution keeps all synchronization paused");
+  }
+}
+
+test("hosted conflict rejects a combined pantry over 500 without changing the draft or base", async () => {
+  const base = { ...state(), pantry: [] };
+  const stock = prefix => Array.from({ length: 251 }, (_, i) => ({ id: `${prefix}-${i}`, name: `${prefix} stock ${i}`, measure: "1 kg" }));
+  const h = await hostedConflict(base, { ...base, pantry: stock("browser") }, { ...base, pantry: stock("saved") });
+  assert.equal(h.result.conflictError, "");
+  await assertFailedMergePreserved(h, /pantry.*500/);
+});
+
+test("ambiguous purchase merge is caught during hook rendering and resolution", async () => {
+  const { base, buy } = purchaseFixture();
+  const browser = buy(["rice"], "browser"), saved = buy(["carrot"], "saved");
+  saved.shoppingPurchases[0].items[0].pantry.id = "browser-rice";
+  saved.pantry[0].id = "browser-rice";
+  const h = await hostedConflict(base, browser, saved);
+  assert.match(h.result.conflictError, /shared by different purchases/);
+  assert.deepEqual(h.result.conflictRows, []);
+  await assertFailedMergePreserved(h, /shared by different purchases/);
+});
+
+for (const prefer of [false, true]) test(`hosted duplicate purchase merge saves one purchase per cycle: browser=${prefer}`, async () => {
+  const { base, buy } = purchaseFixture();
+  const h = await hostedConflict(base, buy(["rice", "onion"], "browser"), buy(["rice", "carrot"], "saved"));
+  assert.ok(h.result.conflictRows.length);
+  assert.equal(h.result.conflictError, "");
+  let writes = 0;
+  h.respond((_url, options) => {
+    assert.equal(options.method, "PUT");
+    const input = JSON.parse(options.body);
+    validateKitchenWrite(input);
+    assert.equal(input.revision, 2);
+    assert.deepEqual(input.state.pantry.map(item => item.id).sort(), ["browser-onion", "saved-carrot", `${prefer ? "browser" : "saved"}-rice`].sort());
+    assert.equal(input.state.shoppingPurchases.flatMap(receipt => receipt.items).length, 3);
+    writes++;
+    return Response.json(document(3, input.state));
+  });
+  h.result.resolveConflict(prefer); await h.pump(); await h.tick();
+  assert.equal(writes, 1);
+  assert.equal(h.result.saveState, "saved");
+  assert.equal(h.result.conflict, null);
+  assert.equal(h.result.conflictError, "");
+  assert.equal(h.result.getRevision(), 3);
 });
 
 test("backup failures remain explicit even when the database copy is saved", async () => {

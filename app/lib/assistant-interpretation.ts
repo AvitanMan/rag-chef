@@ -60,6 +60,60 @@ function measureSupported(measure: string, evidence: string, name: string): bool
   return Boolean(source && source.dimension === proposed.dimension && Math.abs(source.quantity - proposed.quantity) < 1e-8);
 }
 const PANTRY_CUES: Record<PantryAction["kind"], RegExp> = { add: /\b(?:add|bought|purchased|buy|got|received)\b/, set: /\b(?:set|have|left|remaining|correct|actually|update)\b/, subtract: /\b(?:used|use|subtract|consumed|ate|take|took)\b/, set_use_by: /\b(?:date|expires?|expiry|use.by|clear)\b/, remove: /\b(?:remove|delete|discard|throw away)\b/ };
+function pantrySpan(row: Record<string, unknown>, query: string, action: PantryAction, previousReference: boolean): string {
+  if (typeof row.evidence !== "string" || !row.evidence.trim() || row.evidence.length > 1000) return "";
+  const source = normalize(query), quoted = normalize(row.evidence), name = normalize(action.name);
+  const quotes = [...source.matchAll(new RegExp(escapePattern(quoted), "g"))];
+  if (!quotes.length) return "";
+  const separators = [...source.matchAll(/[,;!?]|\.(?=\s|$)|\b(?:and|then|but|however)\b/g)];
+  const otherInstruction = /\b(?:keep|leave|retain|preserve|plan|cook|make|prepare|serve|cancel|skip|forget)\b/;
+  const quantityStart = /^\s*(?:\d|[¼½¾⅓⅔]|(?:one|two|three|four|five|six|seven|eight|nine|ten|half)\b)/;
+  const dateAnnotation = /^\s*(?:use.by(?: date)?|expiry(?: date)?|expires?)(?:\s+(?:on|is))?\s+(?:\d{4}-\d{2}-\d{2}|tomorrow|today|tonight|(?:next\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s*$/;
+  const boundaries = separators.filter((boundary, index) => {
+    const following = source.slice(boundary.index! + boundary[0].length, separators[index + 1]?.index ?? source.length);
+    // A trailing date annotation belongs to the preceding stock operation.
+    if (/^(?:,|and)$/.test(boundary[0]) && dateAnnotation.test(following)) return false;
+    // Bare words joined by "and" may be one ingredient, not a list. A cue
+    // must start the next instruction: trailing "cheese expires tomorrow"
+    // must not turn "macaroni and cheese" into two destructive targets.
+    const instructionStart = following.trimStart().replace(/^(?:(?:please|also|actually|do not|don't|never)\s+)+/, "");
+    return boundary[0] !== "and" || quantityStart.test(following) || otherInstruction.exec(instructionStart)?.index === 0
+      || Object.values(PANTRY_CUES).some(cue => cue.exec(instructionStart)?.index === 0);
+  });
+  const candidates: string[] = [];
+  let start = 0, inherited = "";
+  for (const boundary of [...boundaries, { index: source.length, 0: "" }]) {
+    const end = boundary.index!, text = source.slice(start, end);
+    // Date annotations are not a second stock operation ("add rice use-by
+    // tomorrow"). Likewise, "actually add" is an add, not a corrected total.
+    const operationText = text.replace(/\buse.by\b/g, "");
+    const amountUpdate = PANTRY_CUES.set.test(operationText)
+      && /\d|[¼½¾⅓⅔]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|half)\b/.test(text.split(/\b(?:use.by|expiry|expires?|date)\b/)[0]);
+    const kinds = (["add", "subtract", "remove", "set"] as const).filter(kind => PANTRY_CUES[kind].test(kind === "set" ? operationText.replace(/\b(?:actually|correct|update)\b/g, "") : operationText));
+    const dateOnly = !amountUpdate && PANTRY_CUES.set_use_by.test(text) && !kinds.some(kind => kind === "add" || kind === "subtract")
+      && (!kinds.includes("remove") || /\b(?:clear|remove)\b.*\b(?:date|expiry|use.by)\b/.test(text)) && (kinds.length > 0 || !inherited || /\bclear\b/.test(text));
+    const own = otherInstruction.test(text) ? "ambiguous" : dateOnly ? "set_use_by" : kinds.length === 1 ? kinds[0] : kinds.length > 1 ? "ambiguous" : PANTRY_CUES.set.test(text) ? "set" : "";
+    const negative = /\b(?:do not|don't|never)\b/.test(text);
+    // Only quantified additions may borrow a verb. Never infer a destructive
+    // operation from a bare list or from an unrelated instruction.
+    const cue = own ? `${negative ? "do not " : ""}${own === "set_use_by" ? "date" : own}` : quantityStart.test(text) && /^(?:do not )?add$/.test(inherited) ? inherited : "";
+    const local = own ? text : `${cue} ${text}`;
+    const identityRemainder = text.replace(new RegExp(`\\b${escapePattern(name)}\\b`), "");
+    const named = (completeIngredientName(name, text) || previousReference && /\b(?:it|that|this|instead|actually)\b/.test(text))
+      && !/\band\b/.test(identityRemainder.replace(/,?\s*and\s+(?=use.by|expiry|expires?)/g, " "));
+    // Keep source offsets: looking the localized text up again would bind a
+    // repeated ingredient to its first (possibly opposite) operation.
+    if (named && quotes.some(quote => quote.index! < end && quote.index! + quote[0].length > start)) {
+      candidates.push(own === "ambiguous" || !cue || !cue.endsWith(action.kind === "set_use_by" ? "date" : action.kind) || negative || /^do not\b/.test(cue) ? "" : local);
+    }
+    inherited = cue;
+    if (/^[;.!?]$|^(?:but|however)$/.test(boundary[0])) inherited = "";
+    start = end + boundary[0].length;
+  }
+  // A quote spanning two occurrences of the same ingredient does not identify
+  // which action is meant. Require narrower, unambiguous evidence instead.
+  return candidates.length === 1 ? candidates[0] : "";
+}
 function cancelled(query: string, name: string, single = false, kind?: PantryAction["kind"]): boolean {
   return normalize(query).split(/[,;.!?]|\b(?:but|however)\b|\band\s+(?=(?:add|remove|keep|set|subtract|change|update|clear|cook|plan)\b)/).some(clause => {
     const named = clause.includes(normalize(name)) || /\b(?:all|everything)\b/.test(clause) || single && /\b(?:it|that|this)\b/.test(clause);
@@ -108,8 +162,9 @@ export function validateAssistantInterpretation(raw: unknown, options: { query: 
     if (!record(value) || !exactFields(value, ["kind", "name", "stockId", "measure", "useBy", "useBySpecified", "evidence"]) || typeof value.name !== "string" || typeof value.useBySpecified !== "boolean" || value.stockId !== null && typeof value.stockId !== "string" || value.measure !== null && typeof value.measure !== "string" || value.useBy !== null && typeof value.useBy !== "string") invalid();
     const action: PantryAction = { kind: value.kind as PantryAction["kind"], name: String(value.name), ...(value.stockId ? { stockId: String(value.stockId) } : {}), ...(value.measure !== null ? { measure: String(value.measure) } : {}), ...(value.useBySpecified ? { useBy: value.useBy as string | null } : {}) };
     if (previous?.pantry.some(prior => assistantStable(prior) === assistantStable(action))) return action;
-    const evidence = span(value, options.query);
-    if (!evidence || /\b(?:do not|don't|never)\s+(?:add|buy|set|subtract|use|remove|delete|discard|change|update)\b/.test(evidence) || /(?:^|\s)-\s*\d/.test(evidence)) invalid();
+    const evidence = pantrySpan(value, options.query, action, previous?.pantry.length === 1 && canonicalIngredient(previous.pantry[0].name) === canonicalIngredient(action.name));
+    const containingSpan = span(value, options.query);
+    if (!evidence || /\b(?:do not|don't|never)\s+(?:add|buy|set|subtract|use|remove|delete|discard|change|update)\b/.test(containingSpan) || /(?:^|\s)-\s*\d/.test(containingSpan)) invalid();
     if (!PANTRY_CUES[action.kind]?.test(evidence)) invalid();
     const name = normalize(action.name);
     const previousReference = previous?.pantry.length === 1 && canonicalIngredient(previous.pantry[0].name) === canonicalIngredient(action.name) && /\b(?:it|that|this|instead|actually)\b/.test(evidence);

@@ -175,6 +175,166 @@ test('amount evidence stays attached to its ingredient in compound grocery reque
   assert.deepEqual(correct.intent.pantry.map(row=>[row.name,row.measure]),[['rice','1 kg'],['beans','2 kg']]);
 });
 
+test('pantry verbs cannot be borrowed across ingredient clauses, even with cropped or broad evidence',()=>{
+  const kitchen=state([stock('beans','beans','500 g')]);
+  for(const [query,kind,name,measure,evidence] of [
+    ['Remove rice and add 2 kg beans.','remove','beans',null,'add 2 kg beans'],
+    ['Remove rice and add 2 kg beans.','remove','beans',null,'beans'],
+    ['Remove rice and add 2 kg beans.','remove','beans',null,'Remove rice and add 2 kg beans.'],
+    ['Add 2 kg rice and remove beans.','add','beans','2 kg','remove beans'],
+    ['Add 2 kg rice and remove beans.','add','beans',null,'Add 2 kg rice and remove beans.'],
+    ['Subtract 100 g rice and add 2 kg beans.','subtract','beans','2 kg','2 kg beans'],
+    ['Set rice to 1 kg and remove beans.','set','beans','1 kg','Set rice to 1 kg and remove beans.'],
+    ['Remove rice, add 2 kg beans.','remove','beans',null,'beans'],
+    ['Remove rice then add 2 kg beans.','remove','beans',null,'beans'],
+    ['Remove rice and add 2 kg rice.','remove','rice',null,'add 2 kg rice'],
+    ['Add 2 kg rice and remove rice.','add','rice','2 kg','remove rice'],
+    ['Remove rice and add 2 kg rice.','remove','rice',null,'rice'],
+    ['Remove rice and add 2 kg rice.','remove','rice',null,'Remove rice and add 2 kg rice.'],
+    ['Remove rice and add 2 kg rice.','add','rice','2 kg','Remove rice and add 2 kg rice.'],
+    ['Remove rice add 2 kg beans.','remove','beans',null,'beans'],
+  ]) assert.throws(()=>interpret(request([modelAction(kind,name,measure,evidence)]),context(query,kitchen)),{code:'invalid_interpretation'},`${query} / ${evidence}`);
+  assert.deepEqual(kitchen.pantry,[stock('beans','beans','500 g')]);
+});
+
+test('coordinated pantry actions and shared verbs retain local amounts, dates and identities',async()=>{
+  for(const query of ['Add 1 kg rice and 2 kg beans','Add 1 kg rice, 2 kg beans','Add 1 kg rice and add 2 kg beans']){
+    const actions=[modelAction('add','rice','1 kg',query),modelAction('add','beans','2 kg',query)];
+    const result=interpret(request(actions),context(query));
+    const data=input(result.intent),draft=await build(data),applied=await apply({...data,draft});
+    assert.deepEqual(applied.state.pantry.map(row=>[row.name,row.measure]),[['rice','1000 g'],['beans','2000 g']]);
+  }
+  const query='Remove rice and add 2 kg beans.',kitchen=state([stock('rice','rice','100 g'),stock('beans','beans','500 g')]);
+  const result=interpret(request([modelAction('remove','rice',null,query),modelAction('add','beans','2 kg',query)]),context(query,kitchen));
+  const data=input(result.intent,kitchen),draft=await build(data),applied=await apply({...data,draft});
+  assert.deepEqual(applied.state.pantry.map(row=>[row.name,row.measure]),[['beans','500 g'],['beans','2000 g']]);
+  const repeated='Remove rice and add 2 kg rice.';
+  assert.deepEqual(interpret(request([modelAction('remove','rice',null,'Remove rice'),modelAction('add','rice','2 kg','add 2 kg rice')]),context(repeated)).intent.pantry.map(row=>row.kind),['remove','add']);
+  const dated='Add 1 kg brown rice use-by tomorrow and 2 kg red lentils use-by 2026-11-09';
+  const actions=[modelAction('add','brown rice','1 kg',dated,{useBySpecified:true,useBy:'2026-11-05'}),modelAction('add','red lentils','2 kg',dated,{useBySpecified:true,useBy:'2026-11-09'})];
+  assert.deepEqual(interpret(request(actions),context(dated)).intent.pantry.map(row=>row.useBy),['2026-11-05','2026-11-09']);
+  assert.throws(()=>interpret(request([{...actions[0],useBy:'2026-11-09'}]),context(dated)));
+  assert.throws(()=>interpret(request([{...actions[1],measure:'1 kg'}]),context(dated)));
+});
+
+test('shared verbs retain negative context and do not leak batch or date evidence',()=>{
+  for(const query of ["Don't add 1 kg rice and 2 kg beans",'Never add 1 kg rice and 2 kg beans','Do not remove rice and beans']){
+    const removing=query.includes('remove');
+    assert.throws(()=>interpret(request([modelAction(removing?'remove':'add','beans',removing?null:'2 kg',removing?'beans':'2 kg beans')]),context(query)));
+  }
+  const query="Remove rice and don't add 2 kg beans";
+  assert.throws(()=>interpret(request([modelAction('add','beans','2 kg','add 2 kg beans')]),context(query)));
+  assert.throws(()=>interpret(request([modelAction('add','beans','2 kg','add 2 kg beans')]),context("Don't add rice and add 2 kg beans")));
+  const clearing='Add 1 kg rice and clear beans expiry';
+  assert.throws(()=>interpret(request([modelAction('add','beans',null,clearing)]),context(clearing)));
+  assert.equal(interpret(request([modelAction('set_use_by','beans',null,clearing,{useBySpecified:true,useBy:null})]),context(clearing)).intent.pantry[0].useBy,null);
+  const dated='Add 1 kg rice tomorrow and 2 kg beans';
+  assert.throws(()=>interpret(request([modelAction('add','beans','2 kg',dated,{useBySpecified:true,useBy:'2026-11-05'})]),context(dated)));
+  const kitchen=state([stock('small','beans','100 g'),stock('large','beans','200 g')]);
+  const batches='Remove rice from batch large and subtract 50 g beans';
+  assert.equal(interpret(request([modelAction('subtract','beans','50 g',batches,{stockId:'large'})]),context(batches,kitchen)).intent.pantry[0].stockId,undefined);
+  const removing='Remove beans from the batch expiring 2026-11-09';
+  const datedKitchen=state([stock('small','beans','100 g','2026-11-05'),stock('large','beans','200 g','2026-11-09')]);
+  assert.equal(interpret(request([modelAction('remove','beans',null,removing,{stockId:'large'})]),context(removing,datedKitchen)).intent.pantry[0].stockId,'large');
+  const selected='Remove rice and subtract 50 g beans from batch large';
+  assert.equal(interpret(request([modelAction('subtract','beans','50 g',selected,{stockId:'large'})]),context(selected,kitchen)).intent.pantry[0].stockId,'large');
+});
+
+test('compound ingredient names stay intact and cannot authorize destructive fragments',async()=>{
+  for(const name of ['macaroni and cheese','sweet and sour sauce']){
+    const query=`Remove ${name}`,kitchen=state([stock('whole',name,'100 g'),stock('fragment',name.split(' and ')[1],'200 g')]);
+    for(const evidence of [query,name]){
+      const result=interpret(request([modelAction('remove',name,null,evidence)]),context(query,kitchen));
+      const data=input(result.intent,kitchen),draft=await build(data),applied=await apply({...data,draft});
+      assert.deepEqual(applied.state.pantry,[kitchen.pantry[1]]);
+    }
+    for(const fragment of name.split(' and ')) for(const evidence of [query,fragment]){
+      assert.throws(()=>interpret(request([modelAction('remove',fragment,null,evidence)]),context(query,kitchen)),{code:'invalid_interpretation'});
+    }
+    const adding=`Add 1 kg ${name}`;
+    assert.equal(interpret(request([modelAction('add',name,'1 kg',adding)]),context(adding)).intent.pantry[0].name,name);
+  }
+  for(const query of ['Remove rice and beans','Remove rice, beans','Subtract 100 g rice and 50 g beans','Set rice to 100 g and 50 g beans']){
+    const kind=query.startsWith('Subtract')?'subtract':query.startsWith('Set')?'set':'remove';
+    assert.throws(()=>interpret(request([modelAction(kind,'beans',kind==='remove'?null:'50 g','beans')]),context(query)),{code:'invalid_interpretation'});
+  }
+  const explicit='Remove rice and remove beans';
+  assert.deepEqual(interpret(request([modelAction('remove','rice',null,explicit),modelAction('remove','beans',null,explicit)]),context(explicit)).intent.pantry.map(row=>row.name),['rice','beans']);
+});
+
+test('trailing date cues cannot split compound names into destructive targets',async()=>{
+  for(const name of ['macaroni and cheese','sweet and sour sauce']){
+    const fragments=name.split(' and '),kitchen=state([stock('whole',name,'100 g'),...fragments.map((fragment,index)=>stock(`fragment-${index}`,fragment,'200 g'))]);
+    const before=structuredClone(kitchen);
+    for(const annotation of ['expires tomorrow','expires 2026-11-09']){
+      const query=`Remove ${name} ${annotation}`;
+      for(const fragment of fragments) for(const evidence of [query,`Remove ${fragments[0]}`,fragment]){
+        assert.throws(()=>interpret(request([modelAction('remove',fragment,null,evidence)]),context(query,kitchen)),{code:'invalid_interpretation'},`${query} / ${fragment} / ${evidence}`);
+      }
+      for(const evidence of [query,name]){
+        const result=interpret(request([modelAction('remove',name,null,evidence)]),context(query,kitchen));
+        assert.deepEqual(result.intent.pantry,[{kind:'remove',name}]);
+        const data=input(result.intent,kitchen),draft=await build(data),applied=await apply({...data,draft});
+        assert.deepEqual(applied.state.pantry,kitchen.pantry.slice(1));
+      }
+      assert.deepEqual(kitchen,before);
+    }
+    for(const annotation of ['use-by tomorrow','expiry tomorrow','was purchased yesterday','is left in the pantry','is for the dinner plan']){
+      const query=`Remove ${name} ${annotation}`;
+      assert.throws(()=>interpret(request([modelAction('remove',fragments[0],null,query)]),context(query,kitchen)),{code:'invalid_interpretation'},query);
+    }
+  }
+  for(const prefix of ['', 'please ', 'also ']){
+    const query=`Remove rice and ${prefix}add 2 kg beans`;
+    assert.deepEqual(interpret(request([modelAction('remove','rice',null,query),modelAction('add','beans','2 kg',query)]),context(query)).intent.pantry.map(row=>row.kind),['remove','add']);
+  }
+});
+
+test('keep and planning clauses cannot inherit pantry operations',()=>{
+  for(const instruction of ['keep the beans','plan dinner with beans','cook dinner with beans','leave the beans in the pantry']){
+    for(const [verb,kind,measure] of [['Remove','remove',null],['Add','add',null],['Subtract 50 g','subtract','50 g']]){
+      const query=`${verb} rice and ${instruction}`;
+      for(const evidence of [query,instruction,'beans']) assert.throws(()=>interpret(request([modelAction(kind,'beans',measure,evidence)]),context(query)),{code:'invalid_interpretation'},query);
+    }
+    const query=`Remove rice and ${instruction}`;
+    assert.equal(interpret(request([modelAction('remove','rice',null,'Remove rice')]),context(query)).intent.pantry[0].name,'rice');
+  }
+  const query='Remove rice and keep the beans and 2 kg lentils';
+  assert.throws(()=>interpret(request([modelAction('remove','lentils',null,'lentils')]),context(query)),{code:'invalid_interpretation'});
+});
+
+test('amount updates retain attached date annotations without borrowing another ingredient date',async()=>{
+  for(const [verb,kind] of [['Add','add'],['Set','set']]) for(const separator of [' ', ', ', ' and ']){
+    const query=kind==='set'?`${verb} rice to 1 kg${separator}use-by tomorrow`:`${verb} 1 kg rice${separator}use-by tomorrow`;
+    for(const evidence of [query,'rice']){
+      const result=interpret(request([modelAction(kind,'rice','1 kg',evidence,{useBySpecified:true,useBy:'2026-11-05'})]),context(query));
+      assert.deepEqual(result.intent.pantry,[{kind,name:'rice',measure:'1 kg',useBy:'2026-11-05'}]);
+      const data=input(result.intent,state([stock('r','rice','100 g')])),draft=await build(data),applied=await apply({...data,draft});
+      assert.ok(applied.state.pantry.some(row=>row.measure==='1000 g'&&row.useBy==='2026-11-05'));
+    }
+  }
+  const query='Set rice to 1 kg, use-by tomorrow and add 2 kg beans, use-by 2026-11-09';
+  const actions=[modelAction('set','rice','1 kg',query,{useBySpecified:true,useBy:'2026-11-05'}),modelAction('add','beans','2 kg',query,{useBySpecified:true,useBy:'2026-11-09'})];
+  assert.deepEqual(interpret(request(actions),context(query)).intent.pantry.map(row=>row.useBy),['2026-11-05','2026-11-09']);
+  for(const [index,date] of [[0,'2026-11-09'],[1,'2026-11-05']]) assert.throws(()=>interpret(request([{...actions[index],useBy:date}]),context(query)),{code:'invalid_interpretation'});
+  for(const measure of ['1 bunch','2','half kg']){
+    const query=`Set rice to ${measure} use-by tomorrow`;
+    assert.equal(interpret(request([modelAction('set','rice',measure,query,{useBySpecified:true,useBy:'2026-11-05'})]),context(query)).intent.pantry[0].measure,measure);
+  }
+  const dateOnly='Set rice use-by tomorrow';
+  assert.equal(interpret(request([modelAction('set_use_by','rice',null,dateOnly,{useBySpecified:true,useBy:'2026-11-05'})]),context(dateOnly)).intent.pantry[0].kind,'set_use_by');
+});
+
+test('clause grounding preserves pronoun corrections and unchanged cumulative actions',async()=>{
+  const previousDraft=await build(input(intent([{kind:'add',name:'rice',measure:'500 g'}])));
+  const query='Actually set it to 300 g';
+  const result=interpret(request([modelAction('set','rice','300 g','set it to 300 g')]),context(query,state(),{previousDraft}));
+  assert.deepEqual(result.intent.pantry,[{kind:'set',name:'rice',measure:'300 g'}]);
+  const cumulative='Add 2 kg beans and 100 g red lentils';
+  const updated=interpret(request([modelAction('add','rice','500 g',''),modelAction('add','beans','2 kg',cumulative),modelAction('add','red lentils','100 g',cumulative)]),context(cumulative,state(),{previousDraft}));
+  assert.deepEqual(updated.intent.pantry.map(row=>row.name),['rice','beans','red lentils']);
+});
+
 test('an additive followup preserves prior pantry and taste changes omitted by the model',async()=>{
   const previousDraft=await build(input(intent([{kind:'add',name:'rice',measure:'500 g'}],{tastes:[{recipeId:'b-beans',preference:'cook_again'}]})));
   const query='Also add 200 g beans';

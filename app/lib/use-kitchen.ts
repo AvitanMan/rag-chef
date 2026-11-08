@@ -22,6 +22,10 @@ export type RecoveryDraftPreview = Readonly<{
   token: string;
 }>;
 
+function conflictFailure(error: unknown): string {
+  return `Kitchen changes could not be merged safely: ${error instanceof Error ? error.message : "invalid combined kitchen data"} Your draft is unchanged and saving remains paused. Export your kitchen backup before making corrections, then retry the merge. If purchase history is ambiguous, ask the household owner for help reconciling it.`;
+}
+
 export function useKitchen(fallbackRecipes: Recipe[]) {
   const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch, registerSessionWork } = useAppSession();
   const hosted = session.mode === "hosted";
@@ -35,6 +39,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const [savedSnapshot, setSavedSnapshot] = useState("");
   const [browserSnapshot, setBrowserSnapshot] = useState("");
   const [conflict, setConflict] = useState<KitchenDocument | null>(null);
+  const [mergeError, setMergeError] = useState("");
   const [retry, setRetry] = useState(0);
   const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([]);
   const [recoveryError, setRecoveryError] = useState("");
@@ -396,14 +401,25 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
 
   const resolveConflict = useCallback((keepDraft: boolean) => {
     if (!conflict) return;
+    const saved = conflict.state ?? structuredClone(EMPTY_KITCHEN);
+    let merged: KitchenState | undefined;
+    if (hosted) {
+      try {
+        merged = mergeKitchenDraft(mergeBase, latest.current, saved, keepDraft).state;
+        validateKitchenWrite({ revision: conflict.revision, state: merged });
+      } catch (error) {
+        const message = conflictFailure(error);
+        setMergeError(message); setStatus(message);
+        return;
+      }
+    }
     serverDocument.current = conflict;
     recoveryReviewPending.current = false;
     revision.current = conflict.revision;
     paused.current = false;
     setConflict(null);
-    if (hosted) {
-      const saved = conflict.state ?? structuredClone(EMPTY_KITCHEN);
-      const merged = mergeKitchenDraft(mergeBase, latest.current, saved, keepDraft).state;
+    setMergeError("");
+    if (merged) {
       // Preserve both independent family edits and this tab's independent edits.
       savedJson.current = JSON.stringify(saved); setSavedSnapshot(savedJson.current);
       rememberBase(saved); latest.current = merged; setState(merged);
@@ -532,7 +548,17 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     } catch { setStatus("The browser could not remove that draft."); return false; }
   }, [refreshRecovery, privateStorage]);
 
+  let conflictRows: ReturnType<typeof mergeKitchenDraft>["conflicts"] = [];
+  let conflictError = conflict ? mergeError : "";
+  if (hosted && conflict) {
+    try {
+      conflictRows = mergeKitchenDraft(mergeBase, state, conflict.state ?? structuredClone(EMPTY_KITCHEN)).conflicts;
+    } catch (error) {
+      conflictError = conflictFailure(error);
+    }
+  }
+
   const saveState: KitchenSaveState = savePhase === "saved" && JSON.stringify(state) !== savedSnapshot ? "pending" : savePhase;
-  return { state, update, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, conflictRows: hosted && conflict ? mergeKitchenDraft(mergeBase, state, conflict.state ?? structuredClone(EMPTY_KITCHEN)).conflicts : [], resolveConflict, retrySave: () => setRetry((value) => value + 1),
+  return { state, update, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, conflictRows, conflictError, resolveConflict, retrySave: () => setRetry((value) => value + 1),
     busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoveryError, previewRecoveryDraft, recoverDraft, discardDraft, restoreBackup };
 }
