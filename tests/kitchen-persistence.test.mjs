@@ -24,6 +24,7 @@ for (const [name, sourcePath] of [
   ["kitchen-types", "../app/lib/kitchen-types.ts"],
   ["quantities", "../app/lib/quantities.ts"],
   ["kitchen-store", "../app/lib/kitchen-store.ts"],
+  ["household", "../app/lib/household.ts"],
   ["kitchen-validation", "../app/lib/kitchen-validation.ts"],
   ["kitchen-route", "../app/api/kitchen/route.ts"],
 ]) {
@@ -34,6 +35,7 @@ for (const [name, sourcePath] of [
   await writeFile(join(directory, `${name}.mjs`), compiled
     .replaceAll('"cloudflare:workers"', '"./test-cloudflare.mjs"')
     .replaceAll('"@/app/lib/kitchen-store"', '"./kitchen-store.mjs"')
+    .replaceAll('"@/app/lib/household"', '"./household.mjs"')
     .replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
 

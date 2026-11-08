@@ -1,5 +1,7 @@
 "use client";
 
+import { randomId } from "../lib/random-id";
+
 import { useState } from "react";
 import type { KitchenState } from "../lib/kitchen-types";
 import type { ShoppingItem } from "../lib/quantities";
@@ -12,7 +14,7 @@ export function PurchasePreview({ items, state, week, today, close, confirm }: {
   close: () => void; confirm: (drafts: PurchaseDraft[]) => void;
 }) {
   const [drafts, setDrafts] = useState<PurchaseDraft[]>(() => items.map((item) => ({ key: item.key, name: item.name,
-    cycleId: state.shoppingCycles?.[item.key], measure: parseMeasure(item.measure) ? item.measure : "", pantryId: crypto.randomUUID() })));
+    cycleId: state.shoppingCycles?.[item.key], measure: parseMeasure(item.measure) ? item.measure : "", pantryId: randomId() })));
   const error = purchasePreviewProblem(state, week, today, drafts);
   return <Modal className="kitchen-modal-backdrop" label="Add bought items to pantry" close={close}>
     <section className="panel kitchen-modal pantry-import-modal">

@@ -1,0 +1,21 @@
+-- Optimistic catalog fence for atomic reviewed Apply; source changes cannot race a kitchen save.
+CREATE TABLE recipe_catalog_revision (id INTEGER PRIMARY KEY NOT NULL CHECK(id=1), revision INTEGER NOT NULL DEFAULT 0);
+INSERT INTO recipe_catalog_revision(id,revision) VALUES(1,0);
+CREATE TRIGGER catalog_revision_recipe_sources_insert AFTER INSERT ON recipe_sources BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_sources_update AFTER UPDATE ON recipe_sources BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_sources_delete AFTER DELETE ON recipe_sources BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipes_insert AFTER INSERT ON recipes BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipes_update AFTER UPDATE ON recipes BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipes_delete AFTER DELETE ON recipes BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_ingredients_insert AFTER INSERT ON recipe_ingredients BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_ingredients_update AFTER UPDATE ON recipe_ingredients BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_ingredients_delete AFTER DELETE ON recipe_ingredients BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_sections_insert AFTER INSERT ON recipe_instruction_sections BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_sections_update AFTER UPDATE ON recipe_instruction_sections BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_sections_delete AFTER DELETE ON recipe_instruction_sections BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_steps_insert AFTER INSERT ON recipe_instruction_steps BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_steps_update AFTER UPDATE ON recipe_instruction_steps BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_instruction_steps_delete AFTER DELETE ON recipe_instruction_steps BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_metadata_insert AFTER INSERT ON recipe_metadata BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_metadata_update AFTER UPDATE ON recipe_metadata BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER catalog_revision_recipe_metadata_delete AFTER DELETE ON recipe_metadata BEGIN UPDATE recipe_catalog_revision SET revision=revision+1 WHERE id=1; END;

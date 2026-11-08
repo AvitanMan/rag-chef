@@ -4,7 +4,7 @@ import { normalizePlanningIngredient, parseMeasure } from "@/app/lib/quantities"
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
 export async function GET(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request); if (denied) return denied;
+  const denied = await authorizeCatalogRequest(request); if (denied) return denied;
   try {
     const entries = (await listCatalogRecipes(1000)).map((item) => {
       const amountGaps = item.recipe.ingredients.flatMap((original, index) => {
@@ -22,7 +22,7 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request); if (denied) return denied;
+  const denied = await authorizeCatalogRequest(request); if (denied) return denied;
   if (request.headers.get("content-type")?.split(";", 1)[0].trim() !== "application/json") return json({ error: "Send application/json." }, 415);
   let input: { entries: unknown[]; preview?: boolean };
   try {

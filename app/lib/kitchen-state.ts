@@ -1,3 +1,4 @@
+import { randomId } from "./random-id";
 import type { KitchenState, PlannedMeal, PersonalRecipeAmounts } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 import { applyPersonalRecipeAmounts, normalizePlanningIngredient } from "./quantities";
@@ -25,7 +26,7 @@ export function weekStart(date = localDate()): string {
 export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true, personal?: { amounts?: PersonalRecipeAmounts; contentHash?: string }): PlannedMeal {
   const baseServings = recipe.servings && recipe.servings > 0 ? recipe.servings : null;
   const meal: PlannedMeal = {
-    id: crypto.randomUUID(), date, recipeId: recipe.id,
+    id: randomId(), date, recipeId: recipe.id,
     recipe: structuredClone(recipe), title: recipe.title,
     baseServings, servings: baseServings, batches: 1, locked: false,
     status: "planned", ingredientOverrides: {},
@@ -58,7 +59,7 @@ export function migrateLegacyKitchen(
     : [];
   const state: KitchenState = {
     schemaVersion: 2,
-    pantry: [...new Set(pantry)].map((name) => ({ id: crypto.randomUUID(), name, measure: "" })),
+    pantry: [...new Set(pantry)].map((name) => ({ id: randomId(), name, measure: "" })),
     meals: {}, shoppingChecked: {}, migratedLegacy: true,
   };
   if (legacy?.plan && typeof legacy.plan === "object") {
@@ -68,7 +69,7 @@ export function migrateLegacyKitchen(
       const date = addDateDays(start, index);
       const recipe = recipes.find((item) => item.id === id || item.id.endsWith(`:${id}`));
       state.meals[date] = recipe ? createPlannedMeal(date, recipe, false) : {
-        id: crypto.randomUUID(), date, recipeId: id, recipe: null,
+        id: randomId(), date, recipeId: id, recipe: null,
         title: `Saved recipe (${id})`, baseServings: null, servings: null,
         batches: 1, locked: false, status: "planned", ingredientOverrides: {},
       };

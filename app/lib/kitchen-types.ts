@@ -66,6 +66,21 @@ export interface PlannedMeal {
   };
 }
 
+export interface RecipeTastePreference {
+  memberId: string;
+  recipeId: string;
+  preference: "cook_again" | "less_often";
+  updatedAt: string;
+}
+export interface AssistantActionReceipt {
+  id: string;
+  reviewHash: string;
+  memberId: string;
+  appliedRevision: number;
+  appliedAt: string;
+  summary: string[];
+}
+
 export interface KitchenState {
   schemaVersion: 2;
   pantry: PantryStock[];
@@ -80,6 +95,8 @@ export interface KitchenState {
   /** Optional for older kitchens; new edits and backups preserve the shared profile. */
   cookingProfile?: CookingProfile;
   personalRecipeAmounts?: Record<string, PersonalRecipeAmounts>;
+  tastePreferences?: RecipeTastePreference[];
+  recentActionReceipts?: AssistantActionReceipt[];
   migratedLegacy: boolean;
 }
 

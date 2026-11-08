@@ -1,3 +1,5 @@
+import { revealPantryEditors } from "./ui-controls";
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -34,7 +36,7 @@ test("ingredient to dinner, cooking, deductions and Undo without AI", async ({ p
   let calls = 0;
   page.on("request", request => { if (request.url().endsWith("/api/chef")) calls++; });
   await page.route("**/api/chef", route => route.abort());
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await expect(results).toContainText("Estimated use from this pantry item: 200 g.");
   await expect(results).not.toContainText("Cheese Pasta");
@@ -58,27 +60,33 @@ test("ingredient to dinner, cooking, deductions and Undo without AI", async ({ p
 
 test("review filters, selected row focus, amount edits and removal recovery", async ({ page, request }) => {
   await save(request, { ...initial(), pantry: [...initial().pantry, { id: "past", name: "carrot", measure: "2", useBy: "2026-10-21" }, { id: "undated", name: "beans", measure: "" }] });
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await results.getByRole("button", { name: "Review this item", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use soon (1)", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/use-soon-pantry-${test.info().project.name}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).fill("300 g");
+  await revealPantryEditors(page);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).press("Tab");
   await expect.poll(async () => (await read(request)).state.pantry[0].measure).toBe("300 g");
   await page.goBack();
   await expect(results).toContainText("300 g remaining");
   await page.goForward();
+  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("300 g");
   await page.getByRole("button", { name: "Past entered date (1)", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(page.getByRole("textbox", { name: "Available carrot", exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-pantry-name="rice"]')).toHaveCount(0);
   await page.getByRole("button", { name: "All items (3)", exact: true }).click();
+  await revealPantryEditors(page);
   await page.getByLabel("Use by rice", { exact: true }).fill("2026-10-28");
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe("2026-10-28");
@@ -88,7 +96,7 @@ test("review filters, selected row focus, amount edits and removal recovery", as
 
 test("unknown amounts remain uncertain and midnight removes old selections", async ({ page, request }) => {
   await save(request, { ...initial(), pantry: [{ ...initial().pantry[0], measure: "" }] });
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await expect(results).toContainText("Amount unknown");
   await expect(results).toContainText("Check amount");
@@ -102,7 +110,7 @@ test("unknown amounts remain uncertain and midnight removes old selections", asy
 test("date and portions change estimates while reservations and replacement remain protected", async ({ page, request }) => {
   const recipe = await source(request);
   await save(request, { ...initial(), pantry: [{ ...initial().pantry[0], useBy: "2026-10-23" }], meals: { "2026-10-23": meal(recipe, "2026-10-23") } });
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await expect(results).toContainText("300 g remaining");
   await page.getByText("Dinner day and portions", { exact: false }).first().click();
@@ -122,7 +130,7 @@ test("date and portions change estimates while reservations and replacement rema
 test("fully reserved pantry item cannot promise another dinner", async ({ page, request }) => {
   const recipe = await source(request);
   await save(request, { ...initial(), pantry: [{ ...initial().pantry[0], measure: "200 g", useBy: "2026-10-23" }], meals: { "2026-10-23": meal(recipe, "2026-10-23") } });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Find dinners using rice", exact: true }).click();
   const results = page.getByRole("region", { name: "Dinners using rice", exact: true });
   await expect(results).toContainText("fully reserved");
@@ -131,12 +139,13 @@ test("fully reserved pantry item cannot promise another dinner", async ({ page, 
 
 test("no match and empty pantry are explained with a path back to browsing", async ({ page, request }) => {
   await save(request, { ...initial(), pantry: [{ id: "unmatched", name: "dragonfruit", measure: "2", useBy: TODAY }] });
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Find dinners using dragonfruit", exact: true }).click();
   await expect(page.getByRole("region", { name: "Dinners using dragonfruit", exact: true })).toContainText("No matching recipes meet your saved requirements");
   await page.getByRole("button", { name: "Browse all recipes", exact: true }).click();
   await expect(page.getByRole("searchbox", { name: "Search recipes", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.getByRole("button", { name: "Remove dragonfruit", exact: true }).click();
   await navigate(page, "Chef");
   await expect(page.getByRole("region", { name: "Use soon", exact: true })).toContainText("No food with an entered date");
@@ -146,7 +155,7 @@ test("three choices expand to the rest of the matching collection", async ({ pag
   const rice = await source(request);
   const recipes = Array.from({ length: 5 }, (_, index) => ({ ...rice, id: `rice-${index}`, title: `Rice dinner ${index}` }));
   await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { recipes, metadataByRecipeId: {} } }));
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Find dinners using rice", exact: true }).click();
   const results = page.getByRole("region", { name: "Dinners using rice", exact: true });
   await expect(results.locator(".recipe-card")).toHaveCount(3);
@@ -156,7 +165,7 @@ test("three choices expand to the rest of the matching collection", async ({ pag
 });
 
 test("changing saved exclusions removes affected ingredient-led choices", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await expect(results).toContainText("Salmon Bowl");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -173,10 +182,11 @@ test("changing saved exclusions removes affected ingredient-led choices", async 
 });
 
 test("Back clears a removed ingredient without adding a history loop", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   const results = await selectRice(page);
   await results.getByRole("button", { name: "Review this item", exact: true }).click();
   const historyLength = await page.evaluate(() => window.history.length);
+  await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Remove rice", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength);

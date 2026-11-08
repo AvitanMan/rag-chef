@@ -1,3 +1,5 @@
+import { revealPantryEditors, revealPlanControls } from "./ui-controls";
+import { openChef } from "./open-chef";
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 
@@ -29,7 +31,7 @@ test.beforeEach(async ({ page, request }) => {
 
 test("Chef question guidance follows dinner search, refinement and direct recipe discussion", async ({ page }) => {
   if (test.info().project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
-  await page.goto("/");
+  await openChef(page);
   const dinner = page.getByRole("textbox", { name: "Dinner request", exact: true });
   await expect(dinner).toHaveAttribute("placeholder", "e.g. What can I cook with rice and tomatoes?");
   await expect(dinner).toHaveAccessibleDescription(/Include what you want to use/);
@@ -60,7 +62,7 @@ test("Chef question guidance follows dinner search, refinement and direct recipe
 });
 
 test("Back and Forward clear answers and conversation from a different recipe discussion", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   await navigate(page, "Recipes");
   await page.getByRole("button", { name: "View Cheese Pasta", exact: true }).click();
   await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
@@ -94,13 +96,14 @@ test("Back and Forward clear answers and conversation from a different recipe di
 });
 
 test("Back from another section preserves the same recipe answer and conversation", async ({ page }) => {
-  await page.goto("/");
+  await openChef(page);
   await discussFirstRecipe(page);
   await submit(page, "What is the first source direction?", true);
   const answer = page.locator(".chef-answer");
   await expect(answer).toBeVisible();
   const previousAnswer = await answer.textContent() ?? "";
   await navigate(page, "Pantry");
+  await revealPantryEditors(page);
   await page.goBack();
   await expect(answer).toHaveText(previousAnswer);
   const nextRequest = page.waitForRequest(r => r.url().endsWith("/api/chef") && r.method() === "POST");
@@ -109,7 +112,7 @@ test("Back from another section preserves the same recipe answer and conversatio
 });
 
 test("a generic nuts allergy excludes peanut recipes in browsing, planning and Chef", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const allergies = page.getByRole("textbox", { name: "Allergies", exact: true });
   await allergies.fill("nuts"); await allergies.press("Enter");
@@ -129,7 +132,7 @@ test("a generic nuts allergy excludes peanut recipes in browsing, planning and C
 });
 
 test("focused recipe discussion ignores earlier dinner refinements and keeps saved allergies", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   await submit(page, "Find dinner"); await submit(page, "without pasta");
   await expect(page.getByRole("button", { name: "Remove refinement without pasta", exact: true })).toBeVisible();
   await navigate(page, "Recipes");
@@ -151,7 +154,7 @@ test("focused recipe discussion ignores earlier dinner refinements and keeps sav
 });
 
 test("Chef refreshes a stale kitchen and Retry uses another tab's saved amounts without reloading", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   const before = await (await request.get("/api/kitchen")).json();
   const changed = { ...before.state, pantry: [{ id: "other-tab-rice", name: "rice", measure: "50 g" }],
@@ -177,7 +180,7 @@ test("Chef refreshes a stale kitchen and Retry uses another tab's saved amounts 
 
 for (const query of ["What can I cook with eggplant?", "What should we make for dinner?"]) {
   test(`natural dinner discovery returns visible choices: ${query}`, async ({ page, request }) => {
-    await page.goto("/");
+    await openChef(page);
     const before = await (await request.get("/api/kitchen")).json();
     const answer = await submit(page, query);
     expect(answer.generation).toBe("ai");
@@ -190,7 +193,7 @@ for (const query of ["What can I cook with eggplant?", "What should we make for 
 }
 
 test("cooking ignores discovery refinements while preserving saved profile exclusions", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
   await expect.poll(async () => Boolean((await (await request.get("/api/kitchen")).json()).state.meals[TODAY])).toBe(true);
   await navigate(page, "Chef");
@@ -226,7 +229,7 @@ test("cooking ignores discovery refinements while preserving saved profile exclu
 
 for (const mode of ["unverified_warning", "unsupported_warning_detail", "supported_warning"]) {
   test(`generated warning grounding includes semantic and numeric checks: ${mode}`, async ({ page, request }) => {
-    await page.goto("/");
+    await openChef(page);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const allergies = page.getByRole("textbox", { name: "Allergies", exact: true });
     await allergies.fill("milk"); await allergies.press("Enter");
@@ -268,8 +271,8 @@ for (const mode of ["unverified_warning", "unsupported_warning_detail", "support
 }
 
 test("Chef home keeps date, source discussion and portions through planning and shopping", async ({ page, request }) => {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  await openChef(page);
+  await expect(page.getByRole("heading", { name: "Dinner ideas", level: 1, exact: true })).toBeVisible();
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
@@ -291,11 +294,80 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals["2026-10-23"]?.servings).toBe(4);
   await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeVisible();
-  await page.reload(); await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
+  await page.reload(); await navigate(page, "Chef"); await expect(page.getByRole("heading", { name: "Dinner ideas", level: 1, exact: true })).toBeVisible();
   await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toHaveCount(0);
 });
+test("unknown-yield Chef previews keep batches separate from servings and save the calculated amounts", async ({ page, request }) => {
+  await openChef(page);
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  await page.locator(".dinner-context > summary").click();
+  const portions = page.getByLabel("Chef portions", { exact: true });
+  await portions.fill("4");
+  const discuss = async (title: string) => {
+    await navigate(page, "Recipes");
+    await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill(title);
+    await page.getByRole("button", { name: `View ${title}`, exact: true }).click();
+    await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+    if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+  };
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("");
+  await expect(portions).toHaveAttribute("placeholder", "1 recipe batch");
+  await expect(page.locator(".dinner-context > summary")).not.toContainText("4 servings");
+  await portions.fill("0.1");
+  await expect(portions).toHaveAttribute("aria-invalid", "true");
+  await portions.fill("2.5");
+  await expect(page.locator(".dinner-context > summary")).toContainText("2.5 recipe batches");
+  const answer = await submit(page, "How much vegetable stock do I need?", true);
+  expect(answer.resolvedContext).toMatchObject({ recipeId: "fixture-unknown-soup", batches: 2.5 });
+  expect(answer.resolvedContext.servings).toBeUndefined();
+  expect(answer.planningFacts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "vegetable stock", measure: "1250 ml" })]));
+  expect((await (await request.get("/api/kitchen")).json()).state.meals).toEqual({});
+  await discuss("Tomato Rice");
+  await expect(portions).toHaveValue("4");
+  await expect(page.locator(".dinner-context > summary")).toContainText("4 servings");
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("2.5");
+  await page.getByRole("button", { name: "Choose for tonight: Garden Soup", exact: true }).click();
+  await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals[TODAY]?.batches).toBe(2.5);
+  expect((await (await request.get("/api/kitchen")).json()).state.meals[TODAY].servings).toBeNull();
+  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Bought vegetable stock 1250 ml", exact: true })).toBeVisible();
+  await navigate(page, "Chef");
+  await page.getByRole("button", { name: "Recipe details", exact: true }).click();
+  await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+  if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+  await expect(portions).toHaveValue("2.5");
+  await page.getByRole("button", { name: "New dinner search", exact: true }).click();
+  await discuss("Garden Soup");
+  await expect(portions).toHaveValue("");
+});
+
+for (const usesBatches of [true, false]) {
+  test(`Chef discussion uses a saved dinner's edited yield for ${usesBatches ? "batches" : "servings"}`, async ({ page, request }) => {
+    const catalog = await (await request.get("/api/recipes/catalog")).json();
+    const recipe = catalog.recipes.find((item: { id: string }) => item.id === (usesBatches ? "fixture-tomato-rice" : "fixture-unknown-soup"));
+    const current = await (await request.get("/api/kitchen")).json();
+    const meal: PlannedMeal = { id: "edited-yield", date: TODAY, recipeId: recipe.id, recipe, title: recipe.title,
+      baseServings: usesBatches ? null : 4, servings: usesBatches ? null : 8, batches: usesBatches ? 0.75 : 1,
+      locked: false, status: "planned", ingredientOverrides: {} };
+    expect((await request.put("/api/kitchen", { data: { revision: current.revision, state: { ...current.state, meals: { [TODAY]: meal } } } })).ok()).toBeTruthy();
+    await openChef(page);
+    await page.getByRole("button", { name: "Recipe details", exact: true }).click();
+    await page.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
+    const portions = page.getByLabel("Chef portions", { exact: true });
+    if (!await portions.isVisible()) await page.locator(".dinner-context > summary").click();
+    await expect(portions).toHaveValue(usesBatches ? "0.75" : "8");
+    await expect(portions).toHaveAttribute("step", usesBatches ? "0.25" : "1");
+    await portions.fill(usesBatches ? "1.25" : "12");
+    const answer = await submit(page, usesBatches ? "How much rice do I need?" : "How much vegetable stock do I need?", true);
+    expect(answer.planningFacts).toEqual(expect.arrayContaining([expect.objectContaining({ measure: usesBatches ? "250 g" : "1500 ml" })]));
+    expect((await (await request.get("/api/kitchen")).json()).state.meals[TODAY]).toEqual(meal);
+  });
+}
+
 test("cooking step help preserves timers, progress and saved kitchen", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
   await expect.poll(async () => Boolean((await (await request.get("/api/kitchen")).json()).state.meals[TODAY])).toBe(true);
   const before = await (await request.get("/api/kitchen")).json();
@@ -322,7 +394,7 @@ test("cooking step help preserves timers, progress and saved kitchen", async ({ 
 });
 
 test("unsupported recipe questions keep source access and do not invent nutritional facts", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await discussFirstRecipe(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
@@ -355,7 +427,7 @@ async function savedRiceDinner(request: APIRequestContext, date = TODAY, exactSt
 }
 
 test("Chef portions survive adding through Recipes and explicit copies keep their own portions", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
   await page.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
@@ -366,8 +438,10 @@ test("Chef portions survive adding through Recipes and explicit copies keep thei
   const kitchen = async () => (await (await request.get("/api/kitchen")).json()).state as KitchenState;
   await expect.poll(async () => (await kitchen()).meals["2026-10-23"]?.servings).toBe(4);
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByLabel("Servings Fri, Oct 23", { exact: true }).fill("6");
   await expect.poll(async () => (await kitchen()).meals["2026-10-23"].servings).toBe(6);
+  await revealPlanControls(page);
   await page.locator("#dinner-2026-10-23 .meal-more > summary").click();
   await page.getByRole("combobox", { name: "Copy Fri, Oct 23 dinner", exact: true }).selectOption(TODAY);
   await expect.poll(async () => (await kitchen()).meals[TODAY]?.servings).toBe(6);
@@ -382,7 +456,7 @@ test("Chef portions survive adding through Recipes and explicit copies keep thei
 
 test("unplanned cooking help and later Chef questions do not inherit a previously saved dinner", async ({ page, request }) => {
   if (test.info().project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
-  await page.goto("/");
+  await openChef(page);
   await submit(page, "Tomato Rice");
   await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
   await expect.poll(async () => Boolean((await (await request.get("/api/kitchen")).json()).state.meals[TODAY])).toBe(true);
@@ -427,7 +501,7 @@ test("unplanned cooking help and later Chef questions do not inherit a previousl
 });
 
 test("legacy unmatched cooking steps do not display another step's answer", async ({ page }) => {
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("button", { name: "View Cheese Pasta", exact: true }).click();
   await page.getByRole("dialog", { name: "Cheese Pasta", exact: true }).getByRole("button", { name: "Start cooking", exact: true }).click();
   await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem("rag-chef-cooking-v1")))).toBe(true);
@@ -472,7 +546,8 @@ test("legacy unmatched cooking steps do not display another step's answer", asyn
 
 test("replacing a dinner does not reserve the old dinner's ingredients", async ({ page, request }) => {
   await savedRiceDinner(request, TODAY, true);
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Change dinner Thu, Oct 22", exact: true }).click();
   const before = await (await request.get("/api/kitchen")).json();
   const answer = await submit(page, "Tomato Rice");
@@ -483,7 +558,7 @@ test("replacing a dinner does not reserve the old dinner's ingredients", async (
 
 test("saved-dinner estimates use new portions and agree with the resulting shopping list", async ({ page, request }) => {
   await savedRiceDinner(request, TODAY, true);
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Open Tomato Rice on Thu, Oct 22", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
   if (!(await page.getByLabel("Dinner day", { exact: true }).isVisible())) await page.locator(".dinner-context > summary").click();
@@ -510,7 +585,8 @@ test("cooking the same recipe on another day starts a fresh meal discussion", as
   const document = await (await request.get("/api/kitchen")).json();
   document.state.meals["2026-10-23"] = { ...first, id: "second-rice-dinner", date: "2026-10-23", servings: 4 };
   expect((await request.put("/api/kitchen", { data: { revision: document.revision, state: document.state } })).ok()).toBeTruthy();
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Thu, Oct 22", exact: true }).click();
   const firstCooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   await firstCooking.locator(".cook-help > summary").click();
@@ -521,6 +597,7 @@ test("cooking the same recipe on another day starts a fresh meal discussion", as
   await expect(firstCooking.locator(".step-chef-reply")).toBeVisible();
   await firstCooking.getByRole("button", { name: "← Exit cooking", exact: true }).click();
   await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Fri, Oct 23", exact: true }).click();
   await page.getByRole("dialog", { name: "Replace cooking session", exact: true }).getByRole("button", { name: "Replace cooking session", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
@@ -537,7 +614,7 @@ test("cooking the same recipe on another day starts a fresh meal discussion", as
 });
 
 test("unverified model details are withheld while original recipe evidence remains available", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await discussFirstRecipe(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
@@ -561,7 +638,7 @@ test("unverified model details are withheld while original recipe evidence remai
 
 for (const mode of ["verification_reject", "verification_unavailable"]) {
   test(`${mode}: source evidence and retry recover without changing the kitchen`, async ({ page, request }) => {
-    await page.goto("/"); await submit(page, "Tomato Rice");
+    await openChef(page); await submit(page, "Tomato Rice");
     await discussFirstRecipe(page);
     const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
     try {
@@ -589,7 +666,8 @@ for (const mode of ["verification_reject", "verification_unavailable"]) {
 
 test("retrying a rejected cooking answer preserves timer, meal scope, and progress", async ({ page, request }) => {
   await savedRiceDinner(request);
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
+  await revealPlanControls(page);
   await page.getByRole("button", { name: "Cook Tomato Rice Thu, Oct 22", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
   const before = await (await request.get("/api/kitchen")).json();
@@ -618,7 +696,7 @@ test("retrying a rejected cooking answer preserves timer, meal scope, and progre
 });
 
 test("starting a new search cancels an in-flight evidence check and hides its late answer", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await discussFirstRecipe(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   const before = await (await request.get("/api/kitchen")).json();
@@ -643,7 +721,7 @@ test("described pantry ingredients cover Chef suggestions and deduct consistentl
   const current = await (await request.get("/api/kitchen")).json();
   const pantry = [{ id: "pasta", name: "any small pasta", measure: "500 g" }, { id: "cheese", name: "cheese, grated", measure: "200 g" }, { id: "leftovers", name: "cooked pasta", measure: "150 g" }];
   expect((await request.put("/api/kitchen", { data: { revision: current.revision, state: { ...current.state, pantry } } })).ok()).toBeTruthy();
-  await page.goto("/");
+  await openChef(page);
   const result = await submit(page, "Cheese Pasta");
   expect(result.readinessByRecipeId["fixture-cheese-pasta"].coveredCount).toBe(2);
   await page.getByRole("button", { name: "Choose for tonight: Cheese Pasta", exact: true }).click();
@@ -671,7 +749,7 @@ test("saved amount help works offline in Chef and cooking with source quantities
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ unavailable: true, resetCalls: true }) });
-    await page.goto("/"); await navigate(page, "Plan");
+    await openChef(page); await navigate(page, "Plan");
     await page.locator(`#dinner-${TODAY}`).getByRole("button", { name: /^Open Tomato Rice/ }).click();
     await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
     const before = await (await request.get("/api/kitchen")).json();
@@ -683,6 +761,7 @@ test("saved amount help works offline in Chef and cooking with source quantities
     await expect(page.getByRole("heading", { name: "Your chef’s shortlist", exact: true })).toHaveCount(0);
     await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/${test.info().project.name}-calculated-chef.png`, fullPage: true });
     await navigate(page, "Plan");
+    await revealPlanControls(page);
     await page.locator(`#dinner-${TODAY}`).getByRole("button", { name: /Cook/ }).click();
     const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
     await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
@@ -708,7 +787,7 @@ test("saved amount help works offline in Chef and cooking with source quantities
 
 test("mixed quantity and cooking questions show an evidence-checked answer to both parts", async ({ page, request }) => {
   await savedRiceDinner(request);
-  await page.goto("/"); await navigate(page, "Plan");
+  await openChef(page); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Open Tomato Rice on Thu, Oct 22", exact: true }).click();
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
@@ -731,7 +810,7 @@ test("mixed quantity and cooking questions show an evidence-checked answer to bo
 });
 
 test("open-ended ingredient replacement questions display labeled advice without editing the recipe", async ({ page, request }) => {
-  await page.goto("/"); const original = await submit(page, "Cheese Pasta");
+  await openChef(page); const original = await submit(page, "Cheese Pasta");
   await discussFirstRecipe(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
@@ -749,7 +828,7 @@ test("open-ended ingredient replacement questions display labeled advice without
 });
 
 test("an unpinned factual answer is withheld when its evidence check rejects the explanation", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "unverified_cause", resetCalls: true }) });
@@ -767,7 +846,7 @@ test("an unpinned factual answer is withheld when its evidence check rejects the
 });
 
 test("unsupported and clarification labels cannot expose unchecked model explanations", async ({ page, request }) => {
-  await page.goto("/"); await submit(page, "Tomato Rice");
+  await openChef(page); await submit(page, "Tomato Rice");
   await discussFirstRecipe(page);
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {

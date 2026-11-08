@@ -18,6 +18,8 @@ export const runtime = {
   commit() { const jobs = pending; pending = []; for (const job of jobs) job(); },
 };
 const same = (a,b) => a && b && a.length === b.length && a.every((v,i) => Object.is(v,b[i]));
+export const createContext = value => ({ value });
+export const useContext = context => context.value;
 export function useState(initial) {
   const index = cursor++;
   slots[index] ??= { value: typeof initial === 'function' ? initial() : initial };
@@ -30,24 +32,55 @@ export function useEffect(fn,deps) {
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
 }
 `);
-for (const name of ["use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
+for (const name of ["random-id", "shopping-purchases", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "kitchen-validation", "kitchen-recovery", "kitchen-change-preview", "kitchen-merge", "private-storage", "app-session"]) {
+  const source = await readFile(new URL(`../app/lib/${name}.${name === "app-session" ? "tsx" : "ts"}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
     .replaceAll('"react"', '"./react.mjs"').replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(dir, `${name}.mjs`), compiled);
 }
 const { runtime } = await import(pathToFileURL(join(dir, "react.mjs")).href);
 const { useKitchen } = await import(pathToFileURL(join(dir, "use-kitchen.mjs")).href);
-const { KITCHEN_CACHE_KEY } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
-const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage };
+const { AppSessionContext, disablePrivateOfflineShell, scheduleSessionExpiry } = await import(pathToFileURL(join(dir, "app-session.mjs")).href);
+const localSessionContext = AppSessionContext.value;
+const { shoppingForWeek, applyBoughtItems, setShoppingItemBought } = await import(pathToFileURL(join(dir, "shopping-purchases.mjs")).href);
+const { validateKitchenWrite } = await import(pathToFileURL(join(dir, "kitchen-validation.mjs")).href);
+const { KITCHEN_CACHE_KEY, createPlannedMeal } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
+const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage, document: globalThis.document };
 after(async () => { runtime.reset(); Object.assign(globalThis, old); await rm(dir, { recursive: true, force: true }); });
 
 const state = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 const document = (revision = 1, value = state()) => ({ revision, state: value, updatedAt: "2026-10-20T00:00:00.000Z" });
 const cookingProfile = (allergies = ["milk"]) => ({ version: 1, allergies, diet: "Vegan", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Stovetop"] });
 
-async function setup({ cached, blocked = false, fetch, existingLocal, existingSession } = {}) {
+test("remembered sessions lock at their fixed deadline after multiple timer segments without a server refresh", () => {
+  const originalNow = Date.now, originalWindow = globalThis.window;
+  let now = Date.parse("2026-11-04T00:00:00Z"), expired = 0, nextId = 0;
+  const jobs = new Map();
+  globalThis.window = {
+    setTimeout(fn, delay) { const id = ++nextId; jobs.set(id, { fn, delay }); return id; },
+    clearTimeout(id) { jobs.delete(id); },
+  };
+  Date.now = () => now;
+  try {
+    const duration = 30 * 24 * 60 * 60 * 1_000;
+    const cancel = scheduleSessionExpiry(new Date(now + duration).toISOString(), () => expired++);
+    const first = jobs.get(1); assert.equal(first.delay, 2_147_000_000);
+    jobs.delete(1); now += first.delay; first.fn();
+    assert.equal(expired, 0);
+    const second = jobs.get(2); assert.equal(second.delay, duration - first.delay);
+    jobs.delete(2); now += second.delay; second.fn();
+    assert.equal(expired, 1); assert.equal(jobs.size, 0);
+    cancel();
+    const stop = scheduleSessionExpiry(new Date(now + duration).toISOString(), () => expired++);
+    const cancelled = jobs.get(3); stop();
+    now += duration; cancelled.fn();
+    assert.equal(expired, 1); assert.equal(jobs.size, 0);
+  } finally { Date.now = originalNow; globalThis.window = originalWindow; }
+});
+
+async function setup({ cached, blocked = false, fetch, existingLocal, existingSession, hosted = false, requiresPassword = false, configureBrowser = () => {} } = {}) {
   runtime.reset();
+  AppSessionContext.value = hosted ? { ...localSessionContext, session: { mode: "hosted", authenticated: true, household: { id: "test-home", timezone: "UTC", role: "owner" } } } : requiresPassword ? { ...localSessionContext, session: { ...localSessionContext.session, localServer: { requiresPassword: true } } } : localSessionContext;
   const timers = new Map();
   let nextTimer = 0;
   const storage = () => ({ values: new Map(), blocked: false, get length() { return this.values.size; }, key(index) { return [...this.values.keys()][index] ?? null; }, getItem(key) { return this.values.get(key) ?? null; }, setItem(key, value) { if (this.blocked) throw new Error("storage full"); this.values.set(key, value); }, removeItem(key) { this.values.delete(key); } });
@@ -56,7 +89,10 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   local.blocked = blocked;
   const events = new EventTarget();
   globalThis.localStorage = local; globalThis.sessionStorage = session;
-  globalThis.window = { localStorage: local, setTimeout: (fn) => { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.document = { visibilityState: "visible", addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.window = { localStorage: local, sessionStorage: session, dispatchEvent: events.dispatchEvent.bind(events), setTimeout: (fn) => { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout: (id) => timers.delete(id), addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events) };
+  globalThis.window.setInterval = () => ++nextTimer;
+  configureBrowser();
   let handler = fetch ?? (() => Response.json(document()));
   const calls = [];
   globalThis.fetch = (url, options = {}) => { calls.push({ url, options }); return handler(url, options); };
@@ -71,6 +107,26 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   await pump();
   return { get result() { return runtime.result; }, pump, tick, calls, local, session, dispatch: event => events.dispatchEvent(event), respond: (fn) => { handler = fn; } };
 }
+
+test("recovering an old family draft merges against its original base and retains newer independent stock", async () => {
+  const base = state(), pending = state(), saved = state();
+  pending.pantry[0].measure = "500 g";
+  saved.pantry.push({ id: "beans", name: "beans", measure: "2 kg" });
+  const h = await setup({ hosted: true, fetch: () => Response.json(document(3, saved)) });
+  const id = `${KITCHEN_CACHE_KEY}:draft:old-family-tab`;
+  h.local.setItem(id, JSON.stringify({ revision: 1, state: pending, base, dirty: true, updatedAt: "2026-10-19T00:00:00.000Z" }));
+  h.dispatch(new Event("storage")); await h.pump();
+  assert.ok(h.result.recoveryCandidates.some(row => row.id === id));
+  assert.equal(h.result.recoverDraft(id), true); await h.pump();
+  assert.equal(h.result.saveState, "conflict");
+  h.result.resolveConflict(false); await h.pump();
+  assert.deepEqual(h.result.state.pantry.map(row => `${row.name}:${row.measure}`).sort(), ["beans:2 kg", "rice:500 g"]);
+  h.respond((_url, options) => {
+    const input = JSON.parse(options.body); assert.equal(input.revision, 3);
+    return Response.json(document(4, input.state));
+  });
+  await h.tick(); assert.equal(h.result.saveState, "saved");
+});
 
 test("a fresh kitchen becomes ready without any recipe discovery request", async () => {
   const h = await setup({ fetch: url => {
@@ -234,6 +290,91 @@ test("conflicts preserve the draft until the saved version is explicitly selecte
   assert.equal(h.result.state.pantry.length, 1);
 });
 
+function purchaseFixture() {
+  const week = "2026-10-26", today = "2026-10-27";
+  const recipe = { id: "test:rice", title: "Rice", image: null, category: "", cuisine: "", tags: [], ingredients: ["rice", "onion", "carrot"].map(name => ({ name, measure: "200 g" })), instructions: ["Cook."], source: { name: "Test", url: "https://example.com/rice" }, sourceUrl: "https://example.com/rice" };
+  let base = { ...state(), pantry: [], meals: { [today]: createPlannedMeal(today, recipe) } };
+  for (const item of shoppingForWeek(base, week, today)) base = setShoppingItemBought(base, item.key, true, "cycle");
+  const buy = (names, id) => applyBoughtItems(base, week, today, shoppingForWeek(base, week, today).filter(item => names.includes(item.name)).map(item => ({ key: item.key, cycleId: base.shoppingCycles[item.key], name: item.name, measure: item.measure, pantryId: `${id}-${item.name}` })), id, "2026-10-27T12:00:00.000Z");
+  return { base, buy };
+}
+
+async function hostedConflict(base, browser, saved) {
+  for (const value of [base, browser, saved]) validateKitchenWrite({ revision: 1, state: value });
+  const h = await setup({ hosted: true, fetch: () => Response.json(document(1, base)) });
+  h.result.update(() => browser); await h.pump();
+  h.respond(() => Response.json({ current: document(2, saved) }, { status: 409 }));
+  await h.tick();
+  assert.equal(h.result.saveState, "conflict");
+  return h;
+}
+
+async function assertFailedMergePreserved(h, pattern) {
+  const before = { state: structuredClone(h.result.state), conflict: structuredClone(h.result.conflict), revision: h.result.getRevision(), local: [...h.local.values], session: [...h.session.values], recoverable: h.result.recoverable };
+  const calls = h.calls.length;
+  for (const prefer of [false, true]) {
+    const cachedBeforeResolution = [...h.local.values];
+    assert.doesNotThrow(() => h.result.resolveConflict(prefer));
+    await h.pump();
+    assert.match(h.result.conflictError, pattern);
+    assert.match(h.result.conflictError, /Export.*retry/);
+    assert.equal(h.result.saveState, "conflict");
+    assert.equal(h.result.busy, true);
+    assert.deepEqual(h.result.state, before.state);
+    assert.deepEqual(h.result.conflict, before.conflict);
+    assert.equal(h.result.getRevision(), before.revision);
+    assert.equal(h.result.recoverable, before.recoverable);
+    assert.deepEqual([...h.local.values], cachedBeforeResolution, "cached draft and base remain unchanged");
+    assert.deepEqual([...h.session.values], before.session);
+    h.result.retrySave(); await h.pump(); await h.tick();
+    assert.equal(await h.result.refreshSavedKitchen(), null);
+    assert.equal(h.calls.length, calls, "failed resolution keeps all synchronization paused");
+  }
+}
+
+test("hosted conflict rejects a combined pantry over 500 without changing the draft or base", async () => {
+  const base = { ...state(), pantry: [] };
+  const stock = prefix => Array.from({ length: 251 }, (_, i) => ({ id: `${prefix}-${i}`, name: `${prefix} stock ${i}`, measure: "1 kg" }));
+  const h = await hostedConflict(base, { ...base, pantry: stock("browser") }, { ...base, pantry: stock("saved") });
+  assert.equal(h.result.conflictError, "");
+  await assertFailedMergePreserved(h, /pantry.*500/);
+});
+
+test("ambiguous purchase merge is caught during hook rendering and resolution", async () => {
+  const { base, buy } = purchaseFixture();
+  const browser = buy(["rice"], "browser"), saved = buy(["carrot"], "saved");
+  saved.shoppingPurchases[0].items[0].pantry.id = "browser-rice";
+  saved.pantry[0].id = "browser-rice";
+  const h = await hostedConflict(base, browser, saved);
+  assert.match(h.result.conflictError, /shared by different purchases/);
+  assert.deepEqual(h.result.conflictRows, []);
+  await assertFailedMergePreserved(h, /shared by different purchases/);
+});
+
+for (const prefer of [false, true]) test(`hosted duplicate purchase merge saves one purchase per cycle: browser=${prefer}`, async () => {
+  const { base, buy } = purchaseFixture();
+  const h = await hostedConflict(base, buy(["rice", "onion"], "browser"), buy(["rice", "carrot"], "saved"));
+  assert.ok(h.result.conflictRows.length);
+  assert.equal(h.result.conflictError, "");
+  let writes = 0;
+  h.respond((_url, options) => {
+    assert.equal(options.method, "PUT");
+    const input = JSON.parse(options.body);
+    validateKitchenWrite(input);
+    assert.equal(input.revision, 2);
+    assert.deepEqual(input.state.pantry.map(item => item.id).sort(), ["browser-onion", "saved-carrot", `${prefer ? "browser" : "saved"}-rice`].sort());
+    assert.equal(input.state.shoppingPurchases.flatMap(receipt => receipt.items).length, 3);
+    writes++;
+    return Response.json(document(3, input.state));
+  });
+  h.result.resolveConflict(prefer); await h.pump(); await h.tick();
+  assert.equal(writes, 1);
+  assert.equal(h.result.saveState, "saved");
+  assert.equal(h.result.conflict, null);
+  assert.equal(h.result.conflictError, "");
+  assert.equal(h.result.getRevision(), 3);
+});
+
 test("backup failures remain explicit even when the database copy is saved", async () => {
   const h = await setup({ blocked: true });
   assert.equal(h.result.saveState, "saved");
@@ -339,4 +480,120 @@ test("recoverability follows the current snapshot when both storage destinations
   h.respond((_url, options) => Response.json(document(2, JSON.parse(options.body).state)));
   h.result.retrySave(); await h.pump(); await h.tick();
   assert.equal(h.result.recoverable, true, "a successful server save makes the edited snapshot recoverable");
+});
+
+
+function offlineBrowser(t, serviceWorker, cacheStorage) {
+  const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const savedCaches = Object.getOwnPropertyDescriptor(globalThis, "caches");
+  const savedNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  t.after(() => {
+    if (savedNavigator) Object.defineProperty(globalThis, "navigator", savedNavigator); else delete globalThis.navigator;
+    if (savedCaches) Object.defineProperty(globalThis, "caches", savedCaches); else delete globalThis.caches;
+    if (savedNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = savedNodeEnv;
+  });
+  return () => {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { serviceWorker } });
+    Object.defineProperty(globalThis, "caches", { configurable: true, value: cacheStorage });
+    window.caches = cacheStorage;
+  };
+}
+
+test("the authentication boundary removes old offline pages and protected kitchens never register a shell", async t => {
+  for (const mode of ["password", "hosted"]) await t.test(mode, async t => {
+    const removedWorkers = [], removedCaches = [];
+    let registered = false;
+    const configureBrowser = offlineBrowser(t, {
+      getRegistrations: async () => [
+        { active: { scriptURL: "https://ragchef.local:3443/kitchen-sw.js", postMessage() {} }, unregister: async () => removedWorkers.push("active") },
+        { waiting: { scriptURL: "https://ragchef.local:3443/kitchen-sw.js" }, unregister: async () => removedWorkers.push("waiting") },
+        { active: { scriptURL: "https://ragchef.local:3443/unrelated.js" }, unregister: async () => removedWorkers.push("unrelated") },
+      ],
+      register: async () => { registered = true; throw new Error("Protected shells must not register."); },
+    }, { keys: async () => ["rag-chef-shell-v3", "rag-chef-shell-v4", "unrelated-cache"], delete: async key => removedCaches.push(key) });
+    const h = await setup({ hosted: mode === "hosted", requiresPassword: mode === "password", configureBrowser });
+    await disablePrivateOfflineShell();
+    assert.equal(h.result.ready, true);
+    assert.equal(registered, false);
+    assert.deepEqual(removedWorkers, ["active", "waiting"]);
+    assert.deepEqual(removedCaches, ["rag-chef-shell-v3", "rag-chef-shell-v4"]);
+  });
+});
+
+test("denied offline-cache cleanup does not break a password-protected kitchen", async t => {
+  let registered = false;
+  const configureBrowser = offlineBrowser(t, {
+    getRegistrations: async () => { throw new Error("Browser policy denied worker access."); },
+    register: async () => { registered = true; },
+  }, { keys: async () => { throw new Error("Browser policy denied cache access."); } });
+  const h = await setup({ requiresPassword: true, configureBrowser });
+  await disablePrivateOfflineShell();
+  assert.equal(h.result.ready, true);
+  assert.equal(registered, false);
+  assert.deepEqual(h.result.state, state());
+});
+
+test("standalone kitchens without a password keep the production offline shell", async t => {
+  const messages = [];
+  let registered;
+  const registration = { active: { postMessage: message => messages.push(message) }, unregister: async () => { throw new Error("Ordinary local shells should remain registered."); } };
+  const configureBrowser = offlineBrowser(t, {
+    register: async url => { registered = url; return registration; },
+    ready: Promise.resolve(registration),
+  }, { keys: async () => { throw new Error("Ordinary local shells should not be cleared."); } });
+  await setup({ configureBrowser });
+  assert.equal(registered, "/kitchen-sw.js");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "CACHE_SHELL");
+  assert.ok(messages[0].urls.includes("/"));
+});
+
+test("a restored protected draft requires review even when its saved revision is unchanged", async () => {
+  const pending = state(); pending.pantry[0].measure = "250 g";
+  const h = await setup({ requiresPassword: true, cached: { revision: 1, state: pending, dirty: true }, fetch: () => Response.json(document(1)) });
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.state.pantry[0].measure, "250 g");
+  await h.tick();
+  assert.equal(h.calls.filter(call => call.options.method === "PUT").length, 0);
+  h.result.resolveConflict(true);
+  await h.pump();
+  h.respond((_url, options) => Response.json(document(2, JSON.parse(options.body).state)));
+  await h.tick();
+  assert.equal(h.result.saveState, "saved");
+  assert.equal(h.calls.filter(call => call.options.method === "PUT").length, 1);
+});
+
+
+test("secure draft recovery waits for review when the initial kitchen read fails", async () => {
+  const pending = state(); pending.pantry[0].measure = "500 g";
+  let reads = 0;
+  const h = await setup({ requiresPassword: true, cached: { revision: 1, state: pending, dirty: true }, fetch: (_url, options) => {
+    if (options.method === "PUT") return Response.json(document(2, JSON.parse(options.body).state));
+    reads++;
+    return reads === 1 ? Response.json({ error: { message: "temporarily unavailable" } }, { status: 503 }) : Response.json(document(1));
+  } });
+  await h.tick();
+  assert.equal(h.calls.filter(({ options }) => options.method === "PUT").length, 0);
+  assert.equal(h.result.saveState, "conflict");
+  assert.deepEqual(h.result.conflict, document(1));
+  assert.equal(h.result.state.pantry[0].measure, "500 g");
+  h.result.resolveConflict(true); await h.pump(); await h.tick();
+  assert.equal(h.calls.filter(({ options }) => options.method === "PUT").length, 1);
+  assert.equal(h.result.saveState, "saved");
+});
+
+test("unavailable secure recovery stays read-only until a reconnect retrieves the same revision for review", async () => {
+  const pending = state(); pending.pantry[0].measure = "500 g";
+  const h = await setup({ requiresPassword: true, cached: { revision: 1, state: pending, dirty: true }, fetch: () => Response.json({}, { status: 503 }) });
+  await h.tick(); h.result.retrySave(); await h.pump(); await h.tick();
+  assert.ok(h.calls.every(({ options }) => options.method !== "PUT"));
+  assert.equal(h.result.saveState, "offline");
+  h.respond(() => Response.json(document(1)));
+  await h.result.refreshSavedKitchen(); await h.pump();
+  assert.equal(h.result.saveState, "conflict");
+  assert.deepEqual(h.result.conflict, document(1));
+  h.result.resolveConflict(false); await h.pump(); await h.tick();
+  assert.equal(h.result.state.pantry[0].measure, "1 kg");
+  assert.ok(h.calls.every(({ options }) => options.method !== "PUT"));
 });

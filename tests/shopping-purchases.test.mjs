@@ -8,11 +8,11 @@ import ts from "typescript";
 
 const directory = await mkdtemp(join(tmpdir(), "jff-shopping-purchases-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["shopping-purchases", "quantities", "kitchen-types", "kitchen-state", "kitchen-validation", "kitchen-backup"]) {
+for (const name of ["random-id", "shopping-purchases", "quantities", "kitchen-types", "kitchen-state", "kitchen-validation", "kitchen-backup"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
-const { shoppingForWeek, unappliedBoughtItems, purchasePreviewProblem, applyBoughtItems, purchaseUndoProblem, undoPurchase, setShoppingItemBought } = await import(pathToFileURL(join(directory, "shopping-purchases.mjs")));
+const { shoppingForWeek, unappliedBoughtItems, purchasePreviewProblem, applyBoughtItems, purchaseUndoProblem, undoPurchase, setShoppingItemBought, undoShoppingCheck } = await import(pathToFileURL(join(directory, "shopping-purchases.mjs")));
 const { DEFAULT_COOKING_PROFILE } = await import(pathToFileURL(join(directory, "kitchen-types.mjs")));
 const { completeMeal } = await import(pathToFileURL(join(directory, "quantities.mjs")));
 const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")));
@@ -30,6 +30,24 @@ function preview(state) {
   const drafts = items.map((item, index) => ({ key: item.key, name: item.name, measure: item.measure, pantryId: `purchase-stock-${index}` }));
   return { checked, drafts };
 }
+
+test("undoing a shopping check preserves stock and rejects a later purchase cycle", () => {
+  const original = kitchen(), key = shoppingForWeek(original, week, today)[0].key;
+  const checked = setShoppingItemBought(original, key, true, "first");
+  const undone = undoShoppingCheck(checked, key, "first");
+  assert.equal(undone.shoppingChecked[key], false);
+  assert.deepEqual(undone.pantry, original.pantry);
+  assert.equal(undoShoppingCheck(undone, key, "first"), undone);
+  const later = setShoppingItemBought(undone, key, true, "second");
+  assert.equal(undoShoppingCheck(later, key, "first"), later);
+});
+
+test("a checked-item undo cannot alter a reviewed pantry purchase", () => {
+  const original = kitchen(), item = shoppingForWeek(original, week, today)[0];
+  const checked = setShoppingItemBought(original, item.key, true, "first");
+  const added = applyBoughtItems(checked, week, today, [{ key: item.key, cycleId: "first", name: item.name, measure: item.measure, pantryId: "purchased" }], "purchase", at);
+  assert.equal(undoShoppingCheck(added, item.key, "first"), added);
+});
 
 test("shopping checks alone do not alter stock; reviewed purchases add separate raw batches once", () => {
   const original = kitchen(), { checked, drafts } = preview(original);

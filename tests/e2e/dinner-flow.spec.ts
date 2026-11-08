@@ -1,3 +1,4 @@
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -40,7 +41,7 @@ test.beforeEach(async ({ page, request }) => {
 test("choose, see missing ingredients and cook without Plan, a picker or an AI request", async ({ page, request }) => {
   let chefCalls = 0;
   page.on("request", request => { if (request.url().endsWith("/api/chef")) chefCalls++; });
-  await page.goto("/"); await chooseRice(page);
+  await openChef(page); await chooseRice(page);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
   await expect(dinner).toContainText("Tonight’s dinner");
@@ -55,7 +56,7 @@ test("choose, see missing ingredients and cook without Plan, a picker or an AI r
 });
 
 test("change and cancel keep the saved dinner; browser Back restores recipe filters", async ({ page, request }) => {
-  await page.goto("/"); await chooseRice(page);
+  await openChef(page); await chooseRice(page);
   await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toBe("fixture-tomato-rice");
   const before = await read(request);
   await page.goBack();
@@ -71,7 +72,7 @@ test("change and cancel keep the saved dinner; browser Back restores recipe filt
 test("inline needs reserve other dinners and weekly shopping returns to this dinner", async ({ page, request }) => {
   const recipe = await source(request);
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "300 g" }, { id: "tomatoes", name: "tomatoes", measure: "4" }], meals: { [TODAY]: meal(recipe), "2026-10-23": meal(recipe, "2026-10-23") } });
-  await page.goto("/");
+  await openChef(page);
   const needs = page.getByRole("region", { name: "Dinner shopping needs", exact: true });
   await expect(needs).toContainText("rice: 100 g");
   await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
@@ -83,7 +84,7 @@ test("inline needs reserve other dinners and weekly shopping returns to this din
 test("finish review keeps one dialog, cancellation and reload preserve timer and source step", async ({ page, request }) => {
   const recipe = await source(request);
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }], meals: { [TODAY]: meal(recipe) } });
-  await page.goto("/");
+  await openChef(page);
   const review = await finalReview(page);
   await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect(review.getByRole("checkbox")).not.toBeChecked();
@@ -108,7 +109,7 @@ test("finish review keeps one dialog, cancellation and reload preserve timer and
 test("completion survives dual storage failure and retry deducts only once", async ({ page, request }) => {
   const recipe = await source(request);
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }], meals: { [TODAY]: meal(recipe) } });
-  await page.goto("/");
+  await openChef(page);
   const review = await finalReview(page);
   await review.getByRole("checkbox").check();
   await page.evaluate(() => {
@@ -130,7 +131,7 @@ test("completion survives dual storage failure and retry deducts only once", asy
 test("unknown yields use editable batches and multiple methods are selected inline", async ({ page, request }) => {
   const soup = await source(request, "fixture-unknown-soup");
   await save(request, { ...empty(), meals: { [TODAY]: meal(soup) } });
-  await page.goto("/");
+  await openChef(page);
   const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
   await expect(dinner).toContainText("1 recipe batches");
   await dinner.getByText("Adjust amounts", { exact: true }).click();
@@ -139,7 +140,7 @@ test("unknown yields use editable batches and multiple methods are selected inli
   expect((await read(request)).state.meals[TODAY].recipe).toEqual(soup);
   const recipe = { ...await source(request), instructions: ["Stovetop", "Simmer for 10 minutes.", "Oven", "Bake for 20 minutes."] };
   await save(request, { ...empty(), meals: { [TODAY]: meal(recipe) } });
-  await page.reload();
+  await page.reload(); await navigate(page, "Chef");
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Cook · Oven", exact: true }).click();
@@ -149,7 +150,7 @@ test("unknown yields use editable batches and multiple methods are selected inli
 });
 
 test("finishing unplanned cooking leaves plan and pantry untouched", async ({ page, request }) => {
-  await page.goto("/"); await navigate(page, "Recipes");
+  await openChef(page); await navigate(page, "Recipes");
   await page.getByRole("button", { name: "View Cheese Pasta", exact: true }).click();
   await page.getByRole("button", { name: "Start cooking", exact: true }).click();
   const before = await read(request);

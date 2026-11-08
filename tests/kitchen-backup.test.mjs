@@ -8,7 +8,7 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-kitchen-backup-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-stock", "kitchen-validation", "kitchen-backup", "kitchen-recovery"]) {
+for (const name of ["random-id", "kitchen-types", "kitchen-state", "quantities", "kitchen-stock", "kitchen-validation", "kitchen-backup", "kitchen-recovery"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(dir, `${name}.mjs`), code);

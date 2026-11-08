@@ -1,0 +1,203 @@
+/* The Figma kitchen: a readable week ledger with practical context alongside it. */
+.plan-workspace,
+.shopping-layout.focused-shopping.shopping-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+  align-items: start;
+  gap: 40px;
+  max-width: 1240px;
+  margin-inline: auto;
+}
+.plan-main { grid-column: 1; grid-row: 1; min-width: 0; }
+.plan-context { grid-column: 2; grid-row: 1; min-width: 0; }
+.plan-context > *, .shopping-context > * { min-width: 0; }
+.plan-context .today-summary {
+  display: block;
+  min-height: 0;
+  padding: 24px;
+  margin: 0 0 28px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.plan-context .today-summary::after { display: none; }
+.plan-context .today-summary .eyebrow { color: var(--green); font-size: 12px; }
+.plan-context .today-summary strong { margin-top: 12px; font-family: var(--serif); font-size: 28px; line-height: 1.2; }
+.plan-context .today-summary .today-copy > p,
+.plan-context .today-summary small { color: var(--ink-soft); font-size: 14px; }
+.plan-context .today-summary > .today-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-top: 20px; }
+.plan-context .today-summary .primary-button { background: var(--green-solid); border-color: var(--green-solid); color: var(--on-green); }
+.plan-context .today-summary .text-button { color: var(--green); }
+.plan-context .use-soon-panel { padding: 24px 0 0; margin: 0 0 24px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+.plan-context .use-soon-panel .section-heading { gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.plan-context .use-soon-panel h2 { font-size: 24px; }
+.plan-context .use-soon-panel > p { margin-block: 10px 16px; }
+.plan-context .use-soon-items { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.plan-context .use-soon-items .secondary-button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; text-align: left; }
+.plan-context .use-soon-empty { margin: 0; padding-block: 16px; border-top: 1px solid var(--line); }
+.plan-context .onboarding-next { display: flex; flex-wrap: wrap; padding: 0; margin: 0 0 20px; }
+.plan-context .onboarding-next > span { flex-basis: 100%; }
+.plan-main .planner-intro { padding: 0 0 18px; margin: 0; align-items: flex-start; gap: 12px 20px; }
+.plan-main .planner-intro > div:first-child { flex: 1 1 260px; }
+.plan-main .planner-intro h2 { margin-block: 6px 8px; font-size: 28px; }
+.plan-main .planner-actions { flex-wrap: wrap; gap: 8px; }
+.plan-main .fill-options { margin-top: 0; }
+.plan-main .fill-options > summary { padding-block: 8px; }
+.plan-main .fill-options .quantity-note { max-width: 640px; }
+.plan-main .week-navigation { margin: 0; padding: 16px 0; border-block: 1px solid var(--line); gap: 8px; }
+.plan-main .week-range { flex: 1; justify-content: space-between; gap: 10px; }
+.plan-main .week-range > strong { font-size: 14px; }
+.plan-main .week-range > .secondary-button { padding-inline: 12px; }
+.plan-main .week-navigation > .secondary-button { padding-inline: 12px; }
+.plan-main .week-grid.durable-week {
+  display: block;
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+.plan-main .durable-week .day-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 18px;
+  min-height: 106px;
+  padding: 20px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.plan-main .durable-week .day-card.is-today { border-color: var(--line); box-shadow: inset 3px 0 0 var(--green); padding-left: 14px; }
+.plan-main .durable-week .day-heading { grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; align-items: flex-start; align-self: start; gap: 8px; margin: 4px 0 0; }
+.plan-main .durable-week .day-name { margin: 0; font-size: 12px; font-weight: 600; color: var(--green); text-transform: uppercase; line-height: 1.5; }
+.plan-main .today-badge, .plan-main .meal-status { font-size: 11px; padding: 3px 7px; }
+.day-row-main { display: flow-root; grid-column: 2 / -1; min-width: 0; }
+.plan-main .day-card:not(.filled) .day-row-main { grid-column: 2; }
+.plan-main .durable-week .day-recipe-title { margin: 0; min-height: 44px; font-size: 24px; line-height: 1.3; overflow-wrap: anywhere; }
+.plan-main .durable-week .day-image { float: right; width: 64px; height: 64px; margin: 0 0 8px 16px; border-radius: 6px; }
+.plan-main .durable-week .day-image img { width: 100%; height: 100%; object-fit: cover; }
+.plan-main .day-compact-summary { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 5px; }
+.plan-main .day-compact-summary > small { color: var(--ink-soft); font-size: 13px; }
+.plan-main .day-options-toggle { display: none; }
+.open-dinner { display: grid; gap: 5px; }
+.open-dinner strong { font-family: var(--serif); font-size: 23px; font-weight: 400; line-height: 1.3; }
+.open-dinner small { color: var(--ink-soft); font-size: 13px; }
+.plan-main .durable-week .day-actions { grid-column: 2 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; min-width: 0; }
+.plan-main .durable-week .empty-day-actions { grid-column: 3; grid-row: 1; }
+.plan-main .durable-week .day-actions > .primary-button,
+.plan-main .durable-week .empty-day-actions > .primary-button { width: auto; margin: 0; padding-inline: 14px; }
+.plan-main .durable-week .empty-day-actions > .primary-button { color: var(--green); background: transparent; border-color: transparent; }
+.plan-main .durable-week .meal-amounts { margin: 0; }
+.plan-main .durable-week .meal-amounts label { gap: 8px; font-size: 13px; }
+.plan-main .durable-week .meal-amounts input { width: 64px; padding: 8px; }
+.plan-main .durable-week .meal-review,
+.plan-main .durable-week .meal-more { margin: 0; padding: 0; border: 0; }
+.plan-main .durable-week .meal-review > summary,
+.plan-main .durable-week .meal-more > summary { min-height: 44px; align-content: center; font-size: 13px; }
+.plan-main .durable-week .meal-review[open],
+.plan-main .durable-week .meal-more[open] { flex-basis: 100%; padding: 12px 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.plan-main .day-actions > .quantity-note { flex-basis: 100%; margin: 0; }
+.plan-main .plan-footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 16px; margin: 0; }
+.plan-main .plan-footer p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+.plan-main .inline-confirm { margin-top: 16px; }
+.plan-main .missing-recipe { margin-bottom: 8px; }
+
+/* A checklist keeps its reliable checked/undo behavior in a flatter ledger. */
+.shopping-workspace .shopping-panel { min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.shopping-workspace .shopping-progress { background: var(--cream); margin: 0; padding-block: 0 18px; }
+.shopping-workspace .shopping-progress .section-heading h2 { font-family: var(--serif); font-size: 28px; font-weight: 400; }
+.shopping-workspace .shopping-progress .section-heading p { font-size: 13px; }
+.shopping-workspace .shopping-check-undo { padding-top: 8px; }
+.shopping-workspace .shopping-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, .65fr); gap: 8px 24px; padding-block: 16px; }
+.shopping-workspace .shopping-item > label { min-width: 0; padding: 0; gap: 12px; align-items: start; }
+.shopping-workspace .shopping-list .shopping-item input { margin-top: 4px; width: 22px; height: 22px; }
+.shopping-workspace .shopping-item > label > span { display: grid; grid-template-columns: minmax(0, 1fr) minmax(64px, auto); align-items: baseline; gap: 12px; width: 100%; }
+.shopping-workspace .shopping-list .shopping-item strong { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.shopping-workspace .shopping-list .shopping-item > label small { text-transform: none; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; text-align: end; color: var(--ink-soft); }
+.shopping-workspace .shopping-detail { margin: 0; padding: 0; font-size: 13px; }
+.shopping-workspace .shopping-detail > div { display: flex; flex-wrap: wrap; }
+.shopping-column-headings { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(140px, .65fr); gap: 24px; background: var(--neutral); padding: 12px; margin-top: 8px; color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.shopping-context { min-width: 0; border-left: 1px solid var(--line); padding-left: 28px; }
+.shopping-week-summary > .eyebrow { font-size: 11px; }
+.shopping-week-summary h2 { margin: 8px 0; font-family: var(--serif); font-size: 26px; font-weight: 400; }
+.shopping-week-summary > p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+.shopping-week-summary dl { margin: 20px 0; }
+.shopping-week-summary dl > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.shopping-week-summary dt { font-size: 14px; color: var(--ink-soft); }
+.shopping-week-summary dd { font-size: 14px; font-weight: 600; margin: 0; }
+.shopping-context .purchase-action { display: grid; gap: 8px; margin-block: 20px; padding: 16px; border-radius: 6px; }
+.shopping-context .purchase-action > small,
+.shopping-context-note { color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.shopping-context .shopping-help { margin-top: 20px; }
+.shopping-context .shopping-help summary { min-height: 44px; align-content: center; font-weight: 600; color: var(--ink); }
+.shopping-context .shopping-tools { margin-top: 12px; }
+.shopping-context .shopping-export-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shopping-context .purchase-history { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 16px; overflow-wrap: anywhere; }
+.shopping-context .purchase-history > summary { min-height: 44px; align-content: center; }
+
+@media (max-width: 1050px) {
+  .plan-workspace, .shopping-layout.focused-shopping.shopping-workspace { gap: 28px; grid-template-columns: minmax(0, 1fr) 260px; }
+  .plan-main .durable-week .day-card { grid-template-columns: 76px minmax(0, 1fr); gap: 8px 12px; }
+  .plan-main .durable-week .empty-day-actions { grid-column: 2; grid-row: 2; }
+  .shopping-workspace .shopping-item { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .shopping-workspace .shopping-detail { margin-left: 34px; }
+  .shopping-column-headings { grid-template-columns: minmax(0, 1fr) auto; }
+  .shopping-column-headings > span:last-child { display: none; }
+}
+@media (max-width: 860px) {
+  .plan-workspace, .shopping-layout.focused-shopping.shopping-workspace { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .plan-context { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .plan-context .today-summary { margin-bottom: 0; }
+  .plan-context .use-soon-panel { padding-top: 0; border-top: 0; }
+  .plan-main { grid-column: 1; grid-row: 2; }
+  .shopping-context { border-left: 0; padding: 24px 0 0; border-top: 1px solid var(--line); }
+  .shopping-week-summary dl { display: flex; flex-wrap: wrap; gap: 24px; }
+  .shopping-week-summary dl > div { flex: 1; min-width: 120px; }
+}
+@media (max-width: 650px) {
+  .plan-workspace { gap: 22px; }
+  .plan-context { display: block; }
+  .plan-context .today-summary { padding: 20px; margin-bottom: 20px; }
+  .plan-context .today-summary strong { font-size: 26px; margin-top: 8px; }
+  .plan-context .today-summary > .today-actions { margin-top: 14px; flex-direction: row; flex-wrap: wrap; }
+  .plan-context .today-summary .primary-button { flex-basis: 100%; }
+  .plan-context .today-summary .text-button { flex: 1; }
+  .plan-context .use-soon-panel { margin-bottom: 0; padding-top: 18px; border-top: 1px solid var(--line); }
+  .plan-context .use-soon-panel h2 { font-size: 23px; }
+  .plan-context .use-soon-panel .section-heading { flex-direction: row; align-items: center; }
+  .plan-context .use-soon-items { flex-direction: row; flex-wrap: wrap; gap: 8px 16px; }
+  .plan-context .use-soon-items .secondary-button { flex: 1 1 120px; }
+  .plan-main .planner-intro { padding-bottom: 12px; }
+  .plan-main .planner-intro > div:first-child { flex: auto; }
+  .plan-main .planner-intro h2 { font-size: 25px; }
+  .plan-main .planner-actions { gap: 6px; }
+  .plan-main .planner-actions > .primary-button, .plan-main .planner-actions > .secondary-button { padding-inline: 12px; }
+  .plan-main .week-navigation { padding-block: 12px; }
+  .plan-main .week-range { flex-basis: 100%; }
+  .plan-main .week-range > strong { font-size: 13px; }
+  .plan-main .earlier-days-toggle { margin-top: 12px; }
+  .plan-main .compact-week.durable-week .day-card { display: block; min-height: 0; padding: 18px 0; }
+  .plan-main .compact-week:not(.show-past) .day-card.is-past { display: none; }
+  .plan-main .compact-week.durable-week .day-card.is-today { padding-left: 12px; }
+  .plan-main .durable-week .day-heading { flex-direction: row; align-items: center; flex-wrap: wrap; margin: 0 0 10px; gap: 8px; }
+  .plan-main .durable-week .day-name { margin-right: auto; }
+  .plan-main .compact-week.durable-week .day-card .day-recipe-title { margin: 0; font-size: 23px; }
+  .plan-main .day-options-toggle { display: inline-flex; }
+  .plan-main .compact-week .day-card.filled:not(.day-expanded) .day-actions { display: none; }
+  .plan-main .compact-week .day-card.day-expanded .day-actions { display: flex; padding-top: 12px; margin-top: 8px; border-top: 1px solid var(--line); }
+  .plan-main .compact-week .day-actions > .primary-button { width: 100%; margin: 4px 0; }
+  .plan-main .durable-week .empty-day-actions { display: block; }
+  .plan-main .compact-week.durable-week .empty-day-actions > .primary-button { width: auto; padding-inline: 0; margin: 8px 0 0; }
+  .plan-main .durable-week .meal-review, .plan-main .durable-week .meal-more { flex-basis: 100%; }
+  .plan-main .durable-week .meal-review[open], .plan-main .durable-week .meal-more[open] { padding: 10px; }
+  .plan-main .durable-week .meal-amounts label { flex-wrap: wrap; }
+  .shopping-workspace .shopping-progress { top: 0; padding-top: 8px; }
+  .shopping-workspace .shopping-progress .section-heading h2 { font-size: 26px; }
+  .shopping-workspace .shopping-item { padding-block: 14px; }
+  .shopping-workspace .shopping-item > label > span { gap: 8px; }
+  .shopping-workspace .shopping-detail .text-button { text-align: left; }
+  .shopping-context { padding-top: 20px; }
+}

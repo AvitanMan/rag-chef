@@ -1,3 +1,5 @@
+import { revealPantryEditors } from "./ui-controls";
+import { openChef } from "./open-chef";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PersonalRecipeAmounts, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -30,16 +32,19 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test("personal editor keeps drafts local and saved dinner, shopping, cooking and Chef quantities agree", async ({ page, request }) => {
-  await page.goto("/");
+  await openChef(page);
   let drawer = await openRecipe(page);
   let editor = drawer.getByRole("region", { name: "Personal amounts", exact: true });
   await expect(editor).toContainText("2 source servings");
   const rice = editor.getByRole("textbox", { name: "Personal amount for rice", exact: true });
+  await revealPantryEditors(page);
   await rice.fill("-1 g");
   await expect(editor.getByRole("button", { name: "Save personal amounts", exact: true })).toBeDisabled();
   expect((await read(request)).state.personalRecipeAmounts).toBeUndefined();
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+  await revealPantryEditors(page);
   await expect(rice).toHaveValue("");
+  await revealPantryEditors(page);
   await rice.fill("300 g");
   await editor.getByRole("button", { name: "Save personal amounts", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts?.["fixture-tomato-rice"]?.amounts[0].measure).toBe("300 g");
@@ -87,7 +92,7 @@ test("personal editor keeps drafts local and saved dinner, shopping, cooking and
 test("changing personal defaults invalidates Chef previews and uses the new amounts on the next question", async ({ page, request }) => {
   const source = await catalog(request), recipe = source.recipes.find(item => item.id === "fixture-tomato-rice")!;
   await save(request, { ...empty(), personalRecipeAmounts: { [recipe.id]: amounts(recipe, source.contentHashesByRecipeId[recipe.id]) } });
-  await page.goto("/"); let drawer = await openRecipe(page);
+  await openChef(page); let drawer = await openRecipe(page);
   await drawer.getByRole("button", { name: "Ask Chef about this recipe", exact: true }).click();
   async function ask() {
     await page.getByRole("textbox", { name: "Follow-up question", exact: true }).fill("How much rice do I need?");
@@ -113,7 +118,7 @@ test("editing and resetting personal defaults preserves existing dinners and Coo
   const personal = amounts(recipe, source.contentHashesByRecipeId[recipe.id]);
   const old: PlannedMeal = { id: "old", date: "2026-10-21", recipeId: recipe.id, recipe, title: recipe.title, baseServings: 2, servings: 2, batches: 1, locked: false, status: "cooked", ingredientOverrides: {}, planningIngredients: [{ ...recipe.ingredients[0], measure: "300 g" }, recipe.ingredients[1]], personalAmountIndices: [0], completion: { id: "done", at: "2026-10-21T18:00:00.000Z", deductions: [] } };
   await save(request, { ...empty(), personalRecipeAmounts: { [recipe.id]: personal }, meals: { [old.date]: old } });
-  await page.goto("/"); let drawer = await openRecipe(page);
+  await openChef(page); let drawer = await openRecipe(page);
   let editor = drawer.getByRole("region", { name: "Personal amounts", exact: true });
   await editor.getByRole("textbox", { name: "Personal amount for rice", exact: true }).fill("500 g");
   await editor.getByRole("button", { name: "Save personal amounts", exact: true }).click();
@@ -141,7 +146,7 @@ test("changed source rows retain previous labels read-only and require fresh per
     data.contentHashesByRecipeId[recipe.id] = "b".repeat(64);
     await route.fulfill({ json: data });
   });
-  await page.goto("/"); const drawer = await openRecipe(page);
+  await openChef(page); const drawer = await openRecipe(page);
   const editor = drawer.getByRole("region", { name: "Personal amounts", exact: true });
   const previous = editor.getByRole("region", { name: "Previous personal amounts", exact: true });
   await expect(previous).toContainText("2 source servings"); await expect(previous).toContainText("rice"); await expect(previous).toContainText("300 g");
@@ -160,7 +165,7 @@ test("unknown-yield batches, backup replacement and recovery retain personal amo
   const source = await catalog(request), recipe = source.recipes.find(item => item.id === "fixture-unknown-soup")!;
   const personal = amounts(recipe, source.contentHashesByRecipeId[recipe.id], "600 ml");
   await save(request, { ...empty(), personalRecipeAmounts: { [recipe.id]: personal } });
-  await page.goto("/"); const drawer = await openRecipe(page, recipe.title);
+  await openChef(page); const drawer = await openRecipe(page, recipe.title);
   await expect(drawer.getByRole("region", { name: "Personal amounts", exact: true })).toContainText("one recipe batch (source yield unknown)");
   await drawer.getByRole("button", { name: "Choose for tonight", exact: true }).click();
   const dinner = page.getByRole("region", { name: "Chosen dinner", exact: true });
@@ -180,7 +185,8 @@ test("unknown-yield batches, backup replacement and recovery retain personal amo
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts).toBeUndefined();
   await page.getByText(/Unsaved kitchens found/).click();
   const recovery = page.locator(".recovery-candidate").filter({ hasText: "1 personal amount sets changed" }).first();
-  await recovery.getByRole("button", { name: "Recover this draft", exact: true }).click();
+  await recovery.getByRole("button", { name: "Review this draft", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review browser draft", exact: true }).getByRole("button", { name: "Recover this draft", exact: true }).click();
   await page.getByRole("button", { name: "Save this draft", exact: true }).click();
   await expect.poll(async () => (await read(request)).state.personalRecipeAmounts?.[recipe.id]).toEqual(personal);
   await expect.poll(async () => (await read(request)).state.meals[TODAY]?.batches).toBe(2);

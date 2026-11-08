@@ -7,6 +7,7 @@ export interface CachedKitchen {
   revision: number;
   state: KitchenState;
   dirty: boolean;
+  base?: KitchenState | null;
   updatedAt?: string;
   reason?: DraftReason;
 }
@@ -35,6 +36,7 @@ export function parseCachedKitchen(text: string | null): CachedKitchen | null {
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || typeof value.dirty !== "boolean") return null;
     validateKitchenWrite({ revision: value.revision, state: value.state });
+    if (value.base != null) validateKitchenWrite({ revision: value.revision, state: value.base });
     if (value.updatedAt !== undefined && (typeof value.updatedAt !== "string" || !Number.isFinite(Date.parse(value.updatedAt)) || new Date(value.updatedAt).toISOString() !== value.updatedAt)) return null;
     if (value.reason !== undefined && !["edit", "before-restore", "before-recovery"].includes(value.reason)) return null;
     return value as CachedKitchen;

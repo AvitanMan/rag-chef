@@ -8,7 +8,7 @@ import ts from "typescript";
 
 const directory = await mkdtemp(join(tmpdir(), "jff-kitchen-state-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["kitchen-state", "kitchen-types", "quantities"]) {
+for (const name of ["random-id", "kitchen-state", "kitchen-types", "quantities"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
   await writeFile(join(directory, `${name}.mjs`), compiled);

@@ -43,3 +43,15 @@ Describe the user-visible problem, resulting behavior, verification performed,
 and any remaining limitations. Keep unrelated work separate. Include screenshots
 for UI changes and source provenance for new content. All required checks must
 pass before merge.
+
+Before pushing, inspect the staged files and every unpublished commit, including
+files removed by a later commit. Scan for credentials with redacted output;
+never paste suspected values into a PR, issue, or test log. Keep environment
+files, local certificates and keys, editor settings, databases, kitchen backups,
+and private audit reports out of Git. An ignore rule does not remove a file
+already committed to history.
+
+Use disposable synthetic kitchens for public screenshots. Keep local test
+artifacts under the ignored `output/playwright/` directory; link to committed
+screenshots or GitHub CI runs in public documentation instead of uploading
+personal local diagnostics.

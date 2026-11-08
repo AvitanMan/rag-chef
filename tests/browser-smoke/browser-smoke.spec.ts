@@ -1,3 +1,5 @@
+import { revealShoppingTools } from "../e2e/ui-controls";
+import { openChef } from "../e2e/open-chef";
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_COOKING_PROFILE, type KitchenState, type PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -35,7 +37,7 @@ test.beforeEach(async ({ page, request }) => {
 test("saved dinner and timer survive a real offline shell reload", async ({ page, context, request }, testInfo) => {
   let chefCalls = 0;
   page.on("request", outgoing => { if (new URL(outgoing.url()).pathname === "/api/chef") chefCalls++; });
-  await page.goto("/");
+  await openChef(page);
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toContainText("Tomato Rice");
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   const before = await (await request.get("/api/kitchen")).json();
@@ -53,6 +55,7 @@ test("saved dinner and timer survive a real offline shell reload", async ({ page
   await page.clock.fastForward(5000);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".save-indicator")).toHaveText("Offline", { timeout: 15_000 });
+  await navigate(page, "Chef");
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toContainText("Tomato Rice");
   await page.getByRole("button", { name: "Resume cooking", exact: true }).click();
   await expect(cooking).toBeVisible();
@@ -75,15 +78,17 @@ test("shopping copy fallback and print layout work without changing kitchen data
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("Clipboard permission unavailable"); } } });
     window.print = () => { document.documentElement.dataset.printRequested = "true"; };
   });
-  await page.goto("/");
+  await openChef(page);
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
   await navigate(page, "Shopping");
   const before = await (await request.get("/api/kitchen")).json();
+  await revealShoppingTools(page);
   await page.getByRole("button", { name: "Copy shopping list", exact: true }).click();
   const fallback = page.getByRole("textbox", { name: "Shopping list text", exact: true });
   await expect(fallback).toBeFocused();
   await expect(fallback).toHaveValue(/rice: 200 g/);
   await expect(fallback).toHaveValue(/tomato: 2/);
+  await revealShoppingTools(page);
   await page.getByRole("button", { name: "Print", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-print-requested", "true");
   await page.emulateMedia({ media: "print" });

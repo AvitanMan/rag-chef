@@ -3,6 +3,7 @@ import { DEFAULT_RECIPE_EMBED_MODEL } from "@/app/lib/recipe-embeddings";
 import { RecipeSourceError, searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
 import { isRecipeCatalogConfigured } from "@/app/lib/recipe-store";
 import { evaluateRecipeConstraints, normalizeConstraints } from "@/app/lib/recipe-constraints";
+import { requireHousehold, householdError } from "@/app/lib/household";
 
 const MAX_QUERY_LENGTH = 120;
 const MAX_PANTRY_ITEMS = 20;
@@ -32,6 +33,8 @@ function readPantry(searchParams: URLSearchParams): string[] {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  let hosted: boolean;
+  try { hosted = (await requireHousehold(request)).mode === "hosted"; } catch (error) { return householdError(error); }
   let url: URL;
 
   try {
@@ -66,13 +69,13 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    if (await isRecipeCatalogConfigured()) {
+    if (hosted || await isRecipeCatalogConfigured()) {
       try {
         const catalog = await searchRecipeCatalog(
           { pantry, query, constraints },
           embeddingModel(),
         );
-        if (catalog.catalogCount > 0 || allergies.length > 0) {
+        if (hosted || catalog.catalogCount > 0 || allergies.length > 0) {
           return Response.json(
             {
               recipes: catalog.recipes,
@@ -101,6 +104,7 @@ export async function GET(request: Request): Promise<Response> {
           );
         }
       } catch {
+        if (hosted) return Response.json({ recipes: [], error: { code: "CATALOG_UNAVAILABLE", message: "The approved recipe catalog is unavailable. Retry to load dinners." } }, { status: 503, headers: { "Cache-Control": "no-store" } });
         // Keep the product usable while a local database is being initialized.
       }
     }

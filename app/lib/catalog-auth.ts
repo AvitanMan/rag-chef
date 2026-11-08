@@ -1,6 +1,23 @@
+import { hostedMode, isPlatformAdminRequest, requireIdentity, emailAllowed, householdError, HouseholdAuthError, requireSameOrigin, initializeHouseholdRuntime, secureLanMode, requireHousehold } from "./household";
 /** Shared admin boundary: CLI requests have no Origin; browser writes must be same-origin. */
-export function authorizeCatalogRequest(request: Request): Response | null {
+export async function authorizeCatalogRequest(request: Request): Promise<Response | null> {
+  await initializeHouseholdRuntime();
+  if (hostedMode()) {
+    try {
+      requireSameOrigin(request);
+      if (isPlatformAdminRequest(request)) return null;
+      const identity = await requireIdentity(request);
+      if (!emailAllowed(identity.user.email, "PLATFORM_ADMIN_EMAILS")) throw new HouseholdAuthError("PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required.");
+      return null;
+    } catch (error) { return householdError(error); }
+  }
   const url = new URL(request.url);
+  // Original bundled starters are safe first-run setup for the local kitchen.
+  // Every other catalog operation retains the separate administrator boundary.
+  if (secureLanMode() && request.method === "POST" && url.pathname === "/api/admin/catalog/demo") {
+    try { await requireHousehold(request); return null; }
+    catch (error) { return householdError(error); }
+  }
   const origin = request.headers.get("origin");
   if (request.method !== "GET" && ((origin && origin !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site")) {
     return denied("CROSS_ORIGIN_WRITE", "Cross-origin catalog writes are not allowed.", 403);

@@ -5,7 +5,7 @@ import { upsertApprovedRecipeSource, upsertCatalogRecipe } from "@/app/lib/recip
 
 /** Idempotent local setup: adds original recipes, without models or kitchen writes. */
 export async function POST(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request);
+  const denied = await authorizeCatalogRequest(request);
   if (denied) return denied;
   if ((await request.text()).trim()) return Response.json({ error: { message: "This action takes no recipe data." } }, { status: 400 });
   try {
