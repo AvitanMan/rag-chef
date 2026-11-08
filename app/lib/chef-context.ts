@@ -1,7 +1,8 @@
-import type { Recipe } from "./recipe-types";
-import type { PlannedMeal } from "./kitchen-types";
-import type { ChefDinnerContext } from "./chef-schema";
+import type { Recipe, RecipeSearchOptions } from "./recipe-types";
+import type { PantryStock, PlannedMeal } from "./kitchen-types";
+import type { ChefDinnerContext, PantryItem } from "./chef-schema";
 import { cookingStepText } from "./recipe-instructions";
+import { allocateStockForMeals, mealReadiness, pantryStockEligibility } from "./quantities";
 
 export type CookingTechniqueGuide = { term: string; explanation: string; sourceName: string; sourceUrl: string; licenseUrl: string };
 
@@ -54,6 +55,19 @@ export function chefMealPreview(meal: PlannedMeal, context: ChefDinnerContext): 
     ...(meal.baseServings && context.servings !== undefined ? { servings: context.servings } : {}),
     ...(!meal.baseServings && context.batches !== undefined ? { batches: context.batches } : {}),
   };
+}
+
+/** Eligible physical stock, not reservation balances; preserve entered amount notes. */
+export function chefPantryProjection(pantry: PantryStock[], date: string): PantryItem[] {
+  return pantry.filter(item => pantryStockEligibility(item, date).eligible)
+    .map(item => ({ name: item.name, quantity: item.measure }));
+}
+
+export function chefMealReadiness(meal: PlannedMeal, stock: NonNullable<RecipeSearchOptions["stockContext"]>, purpose?: ChefDinnerContext["purpose"]) {
+  // Cooking can happen before the saved date, even in a different week. Only
+  // this availability calculation changes date; saved amounts and hashes do not.
+  if (purpose === "cooking") return mealReadiness({ ...meal, date: stock.today }, stock.pantry, stock.today);
+  return mealReadiness(meal, allocateStockForMeals(stock.meals, stock.pantry, stock.today).pantry, stock.today);
 }
 
 export async function chefRecipeHash(recipe: Recipe): Promise<string> {

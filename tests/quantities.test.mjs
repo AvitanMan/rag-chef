@@ -15,7 +15,7 @@ for (const name of ["kitchen-types", "quantities"]) {
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   await writeFile(join(directory, `${name}.mjs`), compiled.replaceAll('"./kitchen-types"', '"./kitchen-types.mjs"'));
 }
-const { canonicalIngredient, parseMeasure, formatMeasure, buildShoppingList, consumptionPreview, completeMeal, undoMeal, normalizePlanningIngredient } = await import(pathToFileURL(join(directory, "quantities.mjs")).href);
+const { canonicalIngredient, parseMeasure, pantryAmountDetails, pantryStockEligibility, formatMeasure, buildShoppingList, consumptionPreview, completeMeal, undoMeal, normalizePlanningIngredient } = await import(pathToFileURL(join(directory, "quantities.mjs")).href);
 
 test("planning normalization accepts clear quantities and comparable dual units only", () => {
   for (const [text, expected] of [
@@ -118,6 +118,68 @@ test("parser handles mixed and Unicode fractions, compatible units and isolated 
   for (const value of ["to taste", "a little", "1-2 kg", "1–2 cups", "1 to 2", "about 2 g", "1/0 cup", "2 large", "", "-3 g"]) {
     assert.equal(parseMeasure(value), null, value);
   }
+});
+
+test("pantry amount details distinguish measured amounts, isolated package counts, unknown notes and empty stock", () => {
+  for (const [measure, parsed] of [
+    [".5 kg", { quantity: 500, unit: "g", dimension: "mass" }],
+    ["½ cup", { quantity: 120, unit: "ml", dimension: "volume" }],
+    ["2 cans", { quantity: 2, unit: "can", dimension: "count:can" }],
+    ["1 packet", { quantity: 1, unit: "packet", dimension: "count:packet" }],
+    ["2", { quantity: 2, unit: "count", dimension: "count" }],
+  ]) {
+    const details = pantryAmountDetails(measure);
+    assert.equal(details.kind, "known", measure);
+    assert.deepEqual(details.parsed, parsed, measure);
+    assert.ok(details.explanation.length > 0);
+  }
+  for (const measure of ["2 cans", "1 jar", "3 bottles", "1 packet"]) {
+    assert.match(pantryAmountDetails(measure).explanation, /package count/i);
+    assert.match(pantryAmountDetails(measure).explanation, /not converted/);
+  }
+  for (const measure of ["", "   ", "some", "to taste", "none", "about 2 g", "1-2 kg", "1/0 cup", "-1 g", "1 bag", "0 bags", "2 cans (400 g each)"]) {
+    const details = pantryAmountDetails(measure);
+    assert.equal(details.kind, "unknown", measure);
+    assert.equal(details.parsed, null, measure);
+    assert.match(details.explanation, /enter a measured amount/i);
+    if (measure.trim()) assert.ok(details.explanation.includes(measure), "retain the note in its explanation");
+  }
+  for (const measure of ["0", "0 g", "0.0 kg", "0/2 cups", "0 cans", "0 packets"]) {
+    const details = pantryAmountDetails(measure);
+    assert.equal(details.kind, "empty", measure);
+    assert.equal(details.parsed.quantity, 0, measure);
+    assert.match(details.explanation, /zero.*excluded/);
+  }
+});
+
+test("pantry eligibility excludes zero and past dates, but does not promise quantities for eligible notes", () => {
+  const today = "2030-01-10";
+  for (const measure of ["200 g", "1 can", "", "some", "0 bags"]) {
+    for (const useBy of [undefined, today, "2030-01-11"]) {
+      assert.deepEqual(pantryStockEligibility({ ...pantry(measure), ...(useBy ? { useBy } : {}) }, today), { eligible: true, reason: null });
+    }
+    const expired = pantryStockEligibility({ ...pantry(measure), useBy: "2030-01-09" }, today);
+    assert.equal(expired.eligible, false);
+    assert.match(expired.reason, /2030-01-09.*past.*2030-01-10.*excluded/);
+  }
+  for (const measure of ["0", "0 g", "0 cups", "0 cans"]) {
+    const empty = pantryStockEligibility(pantry(measure), today);
+    assert.equal(empty.eligible, false);
+    assert.match(empty.reason, /zero/);
+  }
+});
+
+test("canonical keys used by purchase history remain literal and accent sensitive", () => {
+  for (const [name, key] of [
+    ["  TOMATOES  ", "tomato"], ["scallions", "spring onion"], ["courgettes", "zucchini"],
+    ["large onions, finely chopped", "onion"], ["rice", "rice"], ["dry rice", "rice"],
+    ["rice (cooked)", "cooked rice"], ["raw chicken", "uncooked chicken"],
+    ["dried chickpeas", "chickpea"], ["dried basil", "dried basil"],
+    ["rice vinegar", "rice vinegar"], ["rice flour", "rice flour"], ["eggplant", "eggplant"],
+    ["cooked or raw rice", "cooked or raw rice"], ["cooked raw rice", "cooked raw rice"],
+    ["CRÈME FRAÎCHE", "crème fraîche"], ["CREME FRAICHE", "creme fraiche"],
+    ["cre\u0300me frai\u0302che", "crème fraîche"],
+  ]) assert.equal(canonicalIngredient(name), key, name);
 });
 
 test("canonical matching is exact, with a small explicit plural alias set", () => {
@@ -240,7 +302,8 @@ test("consumption never goes negative and distributes deductions across availabl
   const result = consumptionPreview(meal(), [pantry("100 g"), pantry(".2 kg", "Rice", "rice-2"), pantry("to taste", "Rice", "rice-3")]);
   assert.equal(result.deductions.length, 2);
   assert.deepEqual(result.deductions.map((deduction) => deduction.after), ["0 g", "0 g"]);
-  assert.ok(result.notes.some((note) => note.includes("100 g unavailable")));
+  assert.ok(result.notes.some((note) => note.includes("100 g not covered by quantified, compatible pantry stock")));
+  assert.ok(result.notes.some((note) => note.includes("to taste") && note.includes("enter a measured amount")));
 });
 
 test("undo restores arithmetic deltas, preserving subsequent pantry edits", () => {

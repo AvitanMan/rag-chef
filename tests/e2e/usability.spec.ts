@@ -41,10 +41,15 @@ test("invalid pantry drafts do not block valid edits and correction saves", asyn
   await rice.fill("-2 g");
   await expect(rice).toHaveAttribute("aria-invalid", "true");
   await expect(page.getByRole("alert")).toContainText("Not saved: Amount");
-  await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("500 g");
+  const beans = page.getByRole("textbox", { name: "Available beans", exact: true });
+  await beans.fill("500 g");
+  expect((await read(request)).state.pantry.map((r: { measure: string }) => r.measure)).toEqual(["100 g", "400 g"]);
+  await beans.press("Tab");
   await expect.poll(async () => (await read(request)).state.pantry.map((r: { measure: string }) => r.measure)).toEqual(["100 g", "500 g"]);
   await rice.fill("1/0 cup"); await expect(rice).toHaveAttribute("aria-invalid", "true");
   await rice.fill("300 g");
+  expect((await read(request)).state.pantry[0].measure).toBe("100 g");
+  await rice.press("Enter");
   await expect.poll(async () => (await read(request)).state.pantry[0].measure).toBe("300 g");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.reload(); await navigate(page, "Pantry");

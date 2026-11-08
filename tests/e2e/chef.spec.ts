@@ -151,6 +151,7 @@ test.describe("instant dinner picks", () => {
     await page.getByRole("button", { name: "+ Add ingredient", exact: true }).click();
     await page.getByRole("textbox", { name: "Ingredient name", exact: true }).fill("tomato");
     await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
+    await page.getByRole("button", { name: "Confirm new batch", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
     await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
     await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();

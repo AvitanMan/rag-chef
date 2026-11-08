@@ -150,6 +150,7 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("400 g");
+  await page.getByRole("textbox", { name: "Available beans", exact: true }).press("Enter");
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((row: { name: string; measure: string }) => row.name === "beans" && row.measure === "400 g")))).toBeTruthy();
   await page.close();
   await context.setOffline(false);

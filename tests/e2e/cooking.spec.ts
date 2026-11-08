@@ -40,11 +40,13 @@ test("use-by edits persist and shared stock covers only dinners on eligible date
   await expect(page.getByRole("checkbox", { name: "Bought rice 400 g", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
   await date.fill(tomorrow);
+  await date.press("Enter");
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBe(tomorrow);
   await page.reload(); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await expect(date).toHaveValue(tomorrow);
   await date.fill("");
+  await date.press("Enter");
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBeUndefined();
   await navigate(page, "Shopping");
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();

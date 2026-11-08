@@ -7,14 +7,34 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 const directory = await mkdtemp(join(tmpdir(), "jff-chef-context-"));
 after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types"]) {
+for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types", "kitchen-state", "kitchen-validation", "cooking-session",
+  "chef-question-plan", "chef-grounding", "chef-evidence", "chef-verification", "provider-readiness", "catalog-search", "recipe-query", "recipe-browser", "recipe-constraints", "recipe-safety", "recipe-embeddings", "retrieval-ranking"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
+// Run the real route, retrieval and quantity calculations; replace only stores
+// and provider I/O so these regressions need neither a database nor a model.
+await writeFile(join(directory, "kitchen-store.mjs"), `
+  export const fixture = { document: null, reads: 0 };
+  export async function getKitchenDocument() { fixture.reads++; return fixture.document; }
+`);
+await writeFile(join(directory, "recipe-store.mjs"), `
+  export const fixture = { records: [] };
+  export async function listCatalogRecipes() { return fixture.records; }
+  export async function listStoredRecipeEmbeddings() { return []; }
+  export async function getRecipeSourcePolicy() { return null; }
+`);
+const routeSource = await readFile(new URL("../app/api/chef/route.ts", import.meta.url), "utf8");
+await writeFile(join(directory, "chef-route.mjs"), ts.transpileModule(routeSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"@\/app\/lib\/([\w-]+)"/g, '"./$1.mjs"'));
 const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)));
-const { chefMealPreview, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
+const { chefMealPreview, chefMealHash, chefMealReadiness, chefPantryProjection, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
 const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
+const { createPlannedMeal, localDate, addDateDays } = await load("kitchen-state");
+const { plannedDinnerFingerprint } = await load("cooking-session");
+const { fixture: kitchenFixture } = await load("kitchen-store");
+const { fixture: catalogFixture } = await load("recipe-store");
+const { POST } = await load("chef-route");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
 test("recipe version includes source quantities, directions and yield while ignoring display-only images", async () => {
   assert.equal(await chefRecipeHash(recipe), await chefRecipeHash({ ...recipe, image: "new" }));
@@ -180,6 +200,49 @@ test("pantry amount notes accepted by kitchen storage also remain valid Chef inp
   assert.equal(request.pantry[0].quantity, note.trim());
 });
 
+test("Chef accepts 121–500 pantry rows and names up to the kitchen's 200-character limit without truncation", () => {
+  for (const count of [121, 250, 500]) {
+    const pantry = Array.from({ length: count }, (_, index) => ({ name: `Ingredient ${index} `.padEnd(121 + index % 80, "x"), quantity: "Amount unknown; check the package. ".repeat(4).trim() }));
+    assert.deepEqual(parseChefRequest({ query: "Dinner", pantry }).pantry, pantry);
+    assert.deepEqual(parseChefRequest({ query: "Dinner", pantry: pantry.map(item => item.name) }).pantry, pantry.map(({ name }) => ({ name })));
+  }
+  for (const pantry of [Array(501).fill("rice"), ["x".repeat(201)], [{ name: "x".repeat(201) }], [{ name: "rice", quantity: "x".repeat(161) }], [{ name: "rice", unit: "x".repeat(41) }]]) {
+    assert.throws(() => parseChefRequest({ query: "Dinner", pantry }), /pantry/);
+  }
+});
+
+test("Chef pantry projection preserves physical amounts and notes but excludes zero and past-date stock", () => {
+  const pantry = [
+    { id: "rice", name: "rice", measure: "1 kg", useBy: "2026-10-25" },
+    { id: "notes", name: "beans", measure: "  An opened bag; weigh before cooking.  " },
+    { id: "package", name: "tomato", measure: "2 cans" },
+    { id: "missing", name: "salt", measure: "" },
+    { id: "empty", name: "oil", measure: "0 ml" },
+    { id: "past", name: "milk", measure: "1 l", useBy: "2026-10-24" },
+  ];
+  const before = structuredClone(pantry);
+  assert.deepEqual(chefPantryProjection(pantry, "2026-10-25"), pantry.slice(0, 4).map(item => ({ name: item.name, quantity: item.measure })));
+  assert.deepEqual(chefPantryProjection(pantry, "2026-10-26"), pantry.slice(1, 4).map(item => ({ name: item.name, quantity: item.measure })));
+  assert.deepEqual(pantry, before);
+});
+
+test("cooking readiness uses today's physical stock without changing saved dates, amounts or version meanings", async () => {
+  const saved = { ...createPlannedMeal("2026-11-03", recipe), id: "saved", ingredientOverrides: { "0": "250 g" } };
+  const reserved = { ...saved, id: "other", date: "2026-11-02" };
+  const stock = { pantry: [{ id: "rice", name: "cooked rice", measure: "250 g", useBy: "2026-10-25" }, { id: "tomato", name: "tomato", measure: "2" }], meals: [reserved], targetDate: saved.date, today: "2026-10-25" };
+  const before = structuredClone({ saved, stock });
+  const hash = await chefMealHash(saved), fingerprint = plannedDinnerFingerprint(saved);
+  assert.equal(chefMealReadiness(saved, stock, "cooking").coveredCount, 2);
+  assert.equal(chefMealReadiness(saved, stock, "planning").coveredCount, 0);
+  assert.deepEqual({ saved, stock }, before);
+  assert.equal(await chefMealHash(saved), hash);
+  assert.equal(plannedDinnerFingerprint(saved), fingerprint);
+  assert.equal(await chefMealHash({ ...saved, date: stock.today }), hash, "meal versions still ignore scheduling dates");
+  assert.equal(plannedDinnerFingerprint({ ...saved, date: stock.today }), fingerprint);
+  assert.notEqual(await chefMealHash({ ...saved, servings: 8 }), hash);
+  assert.notEqual(plannedDinnerFingerprint({ ...saved, servings: 8 }), fingerprint);
+});
+
 test("planning previews apply portions while preserving final overrides and cooking uses the saved meal", () => {
   const saved = { id: "saved", date: "2026-10-25", recipeId: recipe.id, recipe, baseServings: 2, servings: 2, batches: 1, status: "planned", ingredientOverrides: { "0": "250 g" } };
   const before = structuredClone(saved);
@@ -244,4 +307,166 @@ test("plain-English meaning requests explain the prohibited boiling state withou
   assert.doesNotMatch(focusedCookingMeaningAnswer(conditional, "Explain this step simply.", cookingTechniqueGuides(conditional.text, "Explain this step simply.")), /says to avoid boiling/);
   const positive = { ...step, text: "Do not drain the beans, but bring to a boil." };
   assert.doesNotMatch(focusedCookingMeaningAnswer(positive, "Explain this step simply.", cookingTechniqueGuides(positive.text, "Explain this step simply.")), /says to avoid boiling/);
+});
+
+const routeRecipe = { ...recipe, id: "test:rice", title: "Rice dinner", image: null, category: "Dinner", cuisine: "", tags: [],
+  source: { name: "Test", url: "https://example.invalid" }, ingredients: [{ name: "rice", measure: "200 g" }], instructions: ["Stir the rice."] };
+const today = "2026-10-25";
+function savedDinner(date, overrides = {}) {
+  return { ...createPlannedMeal(date, routeRecipe), id: `dinner:${date}`, ingredientOverrides: { "0": "250 g" }, ...overrides };
+}
+async function savedContext(meal, overrides = {}) {
+  return { purpose: "cooking", recipeId: meal.recipeId, recipeHash: await chefRecipeHash(meal.recipe), mealHash: await chefMealHash(meal),
+    mealDate: meal.date, mealId: meal.id, kitchenRevision: 7, targetDate: meal.date, today, ...overrides };
+}
+function chefHarness(t, state, source = routeRecipe, onGeneration) {
+  const document = { revision: 7, state, updatedAt: null }, prompts = [];
+  kitchenFixture.document = document; kitchenFixture.reads = 0;
+  catalogFixture.records = [{ recipe: source, contentHash: "fixture" }];
+  t.mock.method(globalThis, "fetch", async (_url, request) => {
+    const body = JSON.parse(request.body), text = body.messages.find(item => item.role === "user").content;
+    const offset = text.indexOf("\n\n{");
+    assert.notEqual(offset, -1);
+    prompts.push({ text, data: JSON.parse(text.slice(offset + 2)) });
+    onGeneration?.(document);
+    return Response.json({ error: "Provider deliberately offline in context tests" }, { status: 503 });
+  });
+  return { document, prompts, async ask(context, pantry = [{ name: "client-only", quantity: "999 kg" }], query = "Can I cook this dinner with my pantry?") {
+    const response = await POST(new Request("http://localhost/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, provider: "ollama", context, pantry }) }));
+    return { status: response.status, body: await response.json() };
+  } };
+}
+function kitchenState(pantry, meals = []) {
+  return { schemaVersion: 2, pantry, meals: Object.fromEntries(meals.map(meal => [meal.date, meal])), shoppingChecked: {}, migratedLegacy: false };
+}
+
+for (const useBy of [today, "2026-11-04"]) test(`early cross-week cooking ignores planned reservations and uses stock eligible today (use-by ${useBy})`, async t => {
+  const saved = savedDinner("2026-11-03");
+  const others = [savedDinner(today, { ingredientOverrides: { "0": "500 g" } }), savedDinner("2026-11-02", { ingredientOverrides: { "0": "500 g" } })];
+  const state = kitchenState([{ id: "rice", name: "rice", measure: "500 g", useBy }], [saved, ...others]);
+  const before = structuredClone(state), hash = await chefMealHash(saved), fingerprint = plannedDinnerFingerprint(saved);
+  const harness = chefHarness(t, state);
+  const context = await savedContext(saved, { targetDate: "2026-11-10", servings: 8, stepEvidenceId: "S1" });
+  const { status, body } = await harness.ask(context);
+  assert.equal(status, 200);
+  assert.equal(body.readinessByRecipeId[saved.recipeId].coveredCount, 1);
+  assert.deepEqual(body.readinessByRecipeId[saved.recipeId].shopping, []);
+  assert.deepEqual(body.resolvedContext, context);
+  assert.equal(harness.prompts.length, 1);
+  const prompt = harness.prompts[0];
+  assert.equal(prompt.data.focusedCookingStep.evidenceId, "S1", "exercise the focused cooking prompt too");
+  assert.deepEqual(prompt.data.pantry, [{ name: "rice", quantity: "500 g" }]);
+  assert.deepEqual(prompt.data.retrievedRecipes[0].pantryMatch, ["rice"]);
+  assert.equal(prompt.data.savedDinnerAmounts[0].measure, "250 g", "cooking ignores requested preview servings");
+  assert.match(prompt.data.pantryContextWarning, /physical pantry stock on 2026-10-25, without virtual reservations/);
+  assert.ok(body.warnings.includes(prompt.data.pantryContextWarning));
+  assert.match(prompt.text, /before planned reservations, not unreserved balances/);
+  assert.deepEqual(state, before);
+  assert.equal(await chefMealHash(saved), hash); assert.equal(plannedDinnerFingerprint(saved), fingerprint);
+});
+
+test("cooking without dinner.today falls back to localDate rather than the saved future date", async t => {
+  const actualToday = localDate(), saved = savedDinner(addDateDays(actualToday, 10));
+  const harness = chefHarness(t, kitchenState([{ id: "rice", name: "rice", measure: "250 g", useBy: actualToday }], [saved]));
+  const context = await savedContext(saved); delete context.today;
+  const result = await harness.ask(context);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.readinessByRecipeId[saved.recipeId].coveredCount, 1);
+  assert.ok(result.body.warnings.some(warning => warning.includes(`physical pantry stock on ${actualToday}`)));
+  assert.equal(result.body.resolvedContext.mealDate, saved.date);
+  assert.equal(result.body.resolvedContext.targetDate, saved.date);
+});
+
+test("planning retains the target date's week allocation while the model sees physical on-hand amounts", async t => {
+  const saved = savedDinner("2026-10-27"), targetDate = "2026-11-03";
+  const state = kitchenState([
+    { id: "rice", name: "rice", measure: "500 g", useBy: targetDate },
+    { id: "early", name: "milk", measure: "1 l", useBy: "2026-11-02" },
+    { id: "zero", name: "oil", measure: "0 ml" },
+  ], [saved, savedDinner("2026-10-26", { ingredientOverrides: { "0": "500 g" } }), savedDinner("2026-11-02", { ingredientOverrides: { "0": "300 g" } })]);
+  const before = structuredClone(state), harness = chefHarness(t, state);
+  const context = await savedContext(saved, { purpose: "planning", targetDate });
+  const result = await harness.ask(context);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.readinessByRecipeId[saved.recipeId].partialCount, 1);
+  assert.equal(result.body.readinessByRecipeId[saved.recipeId].shopping[0].measure, "50 g");
+  const prompt = harness.prompts[0];
+  assert.deepEqual(prompt.data.pantry, [{ name: "rice", quantity: "500 g" }], "raw on-hand stock is not the 200 g reservation balance");
+  assert.match(prompt.data.pantryContextWarning, /Planning availability is checked for 2026-11-03.*target week \(2026-11-02 to 2026-11-08\)/);
+  assert.match(prompt.data.pantryContextWarning, /before reservations, not unreserved quantities/);
+  assert.ok(result.body.warnings.includes(prompt.data.pantryContextWarning));
+  assert.deepEqual(result.body.resolvedContext, context);
+  assert.deepEqual(state, before);
+});
+
+test("new planning previews still replace only the unlocked planned target slot", async t => {
+  const targetDate = "2026-11-03", slot = savedDinner(targetDate, { ingredientOverrides: { "0": "500 g" } });
+  const harness = chefHarness(t, kitchenState([{ id: "rice", name: "rice", measure: "500 g" }], [slot]));
+  const context = { purpose: "planning", recipeId: routeRecipe.id, kitchenRevision: 7, today, targetDate };
+  const replacement = await harness.ask(context);
+  assert.equal(replacement.status, 200);
+  assert.equal(replacement.body.readinessByRecipeId[routeRecipe.id].coveredCount, 1);
+  slot.locked = true;
+  const protectedSlot = await harness.ask(context);
+  assert.equal(protectedSlot.status, 200);
+  assert.equal(protectedSlot.body.readinessByRecipeId[routeRecipe.id].missingCount, 1);
+});
+
+for (const count of [121, 250, 500]) test(`saved pantry remains authoritative for retrieval and generation with ${count} long-name rows`, async t => {
+  const pantry = Array.from({ length: count }, (_, index) => ({ id: `stock:${index}`, name: `Ingredient ${index} `.padEnd(200, "x"), measure: index === count - 1 ? "2 cans" : "  Unknown amount; weigh the opened package before cooking.  " }));
+  const source = { ...routeRecipe, ingredients: [{ name: pantry.at(-1).name, measure: "100 g" }] };
+  const state = kitchenState(pantry), before = structuredClone(state), harness = chefHarness(t, state, source);
+  const submitted = pantry.map(item => ({ name: item.name, quantity: "1000 kg" })); submitted[0].name = "client-only";
+  const result = await harness.ask({ purpose: "planning", recipeId: source.id, kitchenRevision: 7, today, targetDate: today }, submitted);
+  assert.equal(result.status, 200);
+  assert.equal(harness.prompts.length, 1);
+  const prompt = harness.prompts[0];
+  assert.deepEqual(prompt.data.pantry, pantry.map(item => ({ name: item.name, quantity: item.measure })));
+  assert.deepEqual(prompt.data.retrievedRecipes[0].pantryMatch, [pantry.at(-1).name]);
+  assert.equal(result.body.readinessByRecipeId[source.id].coveredCount, 0, "package counts are not converted to mass");
+  assert.equal(result.body.readinessByRecipeId[source.id].reviewCount, 1);
+  assert.match(prompt.text, /Preserve raw amount notes as unknown amounts; never invent package-content, mass-to-volume or cooked-to-raw conversions/);
+  assert.deepEqual(state, before);
+});
+
+test("unplanned cooking uses physical stock even when another locked dinner reserves it", async t => {
+  const reservation = savedDinner("2026-11-03", { locked: true });
+  const state = kitchenState([{ id: "rice", name: "rice", measure: "250 g" }], [reservation]);
+  const before = structuredClone(state), harness = chefHarness(t, state);
+  const result = await harness.ask({ purpose: "cooking", recipeId: routeRecipe.id, kitchenRevision: 7, today, targetDate: reservation.date });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.readinessByRecipeId[routeRecipe.id].coveredCount, 1);
+  assert.equal(result.body.readinessByRecipeId[routeRecipe.id].missingCount, 0);
+  assert.equal(result.body.resolvedContext.mealDate, undefined);
+  assert.match(harness.prompts[0].data.pantryContextWarning, /without virtual reservations/);
+  assert.deepEqual(state, before);
+});
+
+test("authoritative empty kitchens do not fall back to a submitted pantry", async t => {
+  const harness = chefHarness(t, null);
+  const result = await harness.ask({ purpose: "cooking", recipeId: routeRecipe.id, kitchenRevision: 7, today, targetDate: "2026-11-03" }, [{ name: "rice", quantity: "500 g" }]);
+  assert.equal(result.status, 200);
+  assert.deepEqual(harness.prompts[0].data.pantry, []);
+  assert.deepEqual(harness.prompts[0].data.retrievedRecipes[0].pantryMatch, []);
+  assert.equal(result.body.readinessByRecipeId[routeRecipe.id].missingCount, 1);
+});
+
+test("stale kitchen revisions and meal hashes still reject before generation", async t => {
+  const saved = savedDinner("2026-11-03"), state = kitchenState([{ id: "rice", name: "rice", measure: "500 g" }], [saved]);
+  const before = structuredClone(state), harness = chefHarness(t, state);
+  const staleRevision = await harness.ask(await savedContext(saved, { kitchenRevision: 6 }));
+  assert.equal(staleRevision.status, 409); assert.equal(staleRevision.body.error.code, "kitchen_changed");
+  const staleMeal = await harness.ask(await savedContext(saved, { mealHash: await chefMealHash({ ...saved, servings: 8 }) }));
+  assert.equal(staleMeal.status, 409); assert.equal(staleMeal.body.error.code, "context_changed");
+  assert.equal(harness.prompts.length, 0);
+  assert.deepEqual(state, before);
+});
+
+test("a kitchen revision change during the answer still rejects the result", async t => {
+  const saved = savedDinner("2026-11-03"), state = kitchenState([{ id: "rice", name: "rice", measure: "500 g" }], [saved]);
+  const before = structuredClone(state), harness = chefHarness(t, state, routeRecipe, document => document.revision++);
+  const result = await harness.ask(await savedContext(saved));
+  assert.equal(result.status, 409); assert.equal(result.body.error.code, "context_changed");
+  assert.equal(harness.prompts.length, 1); assert.equal(kitchenFixture.reads, 2);
+  assert.deepEqual(state, before);
 });

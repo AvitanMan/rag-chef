@@ -79,7 +79,10 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   await expect(page.getByRole("textbox", { name: "Available carrot", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "All items (3)", exact: true }).click();
-  await page.getByLabel("Use by rice", { exact: true }).fill("2026-10-28");
+  const date = page.getByLabel("Use by rice", { exact: true });
+  await date.fill("2026-10-28");
+  expect((await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe(TODAY);
+  await date.press("Enter");
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe("2026-10-28");
   await page.reload();

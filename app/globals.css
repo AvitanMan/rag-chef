@@ -2236,3 +2236,73 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
   .personal-amounts { padding: 14px; }
   .personal-amount-row { grid-template-columns: 1fr; gap: 8px; }
 }
+
+/* Batch-preserving pantry browser; keep these rules local to the pantry UI. */
+.pantry-batch-browser { max-width: 1240px; margin-inline: auto; }
+.pantry-batch-browser .section-heading h2 { margin: 0 0 10px; }
+.pantry-batch-browser .section-heading p { margin: 0; line-height: 1.6; }
+.pantry-batch-browser .quantity-note { font-size: 12px; }
+.pantry-planning-help { margin-block: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--neutral); }
+.pantry-planning-help p { margin: 6px 0; font-size: 13px; line-height: 1.6; }
+.pantry-ingredient-groups { display: grid; gap: 20px; margin-top: 22px; }
+.pantry-ingredient-group { min-width: 0; border: 1px solid var(--line); border-radius: 16px; padding: 18px; overflow-wrap: anywhere; }
+.pantry-group-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.pantry-group-heading h3 { margin: 0; font-size: 23px; line-height: 1.3; }
+.pantry-group-heading p { margin: 5px 0 0; color: var(--ink-soft); font-size: 12px; }
+.pantry-group-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; padding: 14px; border-radius: 10px; background: var(--cream); }
+.pantry-group-totals div { min-width: 0; }
+.pantry-group-totals dt { color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.pantry-group-totals dd { margin: 6px 0 0; font-size: 15px; line-height: 1.5; font-weight: 650; font-variant-numeric: tabular-nums; }
+.pantry-group-totals small { display: block; margin-top: 5px; font-size: 12px; font-weight: 400; }
+.pantry-batch-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; padding: 18px 0; border-top: 1px solid var(--line); scroll-margin-block: 24px; }
+.pantry-batch-row:focus-within { border-top-color: var(--green); }
+.pantry-batch-identity { display: flex; flex-direction: column; align-items: start; gap: 7px; min-width: 0; }
+.pantry-batch-identity strong { font-size: 15px; line-height: 1.5; }
+.pantry-batch-identity small { font-size: 12px; color: var(--ink-soft); }
+.pantry-new-batch { padding: 4px 9px; border-radius: 16px; background: var(--green-pale); color: var(--green); font-size: 11px; }
+.pantry-batch-field { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 0; }
+.pantry-batch-field label, .pantry-batch-editor-fields label { font-size: 13px; font-weight: 600; line-height: 1.5; }
+.pantry-batch-row .pantry-batch-field label { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 7px; flex: initial; }
+.pantry-batch-field input, .pantry-batch-editor-fields input { min-width: 0; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-dark); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
+.pantry-batch-field input:focus-visible, .pantry-batch-editor-fields input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.pantry-batch-field input[aria-invalid="true"] { border-color: var(--paprika-dark); }
+.pantry-batch-field .text-button { align-self: start; text-align: left; }
+.pantry-batch-field .field-error { color: var(--paprika-dark); }
+.pantry-batch-notes { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+.pantry-batch-notes p { margin: 4px 0; }
+.pantry-batch-browser .pantry-row-actions { grid-column: 1 / -1; justify-content: start; gap: 8px 18px; }
+.pantry-batch-browser .pantry-row-actions button, .pantry-batch-browser .pantry-group-heading button { min-height: 44px; white-space: normal; }
+.pantry-empty-state { border: 1px dashed var(--line-dark); border-radius: 12px; padding: 24px; margin-top: 20px; }
+.pantry-empty-state h3 { margin: 0 0 10px; }
+.pantry-empty-state p { font-size: 14px; line-height: 1.6; }
+.pantry-empty-state button { margin: 6px 10px 0 0; }
+.pantry-batch-editor { width: min(100%, 640px); max-height: calc(100dvh - 48px); overflow-wrap: anywhere; }
+.pantry-batch-editor header h2 { margin-top: 0; }
+.pantry-batch-editor-fields { border: 0; min-width: 0; margin: 18px 0; padding: 0; display: grid; gap: 8px; }
+.pantry-batch-legend { font-size: 15px; font-weight: 650; margin-bottom: 14px; }
+.pantry-batch-editor-fields .quantity-note { margin: 0 0 10px; font-size: 12px; }
+.pantry-batch-modes { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; }
+.pantry-batch-modes button { min-height: 44px; }
+.pantry-batch-modes [aria-pressed="true"] { outline: 2px solid var(--green); outline-offset: 2px; }
+.pantry-batch-preview { padding: 12px; background: var(--cream); border-radius: 10px; }
+.pantry-batch-conflict { border-left: 3px solid var(--paprika); padding: 2px 0 8px 14px; margin: 16px 0; }
+.pantry-batch-editor .modal-actions { position: sticky; bottom: -26px; padding-block: 14px; background: var(--paper); }
+.use-soon-empty p { font-size: 13px; line-height: 1.6; }
+.use-soon-empty button { min-height: 44px; }
+@media (max-width: 1100px) {
+  .pantry-batch-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pantry-batch-identity { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .pantry-ingredient-group { padding: 14px; }
+  .pantry-group-totals { grid-template-columns: 1fr; }
+  .pantry-group-totals div + div { border-top: 1px solid var(--line); padding-top: 10px; }
+  .pantry-batch-row { grid-template-columns: 1fr; }
+  .pantry-batch-browser .add-form { flex-wrap: wrap; }
+  .pantry-batch-browser .add-form textarea { flex-basis: 100%; }
+  .pantry-batch-browser .add-form button { width: 100%; }
+  .accessible-modal.pantry-batch-backdrop { padding: 12px; }
+  .pantry-batch-editor { padding: 18px; max-height: calc(100dvh - 24px); }
+  .pantry-batch-editor .modal-actions { bottom: -18px; }
+  .pantry-batch-editor .modal-actions button { flex: 1 1 160px; white-space: normal; }
+}

@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 for (const [folder, name, extension] of [
   ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
   ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
+  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "PantryView", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
   ...["recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
