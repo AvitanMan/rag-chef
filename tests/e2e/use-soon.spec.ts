@@ -56,7 +56,7 @@ test("ingredient to dinner, cooking, deductions and Undo without AI", async ({ p
   expect(calls).toBe(0);
 });
 
-test("review filters, selected row focus, amount edits and removal recovery", async ({ page, request }) => {
+test("review filters, selected row focus, amount edits and removal recovery", async ({ page, request, isMobile }) => {
   await save(request, { ...initial(), pantry: [...initial().pantry, { id: "past", name: "carrot", measure: "2", useBy: "2026-10-21" }, { id: "undated", name: "beans", measure: "" }] });
   await page.goto("/");
   const results = await selectRice(page);
@@ -80,9 +80,14 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "All items (3)", exact: true }).click();
   const date = page.getByLabel("Use by rice", { exact: true });
+  await date.focus();
   await date.fill("2026-10-28");
+  await expect(date).toBeFocused();
   expect((await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe(TODAY);
-  await date.press("Enter");
+  // Mobile whole-date pickers may consume Enter without blurring; moving focus commits the draft.
+  if (isMobile) await page.getByRole("searchbox", { name: "Search pantry", exact: true }).focus();
+  else await date.press("Enter");
+  await expect(date).not.toBeFocused();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe("2026-10-28");
   await page.reload();
