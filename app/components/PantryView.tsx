@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KitchenState, PantryStock, PlannedMeal } from "../lib/kitchen-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { measureInputProblem } from "../lib/kitchen-validation";
 import {
   browsePantry, compatiblePantryTotals, groupPantryBatches, pantryBatchProblem, pantryDateInputProblem,
-  pantryUsagePreview, pantryWeekReservations, replacePantryBatch, samePantryBatch, type PantrySort,
+  pantryUsagePreview, pantryWeekReservations, replacePantryBatch, samePantryBatch, pantryBatchUndoProblem, undoPantryBatch,
+  type PantryBatchChange, type PantrySort,
 } from "../lib/pantry-browser";
 import { formatMeasure, pantryAmountDetails, pantryStockEligibility, type ParsedMeasure } from "../lib/quantities";
 import { pantryDateGroups, type PantryFilter } from "../lib/use-soon";
@@ -28,6 +29,8 @@ export interface PantryViewProps {
   pantry: PantryStock[];
   meals: PlannedMeal[];
   week: string;
+  setWeek: (week: string) => void;
+  reviewMeal: (date: string) => void;
   draft: string;
   setDraft: (value: string) => void;
   add: () => void;
@@ -118,9 +121,10 @@ function PantryBatchField({ stock, field, descriptionId, update }: {
   </div>;
 }
 
-function PantryBatchEditor({ snapshot, current, update, close, reload, done }: {
+function PantryBatchEditor({ snapshot, current, update, close, reload, done, recordChange }: {
   snapshot: PantryStock; current: PantryStock | undefined; update: UpdateKitchen;
   close: () => void; reload: () => void; done: (message: string) => void;
+  recordChange: (change: PantryBatchChange) => void;
 }) {
   const id = useId();
   const [mode, setMode] = useState<"correct" | "use" | "finish">("correct");
@@ -131,16 +135,24 @@ function PantryBatchEditor({ snapshot, current, update, close, reload, done }: {
   const [badDate, setBadDate] = useState(false);
   const [usage, setUsage] = useState("");
   const [requested, setRequested] = useState<{ stock: PantryStock; message: string } | null>(null);
+  const recorded = useRef(false);
   const usagePreview = pantryUsagePreview(snapshot, usage);
   const correction = withDate({ ...snapshot, name: name.trim(), measure: measure.trim() }, useBy);
+  const snapshotAmount = pantryAmountDetails(snapshot.measure);
   const next = mode === "correct" ? correction : mode === "use" ? usagePreview.stock
-    : { ...snapshot, measure: formatMeasure(0, pantryAmountDetails(snapshot.measure).parsed?.unit ?? "count") };
+    : snapshotAmount.kind === "empty" ? snapshot : { ...snapshot, measure: formatMeasure(0, snapshotAmount.parsed?.unit ?? "count") };
   const dateProblem = badDate ? INCOMPLETE_DATE : pantryDateInputProblem(useBy);
   const problem = mode === "use" ? usagePreview.problem
     : mode === "correct" && dateProblem ? dateProblem : next ? pantryBatchProblem(next) : "Check this batch.";
   const applied = Boolean(requested && samePantryBatch(current, requested.stock));
   const stale = !samePantryBatch(current, snapshot);
   const action = mode === "correct" ? "Save batch correction" : mode === "use" ? "Subtract usage" : "Confirm finished batch";
+
+  useEffect(() => {
+    if (!applied || !requested || recorded.current) return;
+    recorded.current = true;
+    if (!samePantryBatch(snapshot, requested.stock)) recordChange({ before: { ...snapshot }, after: { ...requested.stock } });
+  }, [applied, requested, recordChange, snapshot]);
 
   function readDateDraft(input: HTMLInputElement) {
     setUseBy(input.value);
@@ -204,11 +216,30 @@ function PantryBatchEditor({ snapshot, current, update, close, reload, done }: {
 }
 
 export function PantryView({ today, filter, setFilter, focusId, select, search, setSearch, sort, setSort,
-  pantry, meals, week, draft, setDraft, add, remove, update, error, notice, addedIds = [] }: PantryViewProps) {
+  pantry, meals, week, setWeek, reviewMeal, draft, setDraft, add, remove, update, error, notice, addedIds = [] }: PantryViewProps) {
   const id = useId();
   const addInput = useRef<HTMLTextAreaElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const undoFocusId = useRef<string | null>(null);
   const [editing, setEditing] = useState<{ snapshot: PantryStock; version: number } | null>(null);
   const [localNotice, setLocalNotice] = useState("");
+  const [lastChange, setLastChange] = useState<PantryBatchChange | null>(null);
+  const [undoRequested, setUndoRequested] = useState(false);
+  const rememberChange = useCallback((change: PantryBatchChange) => {
+    undoFocusId.current = null;
+    setLastChange(change); setUndoRequested(false);
+  }, []);
+  const undoProblem = lastChange ? pantryBatchUndoProblem(pantry, lastChange) : "";
+  // Acknowledge the functional update only after its result is visible in pantry props.
+  if (undoRequested && lastChange) {
+    const current = pantry.find(stock => stock.id === lastChange.before.id);
+    if (samePantryBatch(current, lastChange.before)) {
+      setLocalNotice(`Undid the last batch edit for ${lastChange.before.name}. Follow the kitchen save indicator for sync status.`);
+      setLastChange(null); setUndoRequested(false);
+    } else if (undoProblem) {
+      setUndoRequested(false);
+    }
+  }
   const [pin, setPin] = useState<{ id: string; order: string[]; context: string } | null>(null);
   const context = JSON.stringify([filter, search, sort]);
   const dateGroups = useMemo(() => pantryDateGroups(pantry, today), [pantry, today]);
@@ -235,9 +266,16 @@ export function PantryView({ today, filter, setFilter, focusId, select, search, 
     return () => cancelAnimationFrame(frame);
   }, [focusId, filter]);
 
+  useEffect(() => {
+    if (lastChange || !undoFocusId.current) return;
+    const target = document.getElementById(`pantry-edit-${undoFocusId.current}`) ?? heading.current;
+    undoFocusId.current = null;
+    target?.focus();
+  }, [lastChange]);
+
   return <div className="pantry-page pantry-batch-browser">
     <section className="panel large-panel">
-      <div className="section-heading"><div><h2>Your pantry</h2><p>Keep the food you physically have, batch by batch. Type or paste ingredients, separated by new lines, commas, or semicolons.</p></div></div>
+      <div className="section-heading"><div><h2 ref={heading} tabIndex={-1}>Your pantry</h2><p>Keep the food you physically have, batch by batch. Type or paste ingredients, separated by new lines, commas, or semicolons.</p></div></div>
       <form className="add-form" onSubmit={event => { event.preventDefault(); setLocalNotice(""); add(); }}>
         <textarea ref={addInput} value={draft} onChange={event => setDraft(event.target.value)} placeholder={"rice: 300 g\ncanned tomatoes: 2 cans\ngarlic"} aria-label="New pantry ingredient" rows={3} aria-describedby={`${id}-add-help`} />
         <button className="primary-button" type="submit">Add to pantry</button>
@@ -246,10 +284,31 @@ export function PantryView({ today, filter, setFilter, focusId, select, search, 
       {error && <p role="alert" className="field-error">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {localNotice && <p role="status">{localNotice}</p>}
+      {lastChange && <section className="pantry-edit-undo" aria-label="Last pantry batch edit">
+        <div><strong>Last batch edit: {lastChange.after.name}</strong>
+          <p>{lastChange.before.name}: {lastChange.before.measure || "Amount unknown"} · {lastChange.before.useBy ? `Entered date ${dateLabel(lastChange.before.useBy)}` : "No date entered"} → {lastChange.after.name}: {lastChange.after.measure || "Amount unknown"} · {lastChange.after.useBy ? `Entered date ${dateLabel(lastChange.after.useBy)}` : "No date entered"}</p>
+          <small>Undo restores this batch only, if it has not changed again. Available until you leave Pantry, reload, or dismiss it.</small>
+          {undoProblem && <p role="status">{undoProblem}</p>}</div>
+        <div className="modal-actions"><button type="button" className="secondary-button" disabled={Boolean(undoProblem) || undoRequested || Boolean(editing)} onClick={() => {
+          if (pantryBatchUndoProblem(pantry, lastChange)) return;
+          undoFocusId.current = lastChange.before.id;
+          setUndoRequested(true);
+          update(state => undoPantryBatch(state, lastChange));
+        }}>Undo last batch edit</button><button type="button" className="text-button" disabled={undoRequested} onClick={() => {
+          undoFocusId.current = lastChange.after.id;
+          setLastChange(null);
+        }}>Dismiss edit undo</button></div>
+      </section>}
       <div className="pantry-planning-help">
         <p><strong>On hand is not the same as available.</strong> Reservations below are estimates for {reservations.mealCount} saved, uncooked {reservations.mealCount === 1 ? "dinner" : "dinners"} in {weekLabel}. They do not change physical stock.</p>
         <p>Only compatible units are totaled. Available today excludes past entered dates and those reservations; each dinner also checks its own date. Entered dates are optional planning dates, not food-safety advice.</p>
-        <p>Inline changes apply on blur or Enter. Escape restores the current value.</p>
+        <p>Inline changes apply when you leave the field, or with Enter where supported by the date control. Escape restores the current value.</p>
+      </div>
+      <div className="pantry-reservation-week" role="group" aria-label="Pantry reservation week">
+        <span><strong>Reservation week</strong> · {weekLabel}</span>
+        <div><button type="button" className="secondary-button" aria-label="Previous week for pantry reservations" onClick={() => setWeek(addDateDays(weekStart(week), -7))}>Previous week</button>
+          <button type="button" className="secondary-button" disabled={weekStart(week) === weekStart(today)} onClick={() => setWeek(weekStart(today))}>Current week</button>
+          <button type="button" className="secondary-button" aria-label="Next week for pantry reservations" onClick={() => setWeek(addDateDays(weekStart(week), 7))}>Next week</button></div>
       </div>
       <div className="pantry-browser-controls">
         <label>Search pantry<input type="search" placeholder="Ingredient name…" value={search} onChange={event => setSearch(event.target.value)} /></label>
@@ -257,7 +316,7 @@ export function PantryView({ today, filter, setFilter, focusId, select, search, 
         <label>Sort pantry<select value={sort} onChange={event => setSort(event.target.value as PantrySort)}><option value="current">Current order</option><option value="name">Name (A–Z)</option><option value="useBy">Earliest use-by date</option></select></label>
       </div>
       <div className="pantry-filters" role="group" aria-label="Pantry review filters">
-        {([["all", "All items"], ["soon", "Use soon"], ["past", "Past entered date"], ["undated", "No date entered"]] as const).map(([value, label]) =>
+        {([["all", "All items"], ["soon", "Use soon"], ["past", "Past entered date"], ["undated", "No date entered"], ["unknown", "Unknown amounts"], ["empty", "Finished batches"]] as const).map(([value, label]) =>
           <button key={value} className="secondary-button" aria-pressed={filter === value} onClick={() => setFilter(value)}>{label} ({dateGroups[value].length})</button>)}
       </div>
       <p className="quantity-note" role="status">Showing {matches.length} of {dateGroups[filter].length} batches in this view.{pinned && !matches.some(stock => stock.id === pinned.id) ? " The batch being edited is also kept in view until you leave its group." : ""}</p>
@@ -299,10 +358,14 @@ export function PantryView({ today, filter, setFilter, focusId, select, search, 
                   <p id={`${rowId}-date`}>{!item.useBy ? "No date entered; date is unknown." : !eligibility.eligible && amount.kind !== "empty" ? `${eligibility.reason} Still included in physical on-hand totals.` : "Entered planning date, inclusive; not a food-safety assessment."}</p>
                   {planning?.reserved && planning.available ? <p>Reserved for selected week: {formatMeasure(planning.reserved.quantity, planning.reserved.unit)} · Available today after reservations: {formatMeasure(planning.available.quantity, planning.available.unit)}</p>
                     : <p>No confirmed reservation or availability for an unknown amount.</p>}
+                  {Boolean(planning?.reservations.length) && <details className="pantry-reservation-details"><summary>Reserved for {planning!.reservations.length} {planning!.reservations.length === 1 ? "dinner" : "dinners"}</summary>
+                    <ul>{planning!.reservations.map(reservation => <li key={reservation.mealId}><span>{dateLabel(reservation.date)} · {reservation.title} · <strong>{reservation.measure}</strong></span>
+                      <button type="button" className="text-button" aria-label={`Review dinner: ${reservation.title} on ${reservation.date}`} onClick={() => reviewMeal(reservation.date)}>Review dinner</button></li>)}</ul>
+                  </details>}
                 </div>
                 <div className="pantry-row-actions">
                   {soonIds.has(item.id) && <button className="text-button" onClick={() => select(item.id)} aria-label={`Find dinners using ${item.name}`}>Find dinner</button>}
-                  <button className="text-button" aria-label={`Edit batch ${item.name}`} onClick={() => setEditing({ snapshot: { ...item }, version: 0 })}>Edit batch</button>
+                  <button id={`pantry-edit-${item.id}`} className="text-button" aria-label={`Edit batch ${item.name}`} onClick={() => setEditing({ snapshot: { ...item }, version: 0 })}>Edit batch</button>
                   <button className="text-button" onClick={() => remove(item.id)} aria-label={`Remove ${item.name}`}>Remove</button>
                 </div>
               </div>;
@@ -312,11 +375,14 @@ export function PantryView({ today, filter, setFilter, focusId, select, search, 
       </div>
       {!pantry.length ? <div className="pantry-empty-state"><h3>Your pantry is empty</h3><p>Add an ingredient above. You can leave the amount and date unknown and fill them in later.</p><button className="secondary-button" onClick={() => addInput.current?.focus()}>Add your first ingredient</button></div>
         : !displayed.length && <div className="pantry-empty-state"><h3>{!dateGroups[filter].length ? "No batches in this view" : "No pantry items match your search in this view."}</h3>
-          <p>{filter === "undated" && !dateGroups[filter].length ? "Every nonempty batch has an entered planning date. Empty batches remain in All items." : "Clear the search or choose All items to review the rest of your pantry."}</p>
+          <p>{!dateGroups[filter].length && filter === "undated" ? "Every nonempty batch has an entered planning date. Empty batches remain in All items."
+                      : !dateGroups[filter].length && filter === "unknown" ? "Every batch has a recognized amount. A known amount still needs compatible recipe units."
+                      : !dateGroups[filter].length && filter === "empty" ? "No batches have a known zero amount. Unknown amounts are not treated as finished."
+                      : "Clear the search or choose All items to review the rest of your pantry."}</p>
           {search && <button className="secondary-button" onClick={() => setSearch("")}>Clear search</button>}
           {filter !== "all" && <button className="secondary-button" onClick={() => setFilter("all")}>Show all items</button>}</div>}
     </section>
-    {editing && <PantryBatchEditor key={`${editing.snapshot.id}:${editing.version}`} snapshot={editing.snapshot} current={pantry.find(stock => stock.id === editing.snapshot.id)} update={update}
+    {editing && <PantryBatchEditor key={`${editing.snapshot.id}:${editing.version}`} snapshot={editing.snapshot} current={pantry.find(stock => stock.id === editing.snapshot.id)} update={update} recordChange={rememberChange}
       close={() => setEditing(null)} done={message => { setLocalNotice(message); setEditing(null); }}
       reload={() => { const current = pantry.find(stock => stock.id === editing.snapshot.id); if (current) setEditing({ snapshot: { ...current }, version: editing.version + 1 }); }} />}
   </div>;

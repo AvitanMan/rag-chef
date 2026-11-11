@@ -33,6 +33,41 @@ test("use soon includes today through day three, orders dates, and excludes zero
   assert.equal(pantryDateGroups([stock("leap", "1 g", "2028-03-01")], "2028-02-27").soon.length, 1);
 });
 
+test("amount filters distinguish unknown notes from zero mass, volume and count stock", () => {
+  const unknown = ["", " \t ", "some", "half a bag", "2 cans (opened)", "0 ml left", "0 bags"]
+    .map((measure, index) => stock(`unknown-${index}`, measure));
+  const empty = ["0", "0 g", "0 kg", "0 ml", "0 l", "0 cups", "0 cans", "0 pieces"]
+    .map((measure, index) => stock(`empty-${index}`, measure));
+  const known = ["2", "200 g", "0.5 kg", "500 ml", "2 cups", "2 cans", "2 pieces"]
+    .map((measure, index) => stock(`known-${index}`, measure));
+  const pantry = [...known, ...empty, ...unknown];
+  const groups = pantryDateGroups(pantry, TODAY);
+  assert.deepEqual(groups.unknown, unknown);
+  assert.deepEqual(groups.empty, empty);
+  assert.equal(groups.all, pantry);
+});
+
+test("amount filters span all dates and preserve overlapping date groups without mutations", () => {
+  const dates = [["later", "2026-10-26"], ["undated", undefined], ["third", "2026-10-25"], ["past", "2026-10-21"], ["today", TODAY], ["blank-date", ""]];
+  const pantry = dates.flatMap(([id, useBy]) => [
+    { ...stock(`${id}-unknown`, "half a bag"), useBy },
+    { ...stock(`${id}-empty`, "0 cans"), useBy },
+    { ...stock(`${id}-known`, "2 cups"), useBy },
+  ]);
+  const before = structuredClone(pantry);
+  pantry.forEach(Object.freeze);
+  Object.freeze(pantry);
+  const groups = pantryDateGroups(pantry, TODAY);
+  assert.equal(groups.all, pantry);
+  assert.deepEqual(groups.unknown.map(x => x.id), dates.map(([id]) => `${id}-unknown`));
+  assert.deepEqual(groups.empty.map(x => x.id), dates.map(([id]) => `${id}-empty`));
+  assert.deepEqual(groups.soon.map(x => x.id), ["today-known", "today-unknown", "third-known", "third-unknown"]);
+  assert.deepEqual(groups.past.map(x => x.id), ["past-known", "past-unknown"]);
+  assert.deepEqual(groups.undated.map(x => x.id), ["undated-unknown", "undated-known", "blank-date-unknown", "blank-date-known"]);
+  assert.deepEqual(pantryDateGroups(pantry, TODAY), groups);
+  assert.deepEqual(pantry, before);
+});
+
 test("estimates reserve same-week dinners, exclude the replaced day, and leave inputs unchanged", () => {
   const meals = Object.fromEntries([TODAY, "2026-10-23", "2026-10-29"].map(date => [date, createPlannedMeal(date, recipe(date))]));
   const args = input({ kitchen: kitchen([stock("rice", "500 g", "2026-10-25")], meals), portions: 4 });

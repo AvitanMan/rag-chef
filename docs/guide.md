@@ -266,9 +266,21 @@ stock; **Reserved for selected week** is a virtual estimate for saved, uncooked
 dinners; **Available today after reservations** excludes those reservations and
 past-dated stock. Each dinner also checks its own date. Totals combine only
 compatible units and include all batches of the ingredient, even when search or
-date filters hide some rows. Unknown amounts are listed separately, not totaled
-as zero or unlimited stock. Empty batches remain in **All items**; **Use soon**,
-**Past entered date**, and **No date entered** exclude known zero amounts.
+filters hide some rows. Unknown amounts are listed separately, not totaled as
+zero or unlimited stock.
+
+Under **Reservation week**, use **Previous week**, **Current week**, and **Next
+week** to change the shared selected week. Expand a batch's **Reserved for …
+dinners** details to see each allocated dinner's title, date, and amount from
+that batch. **Review dinner** opens that saved dinner in Chef. Week navigation
+and opening review do not change physical pantry stock or saved meals.
+
+**Unknown amounts** shows blank or unparseable amounts across all dates, including
+batches with no entered date. **Finished batches** shows only parsed zero amounts,
+such as `0`, `0 g`, or `0 cans`, also regardless of date; unknown notes are not
+finished stock. All batches remain in **All items**. **Use soon**, **Past entered
+date**, and **No date entered** exclude known zero amounts but can include
+unknown amounts.
 
 Paste ingredients separated by new lines, commas, or semicolons. Amounts are
 optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported. Only a bare,
@@ -286,12 +298,16 @@ or applying the preview's values. **Add another batch** starts a new entry;
 **View added batches** finds the confirmed additions. Chef's pantry chips also
 open batch review rather than removing stock.
 
-Inline **Amount on hand** and **Use by** changes apply on blur or Enter, not on
-every keystroke. Escape restores the current saved value. Invalid drafts stay
-beside the field without blocking other valid edits. If the batch changed while
+Inline **Amount on hand** and **Use by** changes apply when you move focus out of
+the field (blur), not on every keystroke. Enter also commits amount edits and
+date edits where the native date control supports it; moving focus is the
+cross-device date commit path. Escape restores the current saved value. Invalid
+drafts stay beside the field without blocking other valid edits. An incomplete
+or invalid native date is not saved as a blank date. If the batch changed while
 you were editing, restore its current value before retrying; stale edits cannot
 overwrite it. Free-text notes such as `to taste` remain valid, unknown amounts.
-Dates are optional, inclusive planning dates; clear a date when it is unknown.
+Dates are optional, inclusive planning dates; explicitly clear a date when it is
+unknown.
 
 **Edit batch** offers three explicit actions:
 
@@ -303,20 +319,39 @@ Dates are optional, inclusive planning dates; clear a date when it is unknown.
   twice, and no dinner is marked cooked. Correct an unknown amount first, or
   mark the batch finished.
 - **Mark finished** sets the amount to zero and keeps the batch and date in
-  **All items**. It does not remove the batch or create a journal entry.
+  **All items** and **Finished batches**. Already-zero amounts keep their exact
+  text, such as `0 kg`, without replacing an earlier edit undo. It does not
+  remove the batch or create a journal entry.
 
 Review the resulting amount before confirming. A changed batch must be reloaded
-in the editor; a removed batch is not recreated. **Remove**, unlike Mark finished,
-offers **Undo** in a recovery bar above the page content. Removing unlocked
-dinners (including **Clear unlocked**) uses the same bar, available until
-dismissed or the page is reloaded. Earlier removals remain available. Undo
-preserves later edits and never replaces a dinner subsequently added to the
-same date.
+in the editor; a removed batch is not recreated.
 
-See [Pantry semantics](pantry-semantics.md) for the implemented stages 1–3
-contract, acceptance criteria, compatibility, and open PR7 overlap. Richer
+After an applied correction, usage subtraction, or Mark finished, **Undo last
+batch edit** restores just that batch's exact previous name, amount text, and
+date, retaining its ID. Only the latest applied batch-editor change is kept;
+another replaces it, but unchanged corrections do not. The undo record is in
+memory only, until you leave Pantry (including
+**Review dinner**), reload, or choose **Dismiss edit undo**. It does not cover
+inline amount/date edits. Undo refuses if the batch is removed or no longer
+exactly matches the after-change snapshot—even equivalent amount text such as
+`400 g` versus `0.4 kg` does not match. Meals, cooking deductions, purchase
+receipts, shopping checks/cycles, and other batches stay untouched. Edits and
+successful undo follow the normal kitchen save indicator; only the undo record
+is transient, not the stock change. Undo or dismissal returns keyboard focus to
+that batch's **Edit batch** button, or **Your pantry** if the batch is hidden or
+removed.
+
+**Remove** has a separate **Undo** recovery bar above the page content. Removing
+unlocked dinners (including **Clear unlocked**) uses that same bar, available
+until dismissed or the page is reloaded. Earlier removals remain available.
+Removal Undo preserves later edits and never replaces a dinner subsequently
+added to the same date.
+
+See [Pantry semantics](pantry-semantics.md) for the existing stages 1–3
+implementation and current follow-up in PR12 (`codex/pantry-semantics`), acceptance
+criteria, compatibility, and historical PR7 integration notes. Richer persisted
 package metadata, barcodes, storage locations, and a full inventory journal
-remain deferred to stage 4.
+remain deferred to stage 4; the single in-memory edit undo is not that journal.
 
 Chef’s instant dinner picks favor eligible reviewed main dishes. If the Chef
 API is unavailable, local picks remain available with **Retry Chef**; saved
@@ -711,9 +746,10 @@ The pantry stages 1–3 changes keep kitchen `schemaVersion: 2` and the existing
 backup format. No new database migration is required for these changes. Batches
 still store `id`, `name`, `measure`, and optional `useBy`; grouping, amount states,
 reservations, and review explanations are derived, not new stored fields.
-Existing backups without optional purchase history remain supported. See
-[compatibility and PR7 overlap](pantry-semantics.md#compatibility-and-current-pr7-overlap)
-for the separate, unmerged branch work; it is not part of this pantry contract.
+The single batch-editor undo record is in memory only and is not exported in
+backups. Existing backups without optional purchase history remain supported.
+See [compatibility and historical PR7 overlap](pantry-semantics.md#compatibility-and-historical-pr7-overlap)
+for earlier integration notes, not a current PR-status or compatibility report.
 
 ### Reviewed recipe metadata
 

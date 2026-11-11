@@ -4,15 +4,18 @@
 
 ## Scope and status
 
-This documents the implemented pantry plan stages 1–3 in the `main` working tree
-inspected on November 8, 2026: shared amount/eligibility rules, batch-preserving
-entry and editing, the new `PantryView`, and their shopping, Chef, and recovery
-integrations. At inspection, `main`/`origin/main` pointed to `f409739`; the pantry
-implementation was present as uncommitted changes, not in that committed HEAD.
-This is a behavioral contract, not a release or test-completion report.
+This documents the existing pantry stages 1–3 implementation in
+[PR12](https://github.com/AvitanMan/rag-chef/pull/12), branch
+`codex/pantry-semantics`, including the current amount-filter, reservation-week,
+allocation-detail, and guarded batch-editor undo follow-up. Shared
+amount/eligibility rules, batch-preserving entry and editing, `PantryView`, and
+shopping, Chef, and recovery integrations form the baseline. This is a behavioral
+contract, not a release or test-completion report; it does not claim that all
+current follow-up tests pass.
 
-Stage 4 remains deferred. PR7 is a separate open branch, not merged into `main`;
-its overlapping work is called out below rather than documented as available here.
+Stage 4's richer persisted fields and full inventory journal remain deferred.
+The PR7 comparison below is historical integration guidance, not a current
+PR-status report.
 
 ## Stored batches and canonical identity
 
@@ -45,7 +48,7 @@ A name match is not evidence of enough quantity.
 | --- | --- | --- |
 | Known positive amount | `500 g`, `1 l`, `2 cans` | Can cover a quantified requirement only with the same canonical ingredient and compatible units. |
 | Unknown amount | Blank, `some`, `to taste`, `one bag` | May establish date-eligible name presence, but supplies no confirmed quantity, reservation, or deduction. It is neither zero nor unlimited. |
-| Known zero / empty | `0`, `0 g`, `0 cans` | Excluded from available names and quantity coverage, but the batch remains stored and visible in All items. |
+| Known zero / empty | `0`, `0 g`, `0 cans` | Excluded from available names and quantity coverage, but the batch remains stored and visible in All items and Finished batches. |
 
 Compatible mass and volume units normalize within their own dimensions: `1 kg`
 and `1000 g` agree, as do `1 cup` and `240 ml`. Cups use 240 ml, tablespoons
@@ -73,7 +76,7 @@ checks the cooking date, including when a future dinner is cooked early.
 
 ## Pantry browser: on hand versus reservations
 
-The new [PantryView](../app/components/PantryView.tsx) replaces the inline pantry
+The extracted [PantryView](../app/components/PantryView.tsx) replaces the inline pantry
 view previously defined in `RagChefApp.tsx`. Each ingredient group shows:
 
 - **Amount on hand:** physical quantities across all its batches, including
@@ -92,14 +95,33 @@ do not spend the same quantity again. These calculations do not mutate physical
 stock. Group totals still include hidden batches; the view explains when only
 some of a group's batches are displayed.
 
-Search, current/name/date sorting, and the **All items**, **Use soon**,
-**Past entered date**, and **No date entered** filters change the view, not stock.
-Counts are batch counts. Use soon includes today through three days ahead;
-all three review filters exclude known zero amounts but can include unknown
-amounts. Empty batches remain in All items. When Chef has neither due-soon nor
-past-dated batches, its Use soon empty-state link opens No date entered, not a
-claim that undated food needs no attention. Chef's pantry chips group ingredients
-and open batch review instead of deleting stock.
+**Reservation week** provides **Previous week**, **Current week**, and **Next
+week** controls. They change the shared selected week and recalculate estimates,
+not physical stock or saved meals. Each batch with confirmed allocations has an
+expandable **Reserved for … dinners** list showing the dinner title, date, and
+amount allocated from that batch. Entries aggregate compatible deductions per
+meal and batch ID from the same virtual allocation used for the balances, not
+from a second allocation or a name-only match. Unknown amounts do not gain
+invented reservations. **Review dinner** opens the saved dinner in Chef without
+marking it cooked or deducting stock.
+
+Search, current/name/date sorting, and the six filters change the view, not stock.
+Counts are batch counts:
+
+- **All items** includes every stored batch, including finished ones.
+- **Use soon** includes today through three days ahead. It, **Past entered date**,
+  and **No date entered** exclude known zero amounts but can include unknown ones.
+- **Unknown amounts** includes blank or unparseable amounts regardless of date:
+  past, due soon, later, or no date entered. An unknown batch can also appear in
+  a date-based filter.
+- **Finished batches** includes only amounts parsed as zero, such as `0`, `0 g`,
+  or `0 cans`, regardless of date. Unparseable notes such as `0 ml left` remain
+  unknown, not finished.
+
+When Chef has neither due-soon nor past-dated batches, its Use soon empty-state
+link opens No date entered, not a claim that undated food needs no attention.
+Chef's pantry chips group ingredients and open batch review instead of deleting
+stock.
 
 ## Adding ingredients without merging batches
 
@@ -133,13 +155,17 @@ zero amounts are permitted for manual pantry records, unlike purchase additions.
 
 ## Inline edits and the batch editor
 
-Inline amount/date fields hold a local draft. A valid change applies on **blur
-or Enter**; Enter blurs the field. **Escape** restores the current saved value.
-Invalid drafts stay visible with an error and **Restore current value**, without
-saving malformed stock or blocking unrelated valid edits. Clearing a date makes
-it unknown. The focused batch stays in view while its group has focus, so an
-edit that changes sorting/filter membership does not immediately move the next
-field away during keyboard navigation.
+Inline amount/date fields hold a local draft. A valid change applies when focus
+moves out of the field (**blur**) on desktop and mobile. **Enter** also commits
+amount edits; for dates it commits only where the native date control supports
+it. Moving focus is the cross-device date commit path. **Escape** restores the
+current saved value. Invalid drafts stay visible with an error and **Restore
+current value**, without saving malformed stock or blocking unrelated valid
+edits. A partial native date can report an empty value with invalid native state;
+that is rejected, not treated as an unknown date. An explicitly cleared date is
+valid and means unknown. The focused batch stays in view while its group has
+focus, so an edit that changes sorting/filter membership does not immediately
+move the next field away during keyboard navigation.
 
 Both inline edits and **Edit batch** compare the current batch with the snapshot
 being edited inside the functional kitchen update. A changed name, amount, date,
@@ -152,16 +178,38 @@ The editor previews one of three actions before confirmation:
 | --- | --- |
 | **Correct batch** | Replaces this batch's recorded name/form, physical amount, or entered date while retaining its ID. It is a correction, not a cooking transformation or new purchase. |
 | **Record usage** | Subtracts a known positive quantity in compatible units, no greater than physical on-hand stock. Unknown on-hand amounts must first be corrected or marked finished. Reservations recalculate; they are not subtracted twice. No dinner is marked cooked. |
-| **Mark finished** | Sets the amount to zero while retaining the ID, name, and entered date in All items. It does not remove the batch or append a journal event. |
+| **Mark finished** | Sets the amount to zero while retaining the ID, name, and entered date in All items and Finished batches. An already-zero amount keeps its exact text (for example, `0 kg`) and does not replace an earlier undo record. It does not remove the batch or append a journal event. |
 
 For example, with `500 g` on hand and `450 g` reserved, recording `100 g` used
 leaves `400 g` physical stock, not a negative balance based on the `50 g`
 unreserved estimate. Future planning reflects the resulting shortage.
 
-**Remove** is separate and uses the existing session recovery-bar Undo. Batch
-corrections, usage, and Mark finished do not gain a general journal or edit-undo
-stack. Follow the kitchen save indicator for persistence/sync status after an
-edit is applied.
+**Undo last batch edit** covers one latest applied, non-no-op **Correct batch**,
+**Record usage**, or **Mark finished** action from the batch editor. `PantryView`
+retains exact `before` and `after` batch snapshots; undo restores the original
+ID, name, raw amount text (including blank or unknown notes), and optional date.
+Another applied batch-editor change replaces the previous undo record; this is
+not a multi-edit undo stack.
+
+Both snapshots must be valid and belong to the same batch. The live batch must
+still exactly match the `after` snapshot's ID, name, amount text, and date. A
+removed batch is not recreated, and a changed batch is not overwritten. Even
+quantity-equivalent reformatting, such as `400 g` to `0.4 kg`, blocks this undo,
+unlike purchase undo below. The guard is checked again inside the functional
+kitchen update, not only when displaying the button.
+
+The record is **in memory only**, until leaving Pantry (including **Review
+dinner**), reloading, dismissing it with **Dismiss edit undo**, or using it.
+It is not saved in the kitchen or backups and does not cover inline amount/date
+edits. Undo replaces only the matching batch; it does not change meals, completion
+deductions, purchase receipts, shopping checks/cycles, or unrelated batches.
+After undo or dismissal, keyboard focus returns to the batch's **Edit batch**
+button, or the **Your pantry** heading if that batch is no longer visible.
+
+**Remove** is separate and still uses the existing session recovery-bar Undo.
+Neither undo mechanism is a persistent inventory journal. Edits and successful
+undo use normal kitchen persistence; only the undo record is transient. Follow
+the kitchen save indicator for persistence/sync status.
 
 ## Purchases, new cycles, and guarded undo
 
@@ -259,28 +307,31 @@ pantry. The existing recoverable copy and revision safeguards still apply.
 Receipt history supports repeat-cycle detection and purchase undo, not a full
 record of every manual inventory edit.
 
-## Compatibility and current PR7 overlap
+## Compatibility and historical PR7 overlap
 
 For these pantry changes, kitchen schema **2**, backup export version **2**, and
 the original/version-1 backup import support remain unchanged. Optional dates
 and purchase history were already supported storage fields. Derived groups,
-amount states, reservation balances, and review explanations are not persisted.
+amount states, reservation balances/details, and review explanations are not
+persisted. The latest batch-editor undo snapshots are also in-memory only, not
+new kitchen or backup fields.
 No new migration, data rewrite, new ingredient alias, or branch merge is required
 for stages 1–3. Existing installation migrations mentioned in the operating guide
 are separate from this change.
 
-As checked on November 8, 2026,
+The November 8, 2026 comparison with
 [PR7 — Add reviewed kitchen workflows, browser login, and Figma-inspired UI](https://github.com/AvitanMan/rag-chef/pull/7)
-was **OPEN**, with base `main`, head `codex/ux-browser-login`, and no merge date.
-The inspected local/remote head was `337d560`. It includes earlier planning and
-assistant branch work, but is not the implementation baseline for this document.
+used `codex/ux-browser-login` at `337d560`, including its earlier planning and
+assistant work. That historical snapshot is not this document's implementation
+baseline or evidence of PR7's current status.
 
-Integration requires deliberate reconciliation, not choosing one whole version
-of an overlapping file:
+Integrating that work requires deliberate reconciliation, not choosing one whole
+version of an overlapping file:
 
 - **Pantry/app UI:** PR7 changes `RagChefApp.tsx`, its still-inline `PantryView`,
   navigation, and styling. Preserve the extracted batch browser, full-pantry
-  totals, explicit correction flow, and blur/Enter/Escape behavior when combining
+  totals, explicit correction flow, guarded edit undo, focus-based commits,
+  native-control-dependent Enter support, and Escape restoration when combining
   them with its redesign. `app/globals.css` and `docs/guide.md` also overlap.
 - **Shopping:** both change `WeeklyKitchenViews.tsx` and `shopping-purchases.ts`.
   PR7 adds shopping-check Undo and a redesigned layout; this work adds explicit
@@ -288,7 +339,7 @@ of an overlapping file:
   an already-applied purchase. `PurchasePreview.tsx` also overlaps: retain the
   new date validation alongside PR7's `randomId` compatibility helper.
 - **Recovery:** PR7 adds base-aware drafts, reviewed recovery UI, and
-  purchase-aware conflict merging in `kitchen-merge.ts`. The current main work
+  purchase-aware conflict merging in `kitchen-merge.ts`. This pantry implementation
   adds history-difference counts, not that merge flow. Future integration must
   carry counts through the review and preserve selected live batch state with
   its receipt/cycle, without resurrecting consumed stock from receipt snapshots.
@@ -299,10 +350,11 @@ of an overlapping file:
 
 PR7's assistant actions, shared-kitchen/login flows, additional providers, schema
 extensions, database migrations, and redesigned recovery screens are **not**
-claimed as stages 1–3 features on main. Keeping schema version 2 here is not a
-promise that backups containing PR7-only optional fields are accepted by main's
-strict validator. Cross-branch behavior and compatibility need validation after
-integration; the PR's evidence cannot certify this combined working tree.
+claimed as stages 1–3 features of this pantry contract. Keeping schema version 2
+here is not a promise that backups containing PR7-only optional fields are
+accepted by this implementation's strict validator. Cross-branch behavior and
+compatibility need validation after integration; that PR's evidence cannot
+certify the current pantry follow-up.
 
 ## Acceptance criteria and validation status
 
@@ -324,18 +376,28 @@ this documentation update.
 4. **Reservations and filters:** saved uncooked dinners reserve once, in the
    selected week, using the full pantry. Hiding an earlier batch does not shift
    its reservation to a visible one; displayed group totals explain hidden rows.
+   Previous/current/next week controls change estimates, not physical stock or
+   saved meals. Per-batch details identify each allocated dinner, date, and
+   measure; Review dinner opens that saved meal without cooking it. Unknown
+   amounts span all dates, while Finished batches includes only parsed zeros.
 5. **Add preview:** ambiguous text is preserved for review. Duplicates show
    existing batches and explicit new-batch confirmation. Correct existing batch
    navigates without adding stock or silently applying preview fields. Invalid
    entries block confirmation, including when the 500-row limit would be exceeded.
-6. **Inline editing:** typing alone leaves saved stock unchanged; blur/Enter
-   commits valid edits; Escape restores the current value. Invalid drafts remain
-   local, keyboard navigation stays usable through sorting/filter changes, and
+6. **Inline editing:** typing alone leaves saved stock unchanged; moving focus
+   commits valid edits on desktop and mobile. Enter commits where the native
+   control supports it; Escape restores the current value. Native invalid date
+   drafts remain local rather than clearing the saved date; explicit clearing is
+   valid. Keyboard navigation stays usable through sorting/filter changes, and
    concurrent changes cannot be overwritten by a stale edit.
-7. **Editor actions:** correction retains the ID; usage subtracts from physical
-   stock only and rejects unknown, incompatible, zero, or excessive deductions;
-   Mark finished retains a zero batch. None merges batches or marks dinner cooked.
-   Removed or changed snapshots cannot be silently reapplied.
+7. **Editor actions and undo:** correction retains the ID; usage subtracts from
+   physical stock only and rejects unknown, incompatible, zero, or excessive
+   deductions; Mark finished retains a zero batch. None merges batches or marks
+   dinner cooked. Only the latest applied editor change can be undone, using
+   exact before/after snapshots and a live recheck; changed or removed batches
+   cannot be overwritten or recreated. The record is in-memory only and lost
+   on leaving Pantry, reload, or dismissal. Inline edits are not covered; meals,
+   completion deductions, receipts, and unrelated stock remain untouched.
 8. **Purchase dates:** optional dates are independently validated and retained
    in both the new batch and receipt. Existing batches are unchanged; past dates
    warn, invalid/incomplete dates block, and known zero purchases are rejected.
@@ -359,31 +421,41 @@ this documentation update.
 
 ### Implementation and regression-test map
 
-The following modules and existing/new test files were inspected to ground this
-contract. Test presence is not evidence that every test has passed.
+The implementation and regression-test files below map this contract to code.
+Test presence is not evidence that every test has passed.
 
 | Area | Implementation | Regression tests |
 | --- | --- | --- |
-| Shared amounts, eligibility, identity and allocation | [quantities.ts](../app/lib/quantities.ts), [kitchen-stock.ts](../app/lib/kitchen-stock.ts), [recipe-browser.ts](../app/lib/recipe-browser.ts), [use-soon.ts](../app/lib/use-soon.ts) | [pantry-semantics](../tests/pantry-semantics.test.mjs), [quantities](../tests/quantities.test.mjs), [recipe-browser](../tests/recipe-browser.test.mjs), [recipe-presentation](../tests/recipe-presentation.test.mjs) |
-| Grouped browser and guarded edits | [PantryView.tsx](../app/components/PantryView.tsx), [pantry-browser.ts](../app/lib/pantry-browser.ts), [RagChefApp.tsx](../app/components/RagChefApp.tsx), [UseSoon.tsx](../app/components/UseSoon.tsx) | [pantry-browser](../tests/pantry-browser.test.mjs) |
+| Shared amounts, filters, eligibility, identity and allocation | [quantities.ts](../app/lib/quantities.ts), [kitchen-stock.ts](../app/lib/kitchen-stock.ts), [recipe-browser.ts](../app/lib/recipe-browser.ts), [use-soon.ts](../app/lib/use-soon.ts) | [pantry-semantics](../tests/pantry-semantics.test.mjs), [quantities](../tests/quantities.test.mjs), [recipe-browser](../tests/recipe-browser.test.mjs), [recipe-presentation](../tests/recipe-presentation.test.mjs), [use-soon](../tests/use-soon.test.mjs) |
+| Grouped browser, reservation details and guarded edits/undo | [PantryView.tsx](../app/components/PantryView.tsx), [pantry-browser.ts](../app/lib/pantry-browser.ts), [RagChefApp.tsx](../app/components/RagChefApp.tsx), [UseSoon.tsx](../app/components/UseSoon.tsx) | [pantry-browser](../tests/pantry-browser.test.mjs) |
+| Browser editing, native dates and purchase previews | [PantryView.tsx](../app/components/PantryView.tsx), [PantryImportPreview.tsx](../app/components/PantryImportPreview.tsx), [PurchasePreview.tsx](../app/components/PurchasePreview.tsx) | [pantry-semantics browser tests](../tests/e2e/pantry-semantics.spec.ts) |
 | Parsing and duplicate preview | [pantry-input.ts](../app/lib/pantry-input.ts), [PantryImportPreview.tsx](../app/components/PantryImportPreview.tsx) | [pantry-input](../tests/pantry-input.test.mjs) |
 | Purchases and repeat cycles | [shopping-purchases.ts](../app/lib/shopping-purchases.ts), [PurchasePreview.tsx](../app/components/PurchasePreview.tsx), [WeeklyKitchenViews.tsx](../app/components/WeeklyKitchenViews.tsx) | [shopping-purchases](../tests/shopping-purchases.test.mjs) |
 | Chef availability and limits | [chef-context.ts](../app/lib/chef-context.ts), [chef-schema.ts](../app/lib/chef-schema.ts), [Chef route](../app/api/chef/route.ts) | [chef-context](../tests/chef-context.test.mjs) |
 | History differences | [kitchen-recovery.ts](../app/lib/kitchen-recovery.ts), [RagChefApp.tsx](../app/components/RagChefApp.tsx) | [kitchen-recovery](../tests/kitchen-recovery.test.mjs) |
 
-The combined changes still need recorded validation against the criteria above,
-including browser checks of native date inputs, blur/Enter/Escape, focus retention,
-mobile layout, stale edits, and purchase/backup/recovery round trips. The normal
-commands are in [Development and testing](guide.md#development-and-testing);
-real-model evaluation remains separate. This docs-only update does not run those
-application checks or claim that all tests are done.
+The native-date browser regressions exercise real browser validity, not mocked
+invalid flags: incomplete desktop date segments (`badInput`) and mobile
+whole-date controls with a date beyond `9999-12-31` (`rangeOverflow`). Cases start
+from both blank and valid dates in inline fields, batch correction, pantry import,
+and purchase previews. They require invalid input to leave saved state unchanged
+and accept an explicit clear; inline cases also check Escape restoration. Date
+commit checks move focus on mobile and use Enter on desktop where supported.
+
+These coverage descriptions do not certify a full-suite pass for the current
+follow-up. Recorded validation still needs to cover the current filter, week,
+reservation-detail, and edit-undo controls alongside focus retention, mobile
+layout, stale edits, and purchase/backup/recovery round trips. The normal commands
+are in [Development and testing](guide.md#development-and-testing); real-model
+evaluation remains separate. This docs-only update does not run those application
+checks or claim that all tests are done.
 
 ## Deferred stage 4
 
 Not implemented here: richer package metadata (such as package size/content or
 opened state), barcode/product lookup, storage-location modeling, and a full
 inventory journal for purchases, corrections, usage, and disposal. Existing
-package-count units, purchase receipts, completion deductions, and the transient
-removal Undo bar are not substitutes for those features. Any richer persisted
-model needs its own design, compatibility review, and validation before it can
-be documented as implemented.
+package-count units, purchase receipts, completion deductions, the transient
+removal Undo bar, and the single in-memory batch-editor undo are not substitutes
+for those features. Any richer persisted model needs its own design,
+compatibility review, and validation before it can be documented as implemented.

@@ -510,7 +510,7 @@ export default function RagChefApp() {
       const currentPantry = kitchenRef.current.state.pantry;
       const restored = { view: saved.view, flow: saved.flow,
         useSoonId: typeof saved.useSoonId === "string" && pantryDateGroups(currentPantry, currentDate).soon.some(item => item.id === saved.useSoonId) ? saved.useSoonId : null,
-        pantryFilter: saved.pantryFilter === "soon" || saved.pantryFilter === "past" || saved.pantryFilter === "undated" ? saved.pantryFilter : "all" as PantryFilter,
+        pantryFilter: saved.pantryFilter === "soon" || saved.pantryFilter === "past" || saved.pantryFilter === "undated" || saved.pantryFilter === "unknown" || saved.pantryFilter === "empty" ? saved.pantryFilter : "all" as PantryFilter,
         pantryFocusId: typeof saved.pantryFocusId === "string" && currentPantry.some(item => item.id === saved.pantryFocusId) ? saved.pantryFocusId : null,
       };
       // Normalize stale history in place so Back cannot loop through a removed item.
@@ -1155,6 +1155,8 @@ export default function RagChefApp() {
         {view === "pantry" && (
           <PantryView
             pantry={kitchen.state.pantry} meals={Object.values(kitchen.state.meals)} week={week}
+            setWeek={(value) => { setWeek(value); setPlanningNotice(""); setPlanningReasons({}); setReviewDate(null); }}
+            reviewMeal={(date) => showDinner(date)}
             error={pantryError} addedIds={pantryAddedIds}
             today={today} filter={pantryFilter} setFilter={setPantryFilter} focusId={pantryFocusId} select={selectUseSoon}
             search={pantrySearch} setSearch={setPantrySearch} sort={pantrySort} setSort={setPantrySort}

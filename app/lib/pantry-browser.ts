@@ -55,9 +55,17 @@ export function groupPantryBatches(pantry: PantryStock[]): PantryIngredientGroup
   return [...groups.values()];
 }
 
+export type PantryReservation = {
+  mealId: string;
+  date: string;
+  title: string;
+  measure: string;
+};
+
 export interface PantryBatchPlanning {
   reserved: ParsedMeasure | null;
   available: ParsedMeasure | null;
+  reservations: PantryReservation[];
 }
 
 /** Allocate the full pantry once, before any browser filter or search is applied. */
@@ -72,7 +80,29 @@ export function pantryWeekReservations(pantry: PantryStock[], meals: PlannedMeal
     byId.set(stock.id, {
       reserved: onHand && after ? { ...onHand, quantity: Math.max(0, onHand.quantity - after.quantity) } : null,
       available: onHand && after ? { ...after, quantity: pantryStockEligibility(stock, today).eligible ? after.quantity : 0 } : null,
+      reservations: [],
     });
+  }
+  const mealsById = new Map(selected.map(meal => [meal.id, meal]));
+  for (const allocated of allocation.allocations) {
+    const amounts = new Map<string, ParsedMeasure>();
+    for (const deduction of allocated.deductions) {
+      const before = parseMeasure(deduction.before);
+      const after = parseMeasure(deduction.after);
+      const batch = byId.get(deduction.pantryId)?.reserved;
+      if (!batch || !before || !after || before.dimension !== batch.dimension || after.dimension !== batch.dimension
+        || before.unit !== batch.unit || after.unit !== batch.unit || before.quantity <= after.quantity) continue;
+      // Sum actual deductions before formatting; ingredient names cannot identify a batch.
+      const quantity = before.quantity - after.quantity;
+      amounts.set(deduction.pantryId, { ...before, quantity: (amounts.get(deduction.pantryId)?.quantity ?? 0) + quantity });
+    }
+    const meal = mealsById.get(allocated.mealId);
+    for (const [pantryId, amount] of amounts) {
+      byId.get(pantryId)!.reservations.push({
+        mealId: allocated.mealId, date: allocated.date, title: meal?.title || meal?.recipe?.title || "Untitled meal",
+        measure: formatMeasure(amount.quantity, amount.unit),
+      });
+    }
   }
   return { byId, mealCount: selected.length };
 }
@@ -107,6 +137,27 @@ export function replacePantryBatch(state: KitchenState, snapshot: PantryStock, r
     || !samePantryBatch(state.pantry.find(stock => stock.id === snapshot.id), snapshot)
     || samePantryBatch(snapshot, replacement)) return state;
   return { ...state, pantry: state.pantry.map(stock => stock.id === snapshot.id ? { ...replacement } : stock) };
+}
+
+export interface PantryBatchChange {
+  before: PantryStock;
+  after: PantryStock;
+}
+
+export function pantryBatchUndoProblem(pantry: PantryStock[], change: PantryBatchChange): string {
+  if (pantryBatchProblem(change.before) || pantryBatchProblem(change.after)) return "This pantry change has invalid snapshots and cannot be undone.";
+  if (change.before.id !== change.after.id) return "Both snapshots must belong to the same batch to undo this change.";
+  if (samePantryBatch(change.before, change.after)) return "There is no batch change to undo.";
+  const current = pantry.find(stock => stock.id === change.after.id);
+  if (!current) return "This batch has been removed. Undo will not recreate it.";
+  if (!samePantryBatch(current, change.after)) return "This batch has been edited or used since this change. Undo would overwrite later changes.";
+  return "";
+}
+
+/** Recheck the live pantry inside the parent's functional update, not only in the undo preview. */
+export function undoPantryBatch(state: KitchenState, change: PantryBatchChange): KitchenState {
+  if (pantryBatchUndoProblem(state.pantry, change)) return state;
+  return replacePantryBatch(state, change.after, change.before);
 }
 
 export function pantryUsagePreview(stock: PantryStock, measure: string): { stock: PantryStock | null; problem: string } {

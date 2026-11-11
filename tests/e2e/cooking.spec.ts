@@ -26,7 +26,7 @@ test.beforeEach(async ({ page, request }) => {
   await saveFixture(request, emptyState());
 });
 
-test("use-by edits persist and shared stock covers only dinners on eligible dates", async ({ page, request }) => {
+test("use-by edits persist and shared stock covers only dinners on eligible dates", async ({ page, request, isMobile }) => {
   const recipe = await recipeFixture(request);
   const tomorrow = "2026-10-23";
   await saveFixture(request, { ...emptyState(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy: TODAY }, { id: "tomato", name: "tomato", measure: "4" }], meals: { [TODAY]: mealFixture(recipe), [tomorrow]: mealFixture(recipe, tomorrow) } });
@@ -35,18 +35,26 @@ test("use-by edits persist and shared stock covers only dinners on eligible date
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
   const date = page.getByLabel("Use by rice", { exact: true });
+  const commitDate = async () => {
+    if (isMobile) {
+      await date.blur();
+      // Whole-date pickers can retain focus after blur(); moving it ensures a real native blur event.
+      await page.getByRole("searchbox", { name: "Search pantry", exact: true }).focus();
+    } else await date.press("Enter");
+    await expect(date).not.toBeFocused();
+  };
   await date.fill("2026-10-21");
   await navigate(page, "Shopping");
   await expect(page.getByRole("checkbox", { name: "Bought rice 400 g", exact: true })).toBeVisible();
   await navigate(page, "Pantry");
   await date.fill(tomorrow);
-  await date.press("Enter");
+  await commitDate();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBe(tomorrow);
   await page.reload(); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await expect(date).toHaveValue(tomorrow);
   await date.fill("");
-  await date.press("Enter");
+  await commitDate();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.find((stock: { id: string }) => stock.id === "rice").useBy).toBeUndefined();
   await navigate(page, "Shopping");
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();

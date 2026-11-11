@@ -59,13 +59,32 @@ async function editBatch(page: Page, id: string, name: string) {
 }
 
 function nativeDateState(date: Locator) {
-  return date.evaluate((input: HTMLInputElement) => ({ value: input.value, badInput: input.validity.badInput, valid: input.validity.valid }));
+  return date.evaluate((input: HTMLInputElement) => ({ value: input.value, badInput: input.validity.badInput, rangeOverflow: input.validity.rangeOverflow, valid: input.validity.valid }));
 }
-async function enterPartialDate(date: Locator, startingDate: "blank" | "valid") {
-  await date.focus();
-  // Native segments can be incomplete even though the DOM value is still an empty string.
-  await date.press(startingDate === "blank" ? "ArrowUp" : "Backspace");
-  await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: true, valid: false });
+async function enterInvalidNativeDate(date: Locator, startingDate: "blank" | "valid", isMobile: boolean) {
+  await expect.poll(() => nativeDateState(date)).toEqual({ value: startingDate === "valid" ? TODAY : "", badInput: false, rangeOverflow: false, valid: true });
+  // Desktop exposes incomplete segments; mobile whole-date pickers instead support a real range overflow.
+  // Both paths must leave native validity false, without substituting a mocked badInput state.
+  if (isMobile) {
+    await expect(date).toHaveAttribute("max", "9999-12-31");
+    await date.fill("10000-10-22");
+  } else {
+    await date.focus();
+    await date.press(startingDate === "blank" ? "ArrowUp" : "Backspace");
+  }
+  const invalid = isMobile
+    ? { value: "10000-10-22", badInput: false, rangeOverflow: true, valid: false }
+    : { value: "", badInput: true, rangeOverflow: false, valid: false };
+  await expect.poll(() => nativeDateState(date)).toEqual(invalid);
+  return invalid;
+}
+async function commitDate(date: Locator, isMobile: boolean) {
+  if (isMobile) {
+    await date.blur();
+    // Whole-date pickers can retain focus after blur(); moving it ensures a real native blur event.
+    await date.page().getByRole("searchbox", { name: "Search pantry", exact: true }).focus();
+  } else await date.press("Enter");
+  await expect(date).not.toBeFocused();
 }
 
 test.beforeEach(async ({ page, request }) => {
@@ -360,7 +379,7 @@ test("Chef pantry chips review the grouped batches instead of deleting any stock
 });
 
 for (const startingDate of ["blank", "valid"] as const) {
-  test(`inline partial date from ${startingDate} stays local, Escape restores native segments and explicit clearing is valid`, async ({ page, request }) => {
+  test(`inline invalid native date from ${startingDate} stays local, Escape restores the date and explicit clearing is valid`, async ({ page, request, isMobile }) => {
     const original = { id: "partial-date", name: "rice", measure: "500 g", ...(startingDate === "valid" ? { useBy: TODAY } : {}) };
     await save(request, { ...empty(), pantry: [original] });
     await openPantry(page);
@@ -368,8 +387,9 @@ for (const startingDate of ["blank", "valid"] as const) {
     const before = await document(request);
     const writes: string[] = [];
     page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/kitchen")) writes.push(request.postData() ?? ""); });
-    await enterPartialDate(date, startingDate);
-    await date.press("Enter");
+    const invalid = await enterInvalidNativeDate(date, startingDate, isMobile);
+    await commitDate(date, isMobile);
+    await expect.poll(() => nativeDateState(date)).toEqual(invalid);
     await expect(date).toHaveAttribute("aria-invalid", "true");
     await expect(page.locator("#pantry-row-partial-date").getByRole("alert")).toContainText("Complete the calendar date");
     await page.clock.runFor(600);
@@ -378,21 +398,24 @@ for (const startingDate of ["blank", "valid"] as const) {
 
     await date.focus();
     await date.press("Escape");
-    await expect.poll(() => nativeDateState(date)).toEqual({ value: startingDate === "valid" ? TODAY : "", badInput: false, valid: true });
+    await expect.poll(() => nativeDateState(date)).toEqual({ value: startingDate === "valid" ? TODAY : "", badInput: false, rangeOverflow: false, valid: true });
     await expect(date).toHaveAttribute("aria-invalid", "false");
+    expect(writes).toEqual([]);
     expect(await document(request)).toEqual(before);
-    await enterPartialDate(date, startingDate);
+    await enterInvalidNativeDate(date, startingDate, isMobile);
     await date.fill("");
-    await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: false, valid: true });
+    await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: false, rangeOverflow: false, valid: true });
     await expect(date).toHaveAttribute("aria-invalid", "false");
-    await date.press("Enter");
+    expect(writes).toEqual([]);
+    expect(await document(request)).toEqual(before);
+    await commitDate(date, isMobile);
     await expect.poll(async () => (await read(request)).pantry).toEqual([{ id: original.id, name: "rice", measure: "500 g" }]);
   });
 }
 
 for (const kind of ["batch correction", "pantry import", "purchase"] as const) {
   for (const startingDate of ["blank", "valid"] as const) {
-    test(`${kind} rejects a native partial date from ${startingDate} without any commit, then accepts an explicit clear`, async ({ page, request }) => {
+    test(`${kind} rejects an invalid native date from ${startingDate} without any commit, then accepts an explicit clear`, async ({ page, request, isMobile }) => {
       let dialog: Locator, date: Locator, amount: Locator, confirm: Locator;
       if (kind === "batch correction") {
         await save(request, { ...empty(), pantry: [{ id: "partial-date", name: "rice", measure: "500 g", ...(startingDate === "valid" ? { useBy: TODAY } : {}) }] });
@@ -424,14 +447,14 @@ for (const kind of ["batch correction", "pantry import", "purchase"] as const) {
       const before = await document(request);
       const writes: string[] = [];
       page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/kitchen")) writes.push(request.postData() ?? ""); });
-      await enterPartialDate(date, startingDate);
+      const invalid = await enterInvalidNativeDate(date, startingDate, isMobile);
       await amount.fill("150 g");
-      await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: true, valid: false });
+      await expect.poll(() => nativeDateState(date)).toEqual(invalid);
       const form = dialog.locator("form");
       await expect(form).toHaveCount(1);
       expect(await form.evaluate((form: HTMLFormElement) => form.noValidate)).toBe(false);
       expect(await date.evaluate((input: HTMLInputElement) => input.form !== null)).toBe(true);
-      // ArrowUp from blank need not emit input/change; native validation must still block confirmation.
+      // Desktop ArrowUp from blank need not emit input/change; native validation must still block confirmation.
       if (await confirm.isEnabled()) await confirm.click();
       await form.evaluate((form: HTMLFormElement) => form.requestSubmit());
       await expect(date).toHaveAttribute("aria-invalid", "true");
@@ -440,12 +463,12 @@ for (const kind of ["batch correction", "pantry import", "purchase"] as const) {
       await form.dispatchEvent("submit");
       await page.clock.runFor(600);
       await expect(dialog).toBeVisible();
-      await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: true, valid: false });
+      await expect.poll(() => nativeDateState(date)).toEqual(invalid);
       expect(writes).toEqual([]);
       expect(await document(request)).toEqual(before);
 
       await date.fill("");
-      await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: false, valid: true });
+      await expect.poll(() => nativeDateState(date)).toEqual({ value: "", badInput: false, rangeOverflow: false, valid: true });
       await expect(date).toHaveAttribute("aria-invalid", "false");
       await expect(confirm).toBeEnabled();
       expect(await document(request)).toEqual(before);

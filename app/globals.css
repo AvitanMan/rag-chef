@@ -2244,6 +2244,19 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .pantry-batch-browser .quantity-note { font-size: 12px; }
 .pantry-planning-help { margin-block: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--neutral); }
 .pantry-planning-help p { margin: 6px 0; font-size: 13px; line-height: 1.6; }
+.pantry-reservation-week { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-block: 16px; font-size: 13px; }
+.pantry-reservation-week > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.pantry-reservation-week button, .pantry-edit-undo button { min-height: 44px; white-space: normal; }
+.pantry-edit-undo { margin-block: 16px; padding: 16px; border: 1px solid var(--line-dark); border-radius: 12px; background: var(--cream); overflow-wrap: anywhere; }
+.pantry-edit-undo p { margin-block: 8px; font-size: 13px; line-height: 1.6; }
+.pantry-edit-undo small { color: var(--ink-soft); line-height: 1.6; }
+.pantry-edit-undo .modal-actions { flex-wrap: wrap; justify-content: start; }
+.pantry-reservation-details { margin-top: 8px; }
+.pantry-reservation-details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+.pantry-reservation-details ul { margin: 0; padding-inline-start: 20px; }
+.pantry-reservation-details li { padding-block: 4px; }
+.pantry-reservation-details li span { margin-inline-end: 10px; }
+.pantry-reservation-details button { min-height: 44px; }
 .pantry-ingredient-groups { display: grid; gap: 20px; margin-top: 22px; }
 .pantry-ingredient-group { min-width: 0; border: 1px solid var(--line); border-radius: 16px; padding: 18px; overflow-wrap: anywhere; }
 .pantry-group-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
