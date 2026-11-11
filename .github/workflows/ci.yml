@@ -48,7 +48,7 @@ jobs:
         run: pnpm test:smoke
       - name: Save isolated test diagnostics
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: isolated-test-results
           path: output/playwright/
