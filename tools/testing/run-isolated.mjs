@@ -73,10 +73,17 @@ async function launch(label, args, { wait = true } = {}) {
   child.once("exit", () => { children.delete(child); void log.close(); });
   child.once("error", () => { children.delete(child); void log.close(); });
   if (!wait) return child;
-  await new Promise((accept, reject) => {
-    child.once("error", reject);
-    child.once("exit", (code) => code === 0 ? accept() : reject(new Error(`${label} failed (exit ${code}); see ${join(artifacts, `${label}.log`)}`)));
-  });
+  try {
+    await new Promise((accept, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) => code === 0 ? accept() : reject(new Error(`${label} failed (exit ${code}); see ${join(artifacts, `${label}.log`)}`)));
+    });
+  } catch (error) {
+    // CI must show the actual failure, not just a path inside a downloadable artifact.
+    try { console.error(await readFile(join(artifacts, `${label}.log`), "utf8")); }
+    catch { /* Preserve the process error if its log cannot be read. */ }
+    throw error;
+  }
 }
 
 async function freePort(excluded = []) {

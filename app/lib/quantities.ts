@@ -102,12 +102,12 @@ export function canonicalIngredient(name: string): string {
   return ingredientIdentity(name).key;
 }
 
-function preparationNotes(name: string, pantry: PantryStock[]): string[] {
+function preparationNotes(name: string, pantry: PantryStock[], date: string): string[] {
   const required = ingredientIdentity(name);
   const different = pantry.filter((stock) => {
     const available = ingredientIdentity(stock.name);
     return available.base === required.base && available.preparation !== required.preparation
-      && parseMeasure(stock.measure)?.quantity !== 0;
+      && pantryStockEligibility(stock, date).eligible;
   });
   return different.length ? [`Pantry has ${[...new Set(different.map((stock) => stock.name))].join(", ")}; dinner needs ${name}. Cooked and uncooked amounts are kept separate. Review preparation; no automatic conversion is applied.`] : [];
 }
@@ -172,6 +172,28 @@ export function parseMeasure(text: string): ParsedMeasure | null {
   const normalizedQuantity = quantity * definition.factor;
   if (!Number.isFinite(normalizedQuantity)) return null;
   return { quantity: cleanNumber(normalizedQuantity), unit: definition.unit, dimension: definition.dimension };
+}
+
+/** Derived only: package counts stay separate, and notes are never guessed quantities. */
+export function pantryAmountDetails(measure: string): { kind: "known" | "unknown" | "empty"; parsed: ParsedMeasure | null; explanation: string } {
+  const parsed = parseMeasure(measure);
+  if (!parsed) return { kind: "unknown", parsed: null,
+    explanation: `${measure.trim() ? `Pantry amount “${measure.trim()}” is unknown` : "Pantry amount is missing"}; enter a measured amount, such as 200 g or 2 cans, before any quantity can be deducted.` };
+  if (parsed.quantity === 0) return { kind: "empty", parsed,
+    explanation: "Pantry amount is zero; empty stock is excluded. Update the amount if stock has been replenished." };
+  const packageCount = ["can", "packet", "jar", "bottle"].includes(parsed.unit);
+  return { kind: "known", parsed, explanation: packageCount
+    ? `Known package count (${formatMeasure(parsed.quantity, parsed.unit)}); only matching ${parsed.unit} counts can be compared. Package contents are not converted to weight, volume or other counts.`
+    : `Known amount (${formatMeasure(parsed.quantity, parsed.unit)}); only compatible ${parsed.dimension === "count" || parsed.dimension.startsWith("count:") ? `${parsed.unit} counts` : parsed.dimension} can be compared.` };
+}
+
+/** Eligibility permits name matching, not quantity coverage. Use-by dates are inclusive. */
+export function pantryStockEligibility(stock: PantryStock, date: string): { eligible: boolean; reason: string | null } {
+  const amount = pantryAmountDetails(stock.measure);
+  if (amount.kind === "empty") return { eligible: false, reason: amount.explanation };
+  if (stock.useBy && stock.useBy < date) return { eligible: false,
+    reason: `Stock dated ${stock.useBy} is past its entered use-by date for ${date}; excluded. Check the entered date or use other stock.` };
+  return { eligible: true, reason: null };
 }
 
 function displayQuantity(quantity: number): string {
@@ -309,7 +331,21 @@ function uniquePantry(pantry: PantryStock[]): PantryStock[] {
 }
 
 function matchingStock(requirement: Requirement, pantry: PantryStock[]) {
-  return pantry.filter((stock) => canonicalIngredient(stock.name) === requirement.identity).map((stock) => ({ stock, parsed: parseMeasure(stock.measure) }));
+  return pantry.filter((stock) => canonicalIngredient(stock.name) === requirement.identity).map((stock) => ({ stock, ...pantryAmountDetails(stock.measure) }));
+}
+
+function pantryComparisonNotes(requirement: Requirement, pantry: PantryStock[], date: string): string[] {
+  // Two unparsed amounts are not comparable just because both dimensions are absent.
+  if (!requirement.parsed) return [];
+  const notes: string[] = [];
+  for (const match of matchingStock(requirement, pantry)) {
+    if (!pantryStockEligibility(match.stock, date).eligible) continue;
+    if (!match.parsed) notes.push(`${requirement.name}: ${match.explanation}`);
+    else if (match.parsed.dimension !== requirement.parsed.dimension) {
+      notes.push(`${requirement.name}: pantry amount “${match.stock.measure}” cannot be compared with the required ${formatMeasure(requirement.quantity, requirement.parsed.unit)}. Measure pantry stock in ${requirement.parsed.unit} or enter a reviewed dinner amount in matching units; no automatic conversion is applied.`);
+    }
+  }
+  return [...new Set(notes)];
 }
 
 export interface ResolvedMealIngredient {
@@ -352,22 +388,25 @@ export interface MealReadiness {
   reviewCount: number;
   coverage: number;
   useSoonCoverage: number;
-  shopping: Array<Pick<ShoppingItem, "name" | "measure" | "needsReview" | "preparationNote">>;
+  shopping: Array<Pick<ShoppingItem, "name" | "measure" | "needsReview" | "preparationNote" | "notes">>;
 }
 
 export function mealReadiness(meal: PlannedMeal, pantry: PantryStock[], today = currentLocalDate()): MealReadiness {
   const allocation = allocateMealStock(meal, pantry, today);
+  const stock = uniquePantry(pantry);
+  const stockDate = meal.date > today ? meal.date : today;
   const summary = { coveredCount: 0, partialCount: 0, missingCount: 0, reviewCount: 0 };
   for (const requirement of requirementsFor([meal])) {
     const covered = allocation.coveredByGroup.get(requirementKey(requirement)) ?? 0;
     if (!requirement.parsed || requirement.needsReview) summary.reviewCount++;
     else if (covered >= requirement.quantity) summary.coveredCount++;
+    else if (pantryComparisonNotes(requirement, stock, stockDate).length) summary.reviewCount++;
     else if (covered > 0) summary.partialCount++;
     else summary.missingCount++;
   }
   return { ...summary, coverage: allocation.coverage, useSoonCoverage: allocation.useSoonCoverage,
     ...(meal.personalAmountIndices?.some(index => mealAmountBasis(meal, index) === "personal_scaled") ? { personalAmountsApplied: true } : {}),
-    shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote }) => ({ name, measure, needsReview, ...(preparationNote ? { preparationNote } : {}) })) };
+    shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote, notes }) => ({ name, measure, needsReview, notes, ...(preparationNote ? { preparationNote } : {}) })) };
 }
 
 function requirementKey(requirement: Requirement): string {
@@ -397,19 +436,20 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
   const soon = dateAfter(stockDate, 3);
   for (const requirement of requirements) {
     if (!requirement.parsed) {
-      notes.push(...preparationNotes(requirement.name, stock));
-      notes.push(`${requirement.name}: amount needs review; no stock deducted.`, ...requirement.descriptions);
+      notes.push(...preparationNotes(requirement.name, stock, stockDate));
+      notes.push(`${requirement.name}: required amount needs review; enter a measured dinner amount before subtracting pantry stock. No stock deducted.`, ...requirement.descriptions);
       continue;
     }
     let remaining = requirement.quantity;
     let usedSoon = 0;
     const matches = matchingStock(requirement, stock).sort((a, b) => (a.stock.useBy ?? "9999-12-31").localeCompare(b.stock.useBy ?? "9999-12-31") || a.stock.id.localeCompare(b.stock.id));
     for (const match of matches) {
-      if (match.stock.useBy && match.stock.useBy < stockDate) {
-        notes.push(`${requirement.name}: stock dated ${match.stock.useBy} is past its entered use-by date for ${stockDate}; not deducted.`);
+      const eligibility = pantryStockEligibility(match.stock, stockDate);
+      if (!eligibility.eligible) {
+        notes.push(`${requirement.name}: ${eligibility.reason} Not deducted.`);
         continue;
       }
-      if (match.parsed?.dimension !== requirement.parsed.dimension || match.parsed.quantity === 0 || remaining <= 0) continue;
+      if (!match.parsed || match.parsed.dimension !== requirement.parsed.dimension || remaining <= 0) continue;
       const consumed = Math.min(remaining, match.parsed.quantity);
       remaining = cleanNumber(remaining - consumed);
       if (match.stock.useBy && match.stock.useBy <= soon) usedSoon = cleanNumber(usedSoon + consumed);
@@ -425,7 +465,7 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
       coverage += covered / requirement.quantity;
       useSoonCoverage += usedSoon / requirement.quantity;
     }
-    if (remaining > 0) notes.push(...preparationNotes(requirement.name, stock), `${requirement.name}: ${formatMeasure(remaining, requirement.parsed.unit)} unavailable in compatible pantry units; not deducted.`);
+    if (remaining > 0) notes.push(...preparationNotes(requirement.name, stock, stockDate), ...pantryComparisonNotes(requirement, stock, stockDate), `${requirement.name}: ${formatMeasure(remaining, requirement.parsed.unit)} not covered by quantified, compatible pantry stock; not deducted.`);
     if (requirement.needsReview) notes.push(...requirement.descriptions);
   }
   const denominator = requirements.length;
@@ -458,17 +498,23 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     const matches = matchingStock(requirement, stock);
     const recipeTitles = [...requirement.recipeTitles].sort();
     const mealDates = [...requirement.mealDates].sort();
-    const preparation = preparationNotes(requirement.name, stock);
-    const notes = [...requirement.descriptions].sort();
+    const stockDates = [...new Set(mealDates.map((date) => date > today ? date : today))];
+    const preparation = [...new Set(stockDates.flatMap((date) => preparationNotes(requirement.name, stock, date)))];
+    const comparison = [...new Set(stockDates.flatMap((date) => pantryComparisonNotes(requirement, stock, date)))];
+    const exclusions = [...new Set(matches.flatMap(({ stock: entry }) => stockDates.flatMap((date) => {
+      const eligibility = pantryStockEligibility(entry, date);
+      return eligibility.eligible ? [] : [`${requirement.name}: ${eligibility.reason}`];
+    })))];
+    const notes = [...requirement.descriptions].sort().concat(preparation, comparison, exclusions);
     if (!requirement.parsed) {
-      if (matches.length) notes.push("Pantry stock was not subtracted because the required amount is not quantified.");
+      notes.push(`${requirement.name}: required amount is not quantified; enter a measured dinner amount before subtracting pantry stock.`);
       const measure = `${requirement.raw || "Amount missing"}${requirement.occurrences > 1 ? ` · ${requirement.occurrences} occurrences` : ""}`;
       items.push({
         key: JSON.stringify([requirement.identity, "review", requirement.raw.toLowerCase(), requirement.scales.slice().sort((a, b) => a - b)]),
         name: requirement.name,
         measure,
         requiredMeasure: measure,
-        pantryMeasure: matches.map(({ stock: entry }) => entry.measure || "Unknown amount").join(" + ") || "0",
+        pantryMeasure: matches.filter(({ stock: entry }) => stockDates.some((date) => pantryStockEligibility(entry, date).eligible)).map(({ stock: entry }) => entry.measure || "Unknown amount").join(" + ") || "0",
         needsReview: true,
         ...(preparation.length ? { preparationNote: preparation[0] } : {}),
         notes,
@@ -479,14 +525,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     }
     const { unit, dimension } = requirement.parsed;
     const available = covered.get(requirementKey(requirement)) ?? 0;
-    let needsReview = requirement.needsReview || preparation.length > 0;
-    for (const match of matches) {
-      if (match.parsed?.dimension !== dimension) {
-        needsReview = true;
-        notes.push(`Pantry amount “${match.stock.measure || "unknown"}” could not be safely subtracted; check the units or quantity.`);
-      }
-      if (match.stock.useBy && (match.stock.useBy < today || mealDates.some((date) => date > match.stock.useBy!))) notes.push(`Pantry stock dated ${match.stock.useBy} was excluded where today or the dinner date is after its entered use-by date.`);
-    }
+    const needsReview = requirement.needsReview || preparation.length > 0 || comparison.length > 0;
     const missing = cleanNumber(Math.max(0, requirement.quantity - available));
     if (missing === 0) continue;
     items.push({

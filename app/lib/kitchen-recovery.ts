@@ -14,6 +14,8 @@ export interface KitchenDifferences {
   pantryAdded: number; pantryRemoved: number; pantryChanged: number;
   mealsAdded: number; mealsRemoved: number; mealsChanged: number;
   shoppingChanged: number;
+  shoppingCyclesChanged: number;
+  shoppingPurchasesChanged: number;
   favoritesChanged: number;
   cookingProfileChanged: boolean;
   personalAmountsChanged: number;
@@ -51,11 +53,18 @@ export function compareKitchens(current: KitchenState, candidate: KitchenState):
   const pantry = changes(Object.fromEntries(current.pantry.map((stock) => [stock.id, stock])), Object.fromEntries(candidate.pantry.map((stock) => [stock.id, stock])));
   const meals = changes(current.meals, candidate.meals);
   const shopping = new Set([...Object.keys(current.shoppingChecked), ...Object.keys(candidate.shoppingChecked)]);
+  const shoppingCycles = changes(current.shoppingCycles ?? {}, candidate.shoppingCycles ?? {});
+  const shoppingPurchases = changes(
+    Object.fromEntries((current.shoppingPurchases ?? []).map((purchase) => [purchase.id, purchase])),
+    Object.fromEntries((candidate.shoppingPurchases ?? []).map((purchase) => [purchase.id, purchase])),
+  );
   const personal = changes(current.personalRecipeAmounts ?? {}, candidate.personalRecipeAmounts ?? {});
   const favorites = new Set([...(current.favoriteRecipeIds ?? []), ...(candidate.favoriteRecipeIds ?? [])]);
   return { pantryAdded: pantry.added, pantryRemoved: pantry.removed, pantryChanged: pantry.changed,
     mealsAdded: meals.added, mealsRemoved: meals.removed, mealsChanged: meals.changed,
     shoppingChanged: [...shopping].filter((key) => Boolean(current.shoppingChecked[key]) !== Boolean(candidate.shoppingChecked[key])).length,
+    shoppingCyclesChanged: shoppingCycles.added + shoppingCycles.removed + shoppingCycles.changed,
+    shoppingPurchasesChanged: shoppingPurchases.added + shoppingPurchases.removed + shoppingPurchases.changed,
     favoritesChanged: [...favorites].filter(id => (current.favoriteRecipeIds ?? []).includes(id) !== (candidate.favoriteRecipeIds ?? []).includes(id)).length,
     personalAmountsChanged: personal.added + personal.removed + personal.changed,
     cookingProfileChanged: JSON.stringify(current.cookingProfile ?? null) !== JSON.stringify(candidate.cookingProfile ?? null) };

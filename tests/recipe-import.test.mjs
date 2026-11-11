@@ -1135,12 +1135,15 @@ test("replacement previews release the target dinner but keep other saved dinner
   assert.deepEqual(withOtherDinner.shopping.map((row) => row.measure), ["100 g", "1"]);
 });
 
-test("previews do not free a locked target or treat unplanned cooking as a replacement", async () => {
+test("planning retains locked reservations while unplanned cooking uses physical stock", async () => {
   const { state, meal, write, ask } = await previewStockFixture();
   state.meals[meal.date].locked = true; write();
   assert.equal((await ask({ purpose: "planning", servings: 2 })).missingCount, 2);
   state.meals[meal.date].locked = false; write();
-  assert.equal((await ask({ purpose: "cooking" })).missingCount, 2);
+  const cooking = await ask({ purpose: "cooking" });
+  assert.equal(cooking.coveredCount, 2);
+  assert.equal(cooking.missingCount, 0);
+  assert.deepEqual(cooking.shopping, []);
 });
 
 test("saved-dinner planning estimates use requested portions while cooking retains saved amounts", async () => {

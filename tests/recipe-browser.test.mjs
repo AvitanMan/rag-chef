@@ -66,10 +66,27 @@ test("pantry coverage reports actual ingredient counts, not an inflated percenta
 test("pantry names normalize safely without treating related ingredients as interchangeable", () => {
   const dinner = recipe("a", "Dinner", ["rice vinegar", "eggplant", "crème fraîche", "spring onion"]);
   const details = recipePantryDetails(dinner, ["rice", "egg", "CREME FRAICHE", "scallions"]);
-  assert.deepEqual(details.matched, ["crème fraîche", "spring onion"]);
-  assert.deepEqual(details.missing, ["rice vinegar", "eggplant"]);
+  assert.deepEqual(details.matched, ["spring onion"]);
+  assert.deepEqual(details.missing, ["rice vinegar", "eggplant", "crème fraîche"]);
   const sorted = browseRecipes([recipe("v", "A Vinegar", ["rice vinegar"]), recipe("r", "Z Rice", ["rice"])], "", ["rice"]);
   assert.deepEqual(sorted.map((r) => r.id), ["r", "v"]);
+});
+
+test("accent-insensitive search does not broaden inventory coverage or its ranking", () => {
+  const accented = recipe("accented", "A Crème Fraîche", ["crème fraîche"]);
+  const plain = recipe("plain", "Z Creme Fraiche", ["creme fraiche"]);
+  assert.deepEqual(browseRecipes([accented, plain], "creme fraiche", ["CREME FRAICHE"]).map((item) => item.id), ["plain", "accented"]);
+  assert.deepEqual(recipePantryDetails(accented, ["CREME FRAICHE"]).matched, []);
+  assert.deepEqual(recipePantryDetails(accented, ["cre\u0300me frai\u0302che"]).matched, ["crème fraîche"]);
+  assert.deepEqual(recipePantryDetails(plain, ["crème fraîche"]).matched, []);
+});
+
+test("compound names and prepared forms stay exact in both directions", () => {
+  const dinner = recipe("compounds", "Rice", ["rice", "cooked rice", "rice vinegar", "rice flour", "cooked rice vinegar", "cooked or raw rice"]);
+  for (const name of dinner.ingredients.map((item) => item.name)) {
+    assert.deepEqual(recipePantryDetails(dinner, [name]).matched, [name], name);
+  }
+  assert.deepEqual(recipePantryDetails(dinner, ["uncooked rice"]).matched, ["rice"]);
 });
 
 test("pantry coverage uses the same preparation identities and clear quantities as planning", () => {

@@ -11,7 +11,7 @@ import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
-import { setShoppingItemBought } from "../lib/shopping-purchases";
+import { beginShoppingPurchaseCycle, setShoppingItemBought } from "../lib/shopping-purchases";
 import { ShoppingExport } from "./ShoppingExport";
 
 type UpdateKitchen = (change: (state: KitchenState) => KitchenState) => void;
@@ -143,18 +143,38 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   );
 }
 
-export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: { items: ShoppingItem[]; checked: Record<string, boolean>; update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode }) {
+export function DurableShoppingView({ items, checked, cycles, purchases, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: {
+  items: ShoppingItem[]; checked: Record<string, boolean>; cycles?: KitchenState["shoppingCycles"]; purchases?: KitchenState["shoppingPurchases"];
+  update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode;
+}) {
   const toBuy = items.filter((item) => !checked[item.key]).sort((a, b) => Number(b.needsReview) - Number(a.needsReview));
   const bought = items.filter((item) => checked[item.key]);
   const reviewCount = items.filter((item) => item.needsReview).length;
-  const renderItem = (item: ShoppingItem) => <div className={`shopping-item ${checked[item.key] ? "checked" : ""}`} key={item.key}>
+  const renderItem = (item: ShoppingItem) => {
+    const purchase = purchases?.find((purchase) => purchase.items.some((entry) => entry.key === item.key && entry.cycleId === cycles?.[item.key]));
+    const batch = purchase?.items.find((entry) => entry.key === item.key && entry.cycleId === cycles?.[item.key]);
+    const beginPurchase = (bought: boolean) => {
+      if (!purchase || !batch) return;
+      const previous = { purchaseId: purchase.id, key: batch.key, cycleId: batch.cycleId, pantryId: batch.pantry.id }, cycleId = crypto.randomUUID();
+      update((state) => beginShoppingPurchaseCycle(state, previous, cycleId, bought));
+    };
+    return <div className={`shopping-item ${checked[item.key] ? "checked" : ""}`} key={item.key}>
         <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = crypto.randomUUID(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
         <div className="shopping-detail">
           {item.preparationNote && <small>{item.preparationNote}</small>}
           {item.needsReview && <><b>{item.preparationNote ? "Review preparation" : "Review amount"}</b><div>{item.mealDates.map((date) => <button className="text-button" key={date} aria-label={`Review ${item.name} for ${dateLabel(date)}`} onClick={() => reviewMeal(date)}>Review {dateLabel(date)}</button>)}</div></>}
           <details className="calculation-details"><summary>See calculation</summary><small>Plan: {item.requiredMeasure}{item.pantryMeasure ? ` · Pantry: ${item.pantryMeasure}` : ""}</small>{item.notes.map((note, index) => <small key={index}>{note}</small>)}<small>For: {item.recipeTitles.join(", ")}</small></details>
+          {checked[item.key] && batch && <>
+            <small>Already added to pantry. Another purchase creates a separate batch after review.</small>
+            <div className="shopping-repeat-actions">
+              <button className="text-button" aria-label={`Need to buy again ${item.name}`} onClick={() => beginPurchase(false)}>Need to buy again</button>
+              <button className="text-button" aria-label={`Record another purchase ${item.name}`} onClick={() => beginPurchase(true)}>Record another purchase</button>
+            </div>
+          </>}
+          {checked[item.key] && purchases && !batch && <small>Not yet added to pantry. Review this purchase with “Add bought items to pantry”.</small>}
         </div>
       </div>;
+  };
   return <div className="shopping-layout focused-shopping">
     <section className="panel shopping-panel">
       <div className="section-heading"><div><p>Week of {dateLabel(week)}</p><h2 role="status">{toBuy.length} {toBuy.length === 1 ? "item" : "items"} left</h2></div><button className="text-button" onClick={goPlan}>Edit plan</button></div>
@@ -165,7 +185,7 @@ export function DurableShoppingView({ items, checked, update, hasPlan, goPlan, r
       {items.length ? <>
         {toBuy.length ? <section className="shopping-list" aria-label="To buy">{toBuy.map(renderItem)}</section> : <p role="status">Everything on this list is checked.</p>}
         {bought.length > 0 && <details className="bought-items"><summary>Bought ({bought.length})</summary><section className="shopping-list" aria-label="Bought items">{bought.map(renderItem)}</section><button className="text-button" onClick={() => update((state) => ({ ...state, shoppingChecked: Object.fromEntries(Object.entries(state.shoppingChecked).filter(([key]) => !key.startsWith(`${week}:`))) }))}>Uncheck all</button></details>}
-        <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry.</p></details>
+        <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry. For an item already added to pantry, choose “Need to buy again” to return it to the list, or “Record another purchase” to review another separate batch.</p></details>
       </> : <div className="empty-state"><strong>{hasPlan ? "No remaining shopping for these dinners." : "Plan a few dinners first."}</strong><p>{hasPlan ? "Known quantities are covered or the meals have been cooked." : "Choose dinners to build your shopping totals."}</p><button className="primary-button" onClick={goPlan}>Go to weekly plan</button></div>}
     </section>
   </div>;

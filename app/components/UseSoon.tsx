@@ -3,21 +3,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PantryStock } from "../lib/kitchen-types";
 import type { PantryFilter, rankUseSoonDinners } from "../lib/use-soon";
-import { parseMeasure } from "../lib/quantities";
+import { pantryAmountDetails } from "../lib/quantities";
 import { dateLabel } from "./WeeklyKitchenViews";
 
 export function UseSoonSummary({ items, pastCount, select, review }: {
   items: PantryStock[]; pastCount: number; select: (id: string) => void; review: (filter: PantryFilter, id?: string) => void;
 }) {
   if (!items.length && !pastCount) return <section className="use-soon-empty" aria-label="Use soon">
-    <details><summary>Use soon · No dated food due soon</summary><p>No food with an entered date is due in the next three days.</p><button className="text-button" onClick={() => review("soon")}>Review pantry</button></details>
+    <details><summary>Use soon · No dated food due soon</summary><p>No food with an entered date is due in the next three days. Food without a date may still need attention.</p><p>Entered dates guide planning, not food-safety advice.</p><button className="text-button" onClick={() => review("undated")}>Review pantry</button></details>
   </section>;
   return <section className="panel use-soon-panel" aria-label="Use soon">
     <div className="section-heading"><h2>Use soon</h2><button className="text-button" onClick={() => review("soon")}>Review pantry</button></div>
-    <p>Pick food dated within the next three days to find dinner ideas.</p>
+    <p>Pick food dated within the next three days to find dinner ideas. These are entered planning dates, not a food-safety assessment.</p>
     {items.length ? <ul className="use-soon-items">{items.slice(0, 5).map(item => <li key={item.id}>
       <button className="secondary-button" onClick={() => select(item.id)} aria-label={`Find dinners using ${item.name}`}>
-        <strong>{item.name}</strong><span>{item.measure || "Amount unknown"}{item.measure && !parseMeasure(item.measure) ? " · Amount unknown" : ""} · Use by {dateLabel(item.useBy!)}</span>
+        <strong>{item.name}</strong><span>{item.measure || "Amount unknown"}{item.measure && pantryAmountDetails(item.measure).kind === "unknown" ? " · Amount unknown" : ""} · Use by {dateLabel(item.useBy!)}</span>
       </button>
     </li>)}</ul> : <p>No food with an entered date is due in the next three days.</p>}
     {items.length > 5 && <button className="text-button" onClick={() => review("soon")}>Review all {items.length} items</button>}

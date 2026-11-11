@@ -2,17 +2,20 @@ import type { KitchenState, PantryStock, PlannedMeal } from "./kitchen-types";
 import type { Recipe, RecipeConstraints, RecipeMetadataMap } from "./recipe-types";
 import { addDateDays, weekStart } from "./kitchen-state";
 import { evaluateRecipeConstraints } from "./recipe-constraints";
-import { applyPersonalRecipeAmounts, allocateMealStock, allocateStockForMeals, canonicalIngredient, formatMeasure, mealReadiness, normalizePlanningIngredient, parseMeasure } from "./quantities";
+import { applyPersonalRecipeAmounts, allocateMealStock, allocateStockForMeals, canonicalIngredient, formatMeasure, mealReadiness, normalizePlanningIngredient, pantryAmountDetails, parseMeasure } from "./quantities";
 
-export type PantryFilter = "all" | "soon" | "past";
+export type PantryFilter = "all" | "soon" | "past" | "undated" | "unknown" | "empty";
 
 export function pantryDateGroups(pantry: PantryStock[], today: string) {
-  const dated = pantry.filter(item => item.useBy && parseMeasure(item.measure)?.quantity !== 0)
+  const dated = pantry.filter(item => item.useBy && pantryAmountDetails(item.measure).kind !== "empty")
     .slice().sort((a, b) => a.useBy!.localeCompare(b.useBy!) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   return {
     all: pantry,
     soon: dated.filter(item => item.useBy! >= today && item.useBy! <= addDateDays(today, 3)),
     past: dated.filter(item => item.useBy! < today),
+    undated: pantry.filter(item => !item.useBy && pantryAmountDetails(item.measure).kind !== "empty"),
+    unknown: pantry.filter(item => pantryAmountDetails(item.measure).kind === "unknown"),
+    empty: pantry.filter(item => pantryAmountDetails(item.measure).kind === "empty"),
   };
 }
 

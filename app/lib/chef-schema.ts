@@ -241,6 +241,8 @@ export class ChefValidationError extends Error {
 }
 
 const MAX_CANDIDATES = 80;
+const MAX_PANTRY_ITEMS = 500;
+const MAX_PANTRY_NAME_LENGTH = 200;
 
 export function parseChefRequest(value: unknown): ChefRequest {
   if (!isRecord(value)) {
@@ -330,27 +332,42 @@ function parsePantry(value: unknown): PantryItem[] {
     throw new ChefValidationError("pantry must be an array.");
   }
 
-  return value.slice(0, 120).map((item, index) => {
+  if (value.length > MAX_PANTRY_ITEMS) {
+    throw new ChefValidationError(`pantry cannot contain more than ${MAX_PANTRY_ITEMS} items.`);
+  }
+  return value.map((item, index) => {
     if (typeof item === "string") {
-      return { name: requiredString(item, `pantry[${index}]`, 120) };
+      return { name: pantryName(item, `pantry[${index}]`) };
     }
     if (!isRecord(item)) {
       throw new ChefValidationError(
         `pantry[${index}] must be a string or pantry item object.`,
       );
     }
+    for (const [key, limit] of [["quantity", 160], ["unit", 40]] as const) {
+      if (typeof item[key] === "string" && item[key].length > limit) {
+        throw new ChefValidationError(`pantry[${index}].${key} must be at most ${limit} characters.`);
+      }
+    }
     const quantity =
       typeof item.quantity === "number" && Number.isFinite(item.quantity)
         ? item.quantity
         : optionalString(item.quantity, 160);
     return {
-      name: requiredString(item.name, `pantry[${index}].name`, 120),
+      name: pantryName(item.name, `pantry[${index}].name`),
       ...(quantity !== undefined ? { quantity } : {}),
       ...(optionalString(item.unit, 40)
         ? { unit: optionalString(item.unit, 40) }
         : {}),
     };
   });
+}
+
+function pantryName(value: unknown, path: string): string {
+  if (typeof value === "string" && value.length > MAX_PANTRY_NAME_LENGTH) {
+    throw new ChefValidationError(`${path} must be at most ${MAX_PANTRY_NAME_LENGTH} characters.`);
+  }
+  return requiredString(value, path, MAX_PANTRY_NAME_LENGTH);
 }
 
 function parseProfile(value: unknown): ChefProfile {
