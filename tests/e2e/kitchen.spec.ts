@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const emptyState = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
 async function readKitchen(request: APIRequestContext) { return (await request.get("/api/kitchen")).json(); }
@@ -10,6 +11,7 @@ async function saveFixture(request: APIRequestContext, state: ReturnType<typeof 
 }
 async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 
 test.beforeEach(async ({ request }) => {
@@ -198,6 +200,7 @@ test("two tabs expose a revision conflict and keep server and browser versions u
     expect((await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
     expect(await other.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("rag-chef-kitchen-v2:draft:") && JSON.parse(localStorage.getItem(key)!).state.pantry.some((stock: { name: string }) => stock.name === "beans")))).toBeTruthy();
     await other.getByRole("button", { name: "Load saved version", exact: true }).click();
+    await showPantryBatches(other);
     await expect(other.getByRole("textbox", { name: "Available rice", exact: true })).toBeVisible();
     await expect(other.getByRole("textbox", { name: "Available beans", exact: true })).toHaveCount(0);
   } finally { releaseWrite(); await other.close(); }

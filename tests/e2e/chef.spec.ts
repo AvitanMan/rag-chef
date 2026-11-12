@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { Recipe, RecipeMetadata } from "../../app/lib/recipe-types";
 import type { KitchenState } from "../../app/lib/kitchen-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL;
 if (!modelURL || new URL(modelURL).hostname !== "127.0.0.1") throw new Error("Use the disposable model stub through pnpm test:e2e.");
@@ -155,6 +156,7 @@ test.describe("instant dinner picks", () => {
     await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
     await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
     await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
+    await showPantryBatches(page);
     await page.getByRole("textbox", { name: "Available tomato", exact: true }).last().fill("0");
     await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
     await page.getByRole("button", { name: "Ask Chef", exact: true }).click();

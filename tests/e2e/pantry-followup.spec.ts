@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PantryStock, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const WEEK = "2026-10-19";
@@ -24,6 +25,7 @@ async function save(request: APIRequestContext, state: KitchenState) {
 }
 async function navigate(page: Page, name: string) {
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 async function openPantry(page: Page) {
   await page.goto("/");
@@ -314,6 +316,7 @@ test("Review dinner opens the selected reservation's saved dinner, not tonight, 
   await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toHaveCount(0);
   await page.goBack();
   await expect(page.getByRole("group", { name: "Pantry reservation week", exact: true })).toContainText("Mon, Oct 26 – Sun, Nov 1");
+  await showPantryBatches(page);
   await expectReservations(row(page, "later"), ["Thu, Oct 29 · Next Thursday rice · 400 g"]);
   await expectReadOnly(page, request, before, writes);
   expect(chefRequests).toBe(0);
@@ -553,6 +556,7 @@ test("keyboard dismissal restores visible or hidden target focus; leaving Pantry
         await navigate(page, "Recipes");
         await page.goBack();
         await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeVisible();
+        await showPantryBatches(page);
       } else {
         await page.reload();
         await navigate(page, "Pantry");

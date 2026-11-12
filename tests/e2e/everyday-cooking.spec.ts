@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe, RecipeMetadata, RecipeMetadataMap } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -11,6 +12,7 @@ async function save(request: APIRequestContext, state: KitchenState) {
 }
 async function navigate(page: Page, name: string) {
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 function metadata(minutes: number | null, basis: "source" | "curator_estimate" = "source"): RecipeMetadata {
   return { revision: 1, sourceContentHash: "a".repeat(64), coreDinner: true, dinnerRole: "main", diets: { vegan: "unknown", vegetarian: "unknown", gluten_free: "unknown", low_carb: "unknown" },

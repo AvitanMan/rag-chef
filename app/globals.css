@@ -2244,6 +2244,22 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .pantry-batch-browser .quantity-note { font-size: 12px; }
 .pantry-planning-help { margin-block: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--neutral); }
 .pantry-planning-help p { margin: 6px 0; font-size: 13px; line-height: 1.6; }
+.pantry-planning-help summary { cursor: pointer; min-height: 44px; align-content: center; font-size: 14px; font-weight: 600; }
+.pantry-review-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px; margin-block: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.pantry-review-summary > div { flex: 1 1 300px; min-width: 0; }
+.pantry-review-summary h3 { margin: 0 0 8px; font-size: 18px; }
+.pantry-review-summary p { margin: 6px 0; font-size: 14px; line-height: 1.6; }
+.pantry-review-summary button, .pantry-disclosure-actions button { min-height: 44px; white-space: normal; }
+.pantry-disclosure-actions, .pantry-group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pantry-disclosure-actions { margin-top: 14px; }
+.pantry-group-heading .pantry-on-hand-summary { font-size: 15px; line-height: 1.6; }
+.pantry-on-hand-summary strong { color: var(--ink); }
+.pantry-group-heading .pantry-attention { font-size: 13px; font-weight: 600; }
+.pantry-group-body[hidden] { display: none; }
+.pantry-review-context { padding: 12px; margin-bottom: 14px; border-radius: 10px; background: var(--cream); font-size: 13px; line-height: 1.6; }
+.pantry-review-context p { margin-block: 6px; }
+.pantry-review-context ul { margin-block: 8px; padding-inline-start: 20px; }
+.pantry-review-context li + li { margin-top: 6px; }
 .pantry-reservation-week { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-block: 16px; font-size: 13px; }
 .pantry-reservation-week > div { display: flex; flex-wrap: wrap; gap: 8px; }
 .pantry-reservation-week button, .pantry-edit-undo button { min-height: 44px; white-space: normal; }
