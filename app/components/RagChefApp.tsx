@@ -252,6 +252,7 @@ export default function RagChefApp() {
   const [pantrySearch, setPantrySearch] = useState("");
   const [pantrySort, setPantrySort] = useState<PantrySort>("current");
   const [pantryFocusId, setPantryFocusId] = useState<string | null>(null);
+  const [pantryFocusRequest, setPantryFocusRequest] = useState(0);
   const chefOrigin = chefFlow.origin;
   const selectionDate = chefFlow.date;
   const pinnedRecipe = chefFlow.kind === "discussion" ? chefFlow.recipe : null;
@@ -837,6 +838,7 @@ export default function RagChefApp() {
 
   function reviewPantry(filter: PantryFilter, id?: string) {
     setPantrySearch("");
+    if (id) setPantryFocusRequest(request => request + 1);
     setPantryFilter(filter); setPantryFocusId(id ?? null); navigate("pantry");
   }
 
@@ -1158,7 +1160,7 @@ export default function RagChefApp() {
             setWeek={(value) => { setWeek(value); setPlanningNotice(""); setPlanningReasons({}); setReviewDate(null); }}
             reviewMeal={(date) => showDinner(date)}
             error={pantryError} addedIds={pantryAddedIds}
-            today={today} filter={pantryFilter} setFilter={setPantryFilter} focusId={pantryFocusId} select={selectUseSoon}
+            today={today} filter={pantryFilter} setFilter={setPantryFilter} focusId={pantryFocusId} focusRequest={pantryFocusRequest} select={selectUseSoon}
             search={pantrySearch} setSearch={setPantrySearch} sort={pantrySort} setSort={setPantrySort}
             draft={pantryDraft}
             setDraft={setPantryDraft}

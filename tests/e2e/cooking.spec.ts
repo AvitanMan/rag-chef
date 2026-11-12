@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const emptyState = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
@@ -19,7 +20,10 @@ async function recipeFixture(request: APIRequestContext, id = "fixture-tomato-ri
 function mealFixture(recipe: Recipe, date = TODAY, overrides: Partial<PlannedMeal> = {}): PlannedMeal {
   return { id: `meal-${date}`, date, recipeId: recipe.id, recipe, title: recipe.title, baseServings: recipe.servings ?? null, servings: recipe.servings ?? null, batches: 1, locked: false, status: "planned", ingredientOverrides: {}, ...overrides };
 }
-async function navigate(page: Page, name: string) { await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click(); }
+async function navigate(page: Page, name: string) {
+  await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
+}
 
 test.beforeEach(async ({ page, request }) => {
   await page.clock.install({ time: new Date("2026-10-22T12:00:00+03:00") });

@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const initial = (): KitchenState => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "500 g", useBy: TODAY }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -17,6 +18,7 @@ function meal(recipe: Recipe, date = TODAY): PlannedMeal {
 }
 async function navigate(page: Page, name: string) {
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 async function selectRice(page: Page) {
   await page.getByRole("region", { name: "Use soon", exact: true }).getByRole("button", { name: "Find dinners using rice", exact: true }).click();
@@ -79,6 +81,7 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   await expect(page.getByRole("textbox", { name: "Available carrot", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "All items (3)", exact: true }).click();
+  await showPantryBatches(page);
   const date = page.getByLabel("Use by rice", { exact: true });
   await date.focus();
   await date.fill("2026-10-28");

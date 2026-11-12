@@ -218,11 +218,12 @@ disposable copies and leave this preview and its database untouched.
 
 Chef’s **Use soon** section shows up to five nonzero pantry batches with entered
 use-by dates from today through three days ahead, including unknown amounts;
-**Review pantry** opens the full Use soon view. When there are no due-soon or
-past-dated batches, its empty-state link opens **No date entered** instead:
-undated food may still need attention. These are entered planning dates, not
-food-safety assessments. Select an ingredient to see three matching dinners, then use
-**Show more dinners** for further matches. Normal dinner selection, replacement
+its **Review pantry** link opens the **Use soon** filter in Pantry. When there
+are no due-soon or past-dated batches, its empty-state link opens **No date
+entered** instead: undated food may still need attention. These links navigate
+to Pantry, rather than starting the guided stocktake described below. These are
+entered planning dates, not food-safety assessments. Select an ingredient to see
+three matching dinners, then use **Show more dinners** for further matches. Normal dinner selection, replacement
 confirmation, cooking, and optional pantry deductions still apply.
 
 Suggestions respect saved allergies, diet, and equipment requirements and match
@@ -259,28 +260,81 @@ In **Settings**, cooking preferences come first. Enter allergies and dislikes as
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
-In **Pantry**, ingredients are grouped by the existing canonical ingredient
-identity, with each physical batch still shown separately. Grouping never merges
-batch IDs, names, amounts, or entered dates. **Amount on hand** includes past-dated
-stock; **Reserved for selected week** is a virtual estimate for saved, uncooked
-dinners; **Available today after reservations** excludes those reservations and
-past-dated stock. Each dinner also checks its own date. Totals combine only
-compatible units and include all batches of the ingredient, even when search or
-filters hide some rows. Unknown amounts are listed separately, not totaled as
-zero or unlimited stock.
+In **Pantry**, **All items** starts with compact ingredient groups using the
+existing canonical identity. Each summary shows the batch count and physical
+**On hand** totals in compatible units, plus a separate count of batches with
+unknown amounts. Past-dated stock still counts as physically on hand; unknown
+amounts are neither zero nor unlimited. Grouping never merges batch IDs, names,
+amounts, or entered dates.
+
+Use **Show batches** / **Hide batches** for one group, or **Show all batches** /
+**Hide all batches** for the groups in the current view. Review filters other
+than All items and nonblank searches automatically open matching groups. A batch
+focused from Chef or an addition opens its group too; manual hiding remains
+available. Expanded groups retain every batch's fields, actions, and planning
+details. Hiding and reopening that group, or using Hide/Show all, retains an
+invalid inline draft and its error—even if an earlier edit left the batch pinned
+in view but no longer matching the filter. The invalid draft is not saved;
+valid inline edits still commit on blur. This retention applies to disclosure
+in the same view, not draft recovery across search/filter changes or leaving
+Pantry.
+
+Expanded **Amount on hand**, **Reserved for selected week**, and **Available
+today after reservations** totals retain their existing meanings. Reservations
+are virtual estimates for saved, uncooked dinners, including locked dinners,
+using the full pantry before search or filters. Available today excludes those
+reservations and past-dated stock; each dinner also checks its own date. Totals
+combine only compatible units and include all batches of the ingredient, even
+when search or filters hide some rows, with unknown amounts counted separately.
 
 Under **Reservation week**, use **Previous week**, **Current week**, and **Next
-week** to change the shared selected week. Expand a batch's **Reserved for …
-dinners** details to see each allocated dinner's title, date, and amount from
-that batch. **Review dinner** opens that saved dinner in Chef. Week navigation
-and opening review do not change physical pantry stock or saved meals.
+week** to change the shared selected week for reservations and unit-review
+reasons. Show a group's batches, then expand a batch's **Reserved for … dinners**
+details to see each allocated dinner's title, date, and amount from that batch.
+**Review dinner** opens that saved dinner in Chef. Week navigation and opening
+review do not change physical pantry stock or saved meals.
 
 **Unknown amounts** shows blank or unparseable amounts across all dates, including
 batches with no entered date. **Finished batches** shows only parsed zero amounts,
 such as `0`, `0 g`, or `0 cans`, also regardless of date; unknown notes are not
 finished stock. All batches remain in **All items**. **Use soon**, **Past entered
 date**, and **No date entered** exclude known zero amounts but can include
-unknown amounts.
+unknown amounts. When finished batches exist, the optional **Review finished
+batches** shortcut clears search and opens that filter. It does not start the
+stocktake or automatically delete anything; removal remains an explicit action.
+
+In Pantry's **Keep your pantry accurate** summary, **Review pantry** starts a
+guided stocktake of the **full pantry**, including batches hidden by search or
+filters. Its count is batches, not reasons. A batch can need review for:
+
+- An unknown amount, regardless of date.
+- An entered planning date before today, unless the amount is known zero.
+- Incompatible units affecting an actually uncovered, quantified requirement
+  for a saved, uncooked dinner in the selected week, including locked dinners.
+  The check uses the shared full-pantry, sequential allocation and each dinner's
+  effective amounts and date eligibility. A difference in units is not an issue
+  if compatible stock already covers the requirement; a shortage alone is not
+  a unit mismatch. The reason names the dinner, date, and required unit without
+  inventing a package-content or mass/volume conversion.
+
+A missing date alone is not an issue, and known-zero batches are excluded from
+this pass. Unknown and past-date reasons remain even if dinners are fully
+covered. This is a stock-record review, not a food-safety assessment.
+
+The pass opens one batch at a time in the existing guarded editor: **Correct
+batch**, **Record usage**, or **Mark finished**. **Skip batch** discards the
+unconfirmed draft and advances without writing; **Cancel** discards it and ends
+the pass without writing. Neither reverses changes already confirmed. **Review
+next** / **Finish review** appears only after the confirmed result is visible as
+applied; follow the kitchen save indicator for persistence/sync status.
+
+The pass keeps its starting batch IDs and order, while reasons stay current.
+Advancing skips future tasks that have resolved or been removed, does not
+revisit skipped batches, and does not append newly problematic batches. Finishing
+reports the current full-pantry count still needing review, including skipped,
+unresolved, or newly arising issues—not a claim that every batch is fixed. Start
+another pass for those. The pass is in memory only; leaving Pantry or reloading
+loses its progress, not already applied stock changes.
 
 Paste ingredients separated by new lines, commas, or semicolons. Amounts are
 optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported. Only a bare,
@@ -294,9 +348,12 @@ The preview identifies repeated ingredients and matching existing batches.
 **Confirm new batch** / **Confirm new batches** keeps every row separate; it
 never overwrites existing stock or combines dates. **Correct existing batch**
 closes the preview and focuses that saved batch in Pantry without adding stock
-or applying the preview's values. **Add another batch** starts a new entry;
-**View added batches** finds the confirmed additions. Chef's pantry chips also
-open batch review rather than removing stock.
+or applying the preview's values. **Add another batch** starts a new entry.
+Each explicit **View added batches** action clears search, selects All items,
+reopens the added groups, and scrolls to and focuses the first remaining added
+batch's amount field. It works again after manually hiding the group or searching,
+even when the target batch ID has not changed; revealing does not add stock.
+Chef's pantry chips also open batch review rather than removing stock.
 
 Inline **Amount on hand** and **Use by** changes apply when you move focus out of
 the field (blur), not on every keystroke. Enter also commits amount edits and
@@ -328,9 +385,10 @@ in the editor; a removed batch is not recreated.
 
 After an applied correction, usage subtraction, or Mark finished, **Undo last
 batch edit** restores just that batch's exact previous name, amount text, and
-date, retaining its ID. Only the latest applied batch-editor change is kept;
-another replaces it, but unchanged corrections do not. The undo record is in
-memory only, until you leave Pantry (including
+date, retaining its ID. This includes edits confirmed during **Review pantry**;
+there is no undo for an entire pass. Only the latest applied batch-editor change
+is kept; another replaces it, but unchanged corrections do not. The undo record
+is in memory only, until you leave Pantry (including
 **Review dinner**), reload, or choose **Dismiss edit undo**. It does not cover
 inline amount/date edits. Undo refuses if the batch is removed or no longer
 exactly matches the after-change snapshot—even equivalent amount text such as
@@ -347,11 +405,14 @@ until dismissed or the page is reloaded. Earlier removals remain available.
 Removal Undo preserves later edits and never replaces a dinner subsequently
 added to the same date.
 
-See [Pantry semantics](pantry-semantics.md) for the existing stages 1–3
-implementation and current follow-up in PR12 (`codex/pantry-semantics`), acceptance
-criteria, compatibility, and historical PR7 integration notes. Richer persisted
-package metadata, barcodes, storage locations, and a full inventory journal
-remain deferred to stage 4; the single in-memory edit undo is not that journal.
+See [Pantry semantics](pantry-semantics.md) for the stages 1–3 baseline from
+merged PR12 (`54ee59f`) and the first compact-browser and guided-stocktake
+milestone. Its behavioral acceptance criteria and test map complement the
+execution results recorded in PR checks and test artifacts.
+This milestone adds no pantry metadata, package-content model, or history/schema
+changes. Richer package metadata, barcodes, storage locations, and a full
+inventory journal remain deferred to later stages; the single in-memory edit
+undo is not that journal.
 
 Chef’s instant dinner picks favor eligible reviewed main dishes. If the Chef
 API is unavailable, local picks remain available with **Retry Chef**; saved
@@ -742,12 +803,14 @@ when live pantry rows are identical. Restoring replaces shopping checks and
 purchase history as well as amounts; it does not replay purchases. These records
 control repeat-purchase detection and guarded purchase undo.
 
-The pantry stages 1–3 changes keep kitchen `schemaVersion: 2` and the existing
-backup format. No new database migration is required for these changes. Batches
-still store `id`, `name`, `measure`, and optional `useBy`; grouping, amount states,
-reservations, and review explanations are derived, not new stored fields.
-The single batch-editor undo record is in memory only and is not exported in
-backups. Existing backups without optional purchase history remain supported.
+The pantry stages 1–3 baseline and first compact-browser/stocktake milestone
+keep kitchen `schemaVersion: 2` and the existing backup format. No new database
+migration is required. Batches still store `id`, `name`, `measure`, and optional
+`useBy`; grouping, amount states, reservations, and stocktake reasons are derived,
+not new stored fields. Group disclosure, review-pass progress, and the single
+batch-editor undo record are in memory only and are not exported in backups.
+There are no new pantry metadata, package-content, or history fields. Existing
+backups without optional purchase history remain supported.
 See [compatibility and historical PR7 overlap](pantry-semantics.md#compatibility-and-historical-pr7-overlap)
 for earlier integration notes, not a current PR-status or compatibility report.
 
@@ -885,6 +948,16 @@ an ephemeral loopback port. AI providers are mocked; personal data and `.env`
 files are not copied. Browser artifacts live in ignored `output/playwright/`.
 Collector tests need the Python environment above. Only a direct app build needs
 the production preview stopped.
+
+For the first compact-browser/stocktake milestone, the pure
+[pantry-review helper](../app/lib/pantry-review.ts) derives review tasks from
+shared quantity allocation, with source regressions in
+[pantry-review.test.mjs](../tests/pantry-review.test.mjs). Browser regressions for
+[PantryView](../app/components/PantryView.tsx) are defined in
+[pantry-stocktake.spec.ts](../tests/e2e/pantry-stocktake.spec.ts). See the
+[behavioral acceptance criteria and test map](pantry-semantics.md#acceptance-criteria-and-validation-status)
+for scope. Run the relevant checks against current changes; test definitions
+alone do not establish a passing result.
 
 GitHub Actions runs type checking, lint, source tests, isolated build/browser
 checks, and the Python collector tests on pushes and pull requests. It installs

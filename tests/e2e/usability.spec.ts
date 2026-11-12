@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 async function discussFirstRecipe(page: Page) {
   await page.locator(".recipe-card").first().getByRole("button", { name: /^View / }).click();
@@ -22,6 +23,7 @@ async function save(request: APIRequestContext, state: KitchenState) {
 }
 async function navigate(page: Page, name: string) {
   await page.getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 async function recipe(request: APIRequestContext): Promise<Recipe> {
   return (await (await request.get("/api/recipes/catalog")).json()).recipes.find((r: Recipe) => r.id === "fixture-tomato-rice");

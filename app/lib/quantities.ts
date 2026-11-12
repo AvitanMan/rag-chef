@@ -486,6 +486,39 @@ export function allocateStockForMeals(meals: PlannedMeal[], pantry: PantryStock[
   return { pantry: remaining, allocations };
 }
 
+export interface PantryUnitMismatch {
+  pantryId: string;
+  mealId: string;
+  date: string;
+  title: string;
+  ingredient: string;
+  requiredUnit: string;
+}
+
+/** Structured review evidence from the same grouped requirements and sequential allocation. */
+export function pantryUnitMismatches(meals: PlannedMeal[], pantry: PantryStock[], today: string): PantryUnitMismatch[] {
+  const mealsById = new Map(meals.map(meal => [meal.id, meal]));
+  const { allocations } = allocateStockForMeals(meals, pantry, today);
+  const mismatches: PantryUnitMismatch[] = [];
+  for (const allocation of allocations) {
+    const meal = mealsById.get(allocation.mealId)!;
+    const stockDate = meal.date > today ? meal.date : today;
+    for (const requirement of requirementsFor([meal])) {
+      const required = requirement.parsed;
+      if (!required || requirement.needsReview
+        || (allocation.coveredByGroup.get(requirementKey(requirement)) ?? 0) >= requirement.quantity) continue;
+      // Use this dinner's remaining stock, not batches already spent by it or earlier dinners.
+      for (const match of matchingStock(requirement, allocation.pantry)) {
+        if (match.kind !== "known" || !match.parsed || match.parsed.dimension === required.dimension
+          || !pantryStockEligibility(match.stock, stockDate).eligible) continue;
+        mismatches.push({ pantryId: match.stock.id, mealId: meal.id, date: meal.date,
+          title: meal.title || meal.recipe?.title || "Untitled meal", ingredient: requirement.name, requiredUnit: required.unit });
+      }
+    }
+  }
+  return mismatches;
+}
+
 export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], today = currentLocalDate()): ShoppingItem[] {
   const stock = uniquePantry(pantry);
   const allocation = allocateStockForMeals(meals, stock, today);

@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -22,6 +23,7 @@ async function save(request: APIRequestContext, state: KitchenState) {
 }
 async function navigate(page: Page, name: string) {
   await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: new RegExp(name) }).filter({ visible: true }).first().click();
+  if (name === "Pantry") await showPantryBatches(page);
 }
 async function openPantry(page: Page) {
   await page.goto("/");
