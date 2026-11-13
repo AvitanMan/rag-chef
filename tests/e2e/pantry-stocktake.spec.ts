@@ -1,3 +1,4 @@
+import { isKitchenWrite } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PantryStock, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -52,7 +53,7 @@ function replaceStock(state: KitchenState, stock: PantryStock): KitchenState {
 function watchWrites(page: Page) {
   const writes: string[] = [];
   page.on("request", request => {
-    if (new URL(request.url()).pathname === "/api/kitchen" && !["GET", "HEAD"].includes(request.method())) {
+    if (isKitchenWrite(request)) {
       writes.push(`${request.method()} ${request.postData() ?? ""}`);
     }
   });

@@ -2335,3 +2335,15 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
   .pantry-batch-editor .modal-actions { bottom: -18px; }
   .pantry-batch-editor .modal-actions button { flex: 1 1 160px; white-space: normal; }
 }
+
+/* Shared kitchen account and membership settings. */
+.account-gate { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.account-panel { width: min(100%, 540px); padding: 32px; }
+.account-panel h1 { font-size: clamp(28px, 5vw, 40px); }
+.account-panel label, .settings-panel > label, .settings-panel form > label { display: grid; gap: 8px; margin: 16px 0; }
+.account-panel input, .settings-panel > label > input, .settings-panel form input { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 10px; font: inherit; }
+.household-members { list-style: none; padding: 0; }
+.household-members li { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.session-notice { padding: 14px 24px; background: var(--warning); display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+fieldset.form-grid { border: 0; padding: 0; margin: 0; min-width: 0; }
+@media (max-width: 650px) { .account-panel { padding: 22px; } }

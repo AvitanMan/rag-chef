@@ -77,6 +77,9 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("300 g");
+  // Removal and its undo are separate ordered writes. Establish the restored
+  // saved batch before checking the next date field's uncommitted draft.
+  await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice")).toEqual({ id: "rice", name: "rice", measure: "300 g", useBy: TODAY });
   await page.getByRole("button", { name: "Past entered date (1)", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Available carrot", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Available rice", exact: true })).toHaveCount(0);
@@ -92,7 +95,8 @@ test("review filters, selected row focus, amount edits and removal recovery", as
   else await date.press("Enter");
   await expect(date).not.toBeFocused();
   await expect(page.getByRole("button", { name: "Use soon (0)", exact: true })).toBeVisible();
-  await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice").useBy).toBe("2026-10-28");
+  await expect.poll(async () => (await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice")?.useBy).toBe("2026-10-28");
+  expect((await read(request)).state.pantry.find((item: { id: string }) => item.id === "rice")).toEqual({ id: "rice", name: "rice", measure: "300 g", useBy: "2026-10-28" });
   await page.reload();
   await expect(page.getByRole("region", { name: "Use soon", exact: true })).not.toContainText("rice");
 });

@@ -10,7 +10,9 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? (exist
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  ...(process.env.RAG_CHEF_SETUP_TEST === "1" ? { testMatch: "first-run.spec.ts" } : { testIgnore: "first-run.spec.ts" }),
+  ...(process.env.RAG_CHEF_SETUP_TEST === "1" ? { testMatch: "first-run.spec.ts" }
+    : process.env.RAG_CHEF_HOSTED_TEST === "1" ? { testMatch: "hosted.spec.ts" }
+    : { testIgnore: ["first-run.spec.ts", "hosted.spec.ts"] }),
   fullyParallel: false,
   workers: 1,
   retries: 0,

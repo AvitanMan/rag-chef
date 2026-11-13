@@ -16,8 +16,8 @@ jobs:
   app:
     name: App and browser checks
     runs-on: ubuntu-latest
-    # Allow the 20-minute E2E budget plus build, other browser checks and artifact upload.
-    timeout-minutes: 30
+    # Allow the E2E budget plus isolated hosted/local builds and artifact upload.
+    timeout-minutes: 45
     env:
       WRANGLER_SEND_METRICS: "false"
     steps:
@@ -34,12 +34,18 @@ jobs:
         run: pnpm typecheck
       - name: Lint
         run: pnpm lint
+      - name: Service deployment contracts
+        run: pnpm services:check
       - name: Source and isolated build checks
         run: pnpm test
       - name: Install browser
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: Desktop and mobile browser checks
         run: pnpm test:e2e
+      - name: Hosted household isolation and pantry checks
+        run: pnpm test:hosted
+      - name: Hosted development authorization
+        run: pnpm test:hosted-dev
       - name: Development theme and disconnected HMR
         run: pnpm test:dev
       - name: Fresh installation without AI

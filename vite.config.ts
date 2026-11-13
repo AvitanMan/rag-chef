@@ -7,9 +7,8 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
-  compatibility_flags: ["nodejs_compat"],
-  // Storage bindings come from wrangler.jsonc; declaring them here as well
-  // duplicates the database binding in production preview builds.
+  // Bindings and compatibility flags come from wrangler.jsonc. The plugin
+  // appends override arrays, so repeating them here creates invalid duplicates.
 };
 
 export default defineConfig(async () => {
@@ -38,6 +37,10 @@ export default defineConfig(async () => {
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,
+        auxiliaryWorkers: [
+          { configPath: "./wrangler.catalog.jsonc", viteEnvironment: { name: "catalog" } },
+          { configPath: "./wrangler.chef.jsonc", viteEnvironment: { name: "chef" } },
+        ],
       }),
     ],
   };

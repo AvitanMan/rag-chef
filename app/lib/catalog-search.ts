@@ -1,3 +1,4 @@
+import { RuntimeAdmissionError } from "./runtime-admission-types";
 import { bm25Scores, reciprocalRanks, retrievalTerms } from "./retrieval-ranking";
 import { STOP_WORDS, recipeQueryIntent, constraintsForRecipeQuery, recipeRetrievalQuery } from "./recipe-query";
 export { recipeQueryIntent, queryRequestsRecipes, queryRequestsAdaptation, constraintsForRecipeQuery, recipeRetrievalQuery, type RecipeQueryIntent } from "./recipe-query";
@@ -148,9 +149,23 @@ export function rankCatalogRecipes(recipes: Recipe[], options: RecipeSearchOptio
     || b.fusionScore - a.fusionScore || b.score - a.score || (b.readiness?.coverage ?? 0) - (a.readiness?.coverage ?? 0) || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" }) || a.recipe.id.localeCompare(b.recipe.id));
 }
 
-export async function searchRecipeCatalog(options: RecipeSearchOptions, embedModel: string): Promise<CatalogSearchResult> {
+export interface CatalogSearchDependencies {
+  listRecipes: typeof listCatalogRecipes;
+  listEmbeddings: typeof listStoredRecipeEmbeddings;
+  embedTexts: typeof embedTextsWithOllama;
+  semanticSearchEnabled: () => boolean | Promise<boolean>;
+}
+
+const defaultSearchDependencies: CatalogSearchDependencies = {
+  listRecipes: listCatalogRecipes,
+  listEmbeddings: listStoredRecipeEmbeddings,
+  embedTexts: embedTextsWithOllama,
+  semanticSearchEnabled: async () => !(await import("./household")).hostedMode(),
+};
+
+export async function searchRecipeCatalog(options: RecipeSearchOptions, embedModel: string, dependencies: CatalogSearchDependencies = defaultSearchDependencies): Promise<CatalogSearchResult> {
   // This loader enforces active recipes and database source approval/permissions.
-  const stored = await listCatalogRecipes(1000);
+  const stored = await dependencies.listRecipes(1000);
   const contentHashesByRecipeId = Object.fromEntries(stored.map(item => [item.recipe.id, item.contentHash]));
   if (options.stockContext) options = { ...options, stockContext: { ...options.stockContext, contentHashesByRecipeId } };
   const requestedFocus = options.recipeId ?? focusedRecipeId(options.query ?? "", stored.map((item) => item.recipe));
@@ -182,20 +197,21 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
 
   let vectors = new Map<string, number[]>();
   let queryVector: number[] | null = null;
-  if (searchQuery.trim()) {
+  if (searchQuery.trim() && await dependencies.semanticSearchEnabled()) {
     try {
-      vectors = await loadPrecomputedRecipeEmbeddingMap(embedModel);
+      vectors = await loadPrecomputedRecipeEmbeddingMap(embedModel, dependencies.listEmbeddings);
       result.embeddingCount = vectors.size;
       // Don't compare semantic scores with differently scaled partial-index scores.
       if (!vectors.size) throw new Error("Search embeddings are pending.");
-      const query = await embedTextsWithOllama([buildRecipeQueryText(searchQuery, [])], { model: embedModel, timeoutMs: 8000, signal: options.signal });
+      const query = await dependencies.embedTexts([buildRecipeQueryText(searchQuery, [])], { model: embedModel, timeoutMs: 8000, signal: options.signal });
       queryVector = query.vectors[0] ?? null;
       const dimension = queryVector?.length;
       if (!dimension) throw new Error("Search embedding dimensions differ.");
       vectors = new Map([...vectors].filter(([, vector]) => isValidEmbeddingVector(vector, dimension)));
       if (!vectors.size) throw new Error("Search embedding dimensions differ.");
       if (!eligible.every((recipe) => vectors.has(recipe.id))) result.warning = [result.warning, "Some recipes have pending meaning-based indexes; those recipes use keywords."].filter(Boolean).join(" ");
-    } catch {
+    } catch (error) {
+      if (error instanceof RuntimeAdmissionError) throw error;
       queryVector = null;
       result.warning = [result.warning, "Meaning-based search is unavailable or its index is pending. Results use recipe names, ingredients, and pantry matches."].filter(Boolean).join(" ");
     }
@@ -209,7 +225,7 @@ export async function searchRecipeCatalog(options: RecipeSearchOptions, embedMod
   return result;
 }
 
-export async function loadPrecomputedRecipeEmbeddingMap(model: string): Promise<Map<string, number[]>> {
-  const records = await listStoredRecipeEmbeddings(model);
+export async function loadPrecomputedRecipeEmbeddingMap(model: string, listEmbeddings = listStoredRecipeEmbeddings): Promise<Map<string, number[]>> {
+  const records = await listEmbeddings(model);
   return new Map(records.flatMap((record) => isValidEmbeddingVector(record.vector) ? [[record.recipeId, record.vector] as const] : []));
 }

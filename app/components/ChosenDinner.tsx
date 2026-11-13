@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { DinnerAmountsPatch } from "../lib/kitchen-commands";
 import type { PlannedMeal } from "../lib/kitchen-types";
 import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { MealReadiness } from "../lib/quantities";
@@ -11,7 +12,7 @@ import { DinnerAmounts, dateLabel } from "./WeeklyKitchenViews";
 export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook, change, details, shop, undo, methods, selectMethod, cancelMethod, methodsOpen }: {
   meal: PlannedMeal; today: string; readiness: MealReadiness | null;
   eligibility?: RecipeEligibility;
-  patch: (patch: Partial<PlannedMeal>) => void; cook: () => void; change: () => void;
+  patch: (patch: DinnerAmountsPatch) => void; cook: () => void; change: () => void;
   details: () => void; shop: () => void; undo: () => void;
   methods: Array<{ title: string; steps: string[] }>; selectMethod: (index: number) => void;
   methodsOpen: boolean; cancelMethod: () => void;
