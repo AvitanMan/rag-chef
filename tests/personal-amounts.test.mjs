@@ -1,18 +1,10 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
-const dir = await mkdtemp(join(tmpdir(), "jff-personal-amounts-"));
-after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["recipe-instructions", "kitchen-types", "quantities", "kitchen-state", "kitchen-validation", "kitchen-backup", "kitchen-recovery", "kitchen-planning", "recipe-embeddings", "chef-context", "chef-planning-answer", "cooking-session", "use-soon", "recipe-constraints", "recipe-safety"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
-  await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
-}
-const load = name => import(pathToFileURL(join(dir, `${name}.mjs`)).href);
+const sources = await createSourceLoader({ name: "personal-amounts" });
+after(() => sources.dispose());
+const load = name => sources.import(`app/lib/${name}.ts`);
 const { personalAmountInputProblem, personalAmountsMatch, resolvedMealIngredients, buildShoppingList, mealReadiness, consumptionPreview } = await load("quantities");
 const { createPlannedMeal, placePlannedDinner } = await load("kitchen-state");
 const { validateKitchenState } = await load("kitchen-validation");

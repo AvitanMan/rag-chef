@@ -1,8 +1,14 @@
-import { catalogMatchReason, constraintsForRecipeQuery, searchRecipeCatalog } from "@/app/lib/catalog-search";
+import { RuntimeAdmissionError } from "@/app/lib/runtime-admission-types";
+import { chefErrorResponse } from "@/app/lib/chef-protocol";
+import { withGatewayTrace } from "@/app/lib/service-observability";
+import { catalogMatchReason, constraintsForRecipeQuery } from "@/app/lib/catalog-search";
 import { DEFAULT_RECIPE_EMBED_MODEL } from "@/app/lib/recipe-embeddings";
 import { RecipeSourceError, searchRecipes, THE_MEAL_DB_SOURCE } from "@/app/lib/recipe-source";
-import { isRecipeCatalogConfigured } from "@/app/lib/recipe-store";
+import { catalogReadService } from "@/app/lib/catalog-read-service";
 import { evaluateRecipeConstraints, normalizeConstraints } from "@/app/lib/recipe-constraints";
+import { requireHousehold, householdError, HouseholdAuthError, type HouseholdContext } from "@/app/lib/household";
+import { kitchenService } from "@/app/lib/kitchen-service";
+import { DEFAULT_COOKING_PROFILE } from "@/app/lib/kitchen-types";
 
 const MAX_QUERY_LENGTH = 120;
 const MAX_PANTRY_ITEMS = 20;
@@ -31,7 +37,10 @@ function readPantry(searchParams: URLSearchParams): string[] {
   ];
 }
 
-export async function GET(request: Request): Promise<Response> {
+async function handleGET(request: Request): Promise<Response> {
+  let household: HouseholdContext;
+  try { household = await requireHousehold(request); } catch (error) { return householdError(error); }
+  const hosted = household.mode === "hosted";
   let url: URL;
 
   try {
@@ -43,7 +52,7 @@ export async function GET(request: Request): Promise<Response> {
   const query = url.searchParams.get("q")?.trim() ?? "";
   const pantry = readPantry(url.searchParams);
   const allergies = url.searchParams.getAll("allergy").map((item) => item.trim()).filter(Boolean);
-  const constraints = normalizeConstraints({ allergies, diets: url.searchParams.getAll("diet"), dislikes: url.searchParams.getAll("dislike"), ...(url.searchParams.has("equipment") ? { equipment: url.searchParams.getAll("equipment") } : {}), maxTotalMinutes: Number(url.searchParams.get("maxMinutes")) || undefined });
+  let constraints = normalizeConstraints({ allergies, diets: url.searchParams.getAll("diet"), dislikes: url.searchParams.getAll("dislike"), ...(url.searchParams.has("equipment") ? { equipment: url.searchParams.getAll("equipment") } : {}), maxTotalMinutes: Number(url.searchParams.get("maxMinutes")) || undefined });
   if (allergies.length > 30 || allergies.some((item) => item.length > 100)) return jsonError("Invalid allergy exclusions.", "INVALID_ALLERGIES", 400);
 
   if (query.length > MAX_QUERY_LENGTH) {
@@ -66,13 +75,17 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    if (await isRecipeCatalogConfigured()) {
+    if (hosted) {
+      const profile = (await kitchenService.read(household)).state?.cookingProfile ?? DEFAULT_COOKING_PROFILE;
+      constraints = normalizeConstraints({ ...constraints, allergies: [...profile.allergies, ...allergies], diets: [...(profile.diet === "No restriction" ? [] : [profile.diet]), ...url.searchParams.getAll("diet")], dislikes: [...profile.dislikes, ...url.searchParams.getAll("dislike")], equipment: profile.equipment });
+    }
+    if (hosted || await catalogReadService.configured()) {
       try {
-        const catalog = await searchRecipeCatalog(
+        const catalog = await catalogReadService.search(
           { pantry, query, constraints },
           embeddingModel(),
         );
-        if (catalog.catalogCount > 0 || allergies.length > 0) {
+        if (hosted || catalog.catalogCount > 0 || allergies.length > 0) {
           return Response.json(
             {
               recipes: catalog.recipes,
@@ -97,10 +110,12 @@ export async function GET(request: Request): Promise<Response> {
                 },
               },
             },
-            { headers: { "Cache-Control": "private, max-age=60" } },
+            { headers: { "Cache-Control": hosted ? "no-store" : "private, max-age=60" } },
           );
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof RuntimeAdmissionError) return chefErrorResponse(error);
+        if (hosted) return Response.json({ recipes: [], error: { code: "CATALOG_UNAVAILABLE", message: "The approved recipe catalog is unavailable. Retry to load dinners." } }, { status: 503, headers: { "Cache-Control": "no-store" } });
         // Keep the product usable while a local database is being initialized.
       }
     }
@@ -132,6 +147,8 @@ export async function GET(request: Request): Promise<Response> {
       },
     );
   } catch (error) {
+    if (error instanceof RuntimeAdmissionError) return chefErrorResponse(error);
+    if (error instanceof HouseholdAuthError) return householdError(error);
     if (error instanceof RecipeSourceError) {
       return jsonError(error.message, "RECIPE_SOURCE_UNAVAILABLE", error.status);
     }
@@ -151,3 +168,5 @@ function embeddingModel(): string {
       : "") || DEFAULT_RECIPE_EMBED_MODEL
   );
 }
+
+export const GET = withGatewayTrace("recipes.search", handleGET);

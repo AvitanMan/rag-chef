@@ -1,12 +1,14 @@
+import { withGatewayTrace } from "@/app/lib/service-observability";
 import { authorizeCatalogRequest } from "@/app/lib/catalog-auth";
-import { listCatalogRecipes, reviewRecipeMetadata } from "@/app/lib/recipe-store";
+import { catalogService } from "@/app/lib/catalog-service";
+import { CatalogBodyTooLargeError, catalogRequestText } from "@/app/lib/catalog-job-api";
 import { normalizePlanningIngredient, parseMeasure } from "@/app/lib/quantities";
 
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "no-store" } });
-export async function GET(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request); if (denied) return denied;
+async function handleGET(request: Request): Promise<Response> {
+  const denied = await authorizeCatalogRequest(request); if (denied) return denied;
   try {
-    const entries = (await listCatalogRecipes(1000)).map((item) => {
+    const entries = (await catalogService.list(1000)).map((item) => {
       const amountGaps = item.recipe.ingredients.flatMap((original, index) => {
         const normalized = normalizePlanningIngredient(original);
         if (parseMeasure(normalized.measure)) return [];
@@ -21,18 +23,18 @@ export async function GET(request: Request): Promise<Response> {
   } catch { return json({ error: "Catalog metadata is unavailable." }, 503); }
 }
 
-export async function POST(request: Request): Promise<Response> {
-  const denied = authorizeCatalogRequest(request); if (denied) return denied;
+async function handlePOST(request: Request): Promise<Response> {
+  const denied = await authorizeCatalogRequest(request); if (denied) return denied;
   if (request.headers.get("content-type")?.split(";", 1)[0].trim() !== "application/json") return json({ error: "Send application/json." }, 415);
   let input: { entries: unknown[]; preview?: boolean };
   try {
-    const reader = request.body?.getReader(); if (!reader) throw new Error();
-    const chunks = []; let total = 0;
-    while (true) { const chunk = await reader.read(); if (chunk.done) break; total += chunk.value.byteLength; if (total > 1_000_000) { await reader.cancel(); return json({ error: "Metadata review is too large." }, 413); } chunks.push(chunk.value); }
-    const bytes = new Uint8Array(total); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    input = JSON.parse(await catalogRequestText(request, 1_000_000));
     if (!input || typeof input !== "object" || Object.keys(input).some((key) => !["entries", "preview"].includes(key)) || !Array.isArray(input.entries) || (input.preview !== undefined && typeof input.preview !== "boolean")) throw new Error();
-  } catch { return json({ error: "Send reviewed metadata entries as valid JSON." }, 400); }
-  try { return json({ ok: true, preview: input.preview === true, results: await reviewRecipeMetadata(input.entries, input.preview === true) }); }
+  } catch (error) { return error instanceof CatalogBodyTooLargeError ? json({ error: "Metadata review is too large." }, 413) : json({ error: "Send reviewed metadata entries as valid JSON." }, 400); }
+  try { return json({ ok: true, preview: input.preview === true, results: await catalogService.reviewMetadata(input.entries, input.preview === true) }); }
   catch (error) { return json({ error: error instanceof Error ? error.message : "Metadata review could not be saved." }, 400); }
 }
+
+export const GET = withGatewayTrace("catalog.metadata", handleGET);
+
+export const POST = withGatewayTrace("catalog.metadata", handlePOST);

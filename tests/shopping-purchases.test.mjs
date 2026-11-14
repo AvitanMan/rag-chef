@@ -1,35 +1,19 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
-
-const directory = await mkdtemp(join(tmpdir(), "jff-shopping-purchases-"));
-after(() => rm(directory, { recursive: true, force: true }));
-const require = createRequire(import.meta.url);
-for (const [folder, name, extension] of [
-  ...["shopping-purchases", "shopping-export", "quantities", "kitchen-types", "kitchen-state", "kitchen-validation", "kitchen-backup"].map(name => ["lib", name, "ts"]),
-  ...["PurchasePreview", "WeeklyKitchenViews", "ValidatedInput", "Modal", "ShoppingExport"].map(name => ["components", name, "tsx"]),
-]) {
-  const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
-    .replace(/"(react(?:-dom|\/jsx-runtime)?)"/g, (_, module) => JSON.stringify(pathToFileURL(require.resolve(module)).href))
-    .replace(/"\.{1,2}\/(?:lib\/)?([\w-]+)"/g, '"./$1.mjs"');
-  await writeFile(join(directory, `${name}.mjs`), compiled);
-}
-const { shoppingForWeek, unappliedBoughtItems, purchaseDraftProblems, purchasePreviewProblem, applyBoughtItems, purchaseUndoProblem, undoPurchase, setShoppingItemBought, beginShoppingPurchaseCycle } = await import(pathToFileURL(join(directory, "shopping-purchases.mjs")));
-const { DEFAULT_COOKING_PROFILE } = await import(pathToFileURL(join(directory, "kitchen-types.mjs")));
-const { completeMeal, undoMeal } = await import(pathToFileURL(join(directory, "quantities.mjs")));
-const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")));
-const { validateKitchenState } = await import(pathToFileURL(join(directory, "kitchen-validation.mjs")));
-const { serializeKitchenBackup, parseKitchenBackup } = await import(pathToFileURL(join(directory, "kitchen-backup.mjs")));
-const { PurchasePreview } = await import(pathToFileURL(join(directory, "PurchasePreview.mjs")));
-const { DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")));
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
+const sources = await createSourceLoader({ name: "shopping-purchases" });
+after(() => sources.dispose());
+const { applyKitchenCommand } = await sources.import("app/lib/kitchen-commands.ts");
+const { shoppingForWeek, unappliedBoughtItems, purchaseDraftProblems, purchasePreviewProblem, applyBoughtItems, purchaseUndoProblem, undoPurchase, setShoppingItemBought, beginShoppingPurchaseCycle } = await sources.import("app/lib/shopping-purchases.ts");
+const { DEFAULT_COOKING_PROFILE } = await sources.import("app/lib/kitchen-types.ts");
+const { completeMeal, undoMeal } = await sources.import("app/lib/quantities.ts");
+const { createPlannedMeal } = await sources.import("app/lib/kitchen-state.ts");
+const { validateKitchenState } = await sources.import("app/lib/kitchen-validation.ts");
+const { serializeKitchenBackup, parseKitchenBackup } = await sources.import("app/lib/kitchen-backup.ts");
+const { PurchasePreview } = await sources.import("app/components/PurchasePreview.tsx");
+const { DurableShoppingView } = await sources.import("app/components/WeeklyKitchenViews.tsx");
 const week = "2026-10-26", today = "2026-10-27", at = "2026-10-27T12:00:00.000Z";
 const recipe = { id: "test:rice", title: "Rice", image: null, category: "", cuisine: "", tags: [], ingredients: [{ name: "rice", measure: "200 g" }], instructions: ["Cook the rice."], source: { name: "Test", url: "https://example.com/rice" }, sourceUrl: "https://example.com/rice" };
 function kitchen(ingredients = recipe.ingredients) {
@@ -455,9 +439,9 @@ test("need to buy again returns the applied item to shopping and supports the ex
   validateKitchenState(added);
 });
 
-function shoppingProps(state, update = () => {}) {
+function shoppingProps(state, command = () => {}) {
   return { items: shoppingForWeek(state, week, today), checked: state.shoppingChecked, cycles: state.shoppingCycles, purchases: state.shoppingPurchases,
-    update, hasPlan: true, goPlan() {}, reviewMeal() {}, week,
+    command, hasPlan: true, goPlan() {}, reviewMeal() {}, week,
     purchaseAction: createElement("button", null, "Add bought items to pantry"), purchaseHistory: createElement("p", null, "Existing purchase history") };
 }
 
@@ -490,7 +474,8 @@ test("repeat buttons remain idempotent across repeated clicks, stale renders and
     for (const action of ["Need to buy again", "Record another purchase"]) {
       const initial = repeatablePurchase(cycleId);
       let current = initial.state;
-      const update = change => { current = change(current); };
+      let sequence = 0;
+      const update = intent => { current = applyKitchenCommand(current, { ...intent, commandId: `button-${sequence++}`, expectedRevision: 0 }, { revision: 0 }); };
       const staleTree = DurableShoppingView(shoppingProps(current, update));
       const controls = elements(staleTree).filter(node => node.type === "button");
       const button = controls.find(node => node.props["aria-label"] === `${action} rice`);

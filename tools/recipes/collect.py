@@ -13,6 +13,7 @@ import re
 import sys
 import time
 import unicodedata
+import uuid
 from urllib import error, parse, request, robotparser
 
 from lxml import html as lhtml
@@ -263,11 +264,39 @@ def send_to_app(draft: dict, app: str, embeddings_only=False) -> dict:
         raise ValueError("The importer connects only to the local app on a loopback address.")
     payload = {**draft, "reviewed": True, "reviewHash": review_hash(draft)}
     data = json.dumps({"recipes": [payload], "retryEmbeddingsOnly": embeddings_only}, ensure_ascii=False).encode()
-    req = request.Request(app.rstrip("/") + "/api/admin/recipes/import", data=data, headers={"Content-Type": "application/json"})
+    req = request.Request(app.rstrip("/") + "/api/admin/recipes/import", data=data, headers={"Content-Type": "application/json", "Idempotency-Key": str(uuid.uuid4())})
     opener = request.build_opener(request.ProxyHandler({}), NoRedirect())
     try:
-        with opener.open(req, timeout=45) as response:
-            result = json.load(response)
+        # A response can be lost after acceptance. Retries retain the same key.
+        for attempt in range(3):
+            try:
+                with opener.open(req, timeout=45) as response:
+                    result = json.load(response)
+                    accepted = response.status == 202
+                break
+            except error.URLError as exc:
+                if isinstance(exc, error.HTTPError) or attempt == 2:
+                    raise
+                time.sleep(1)
+        if accepted:
+            status_url = result.get("statusUrl") if isinstance(result, dict) else None
+            if not isinstance(status_url, str) or not re.fullmatch(r"/api/admin/catalog/jobs/[a-zA-Z0-9-]{1,200}", status_url):
+                raise ValueError("The app returned an invalid import progress link.")
+            deadline = time.monotonic() + 300
+            while True:
+                job = result.get("job", {})
+                if job.get("status") == "succeeded":
+                    result = job.get("result")
+                    break
+                if job.get("status") == "failed":
+                    raise ValueError((job.get("error") or {}).get("message") or "The recipe import failed.")
+                if job.get("status") not in ("queued", "running"):
+                    raise ValueError("The app returned an invalid import status.")
+                if time.monotonic() >= deadline:
+                    raise ValueError("The import is still pending. Check the local app and resume this report later.")
+                time.sleep(1)
+                with opener.open(request.Request(app.rstrip("/") + status_url), timeout=45) as response:
+                    result = json.load(response)
     except error.HTTPError as exc:
         raise ValueError(f"App rejected import ({exc.code}). Check that migrations are applied and the report is valid.") from exc
     except error.URLError as exc:

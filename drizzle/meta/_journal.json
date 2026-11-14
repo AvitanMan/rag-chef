@@ -36,6 +36,41 @@
       "when": 1793289193853,
       "tag": "0004_recipe_source_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794504375166,
+      "tag": "0005_households_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794508603867,
+      "tag": "0006_kitchen_command_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794510813224,
+      "tag": "0007_catalog_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794516464650,
+      "tag": "0008_runtime_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794556863963,
+      "tag": "0009_catalog_job_recipe_receipts",
+      "breakpoints": true
     }
   ]
 }

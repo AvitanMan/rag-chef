@@ -1,32 +1,29 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
-const directory = await mkdtemp(join(tmpdir(), "jff-chef-context-"));
-after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["recipe-instructions", "chef-planning-answer", "chef-context", "chef-schema", "quantities", "kitchen-types", "kitchen-state", "kitchen-validation", "cooking-session",
-  "chef-question-plan", "chef-grounding", "chef-evidence", "chef-verification", "provider-readiness", "catalog-search", "recipe-query", "recipe-browser", "recipe-constraints", "recipe-safety", "recipe-embeddings", "retrieval-ranking"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
-  await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
-}
-// Run the real route, retrieval and quantity calculations; replace only stores
-// and provider I/O so these regressions need neither a database nor a model.
-await writeFile(join(directory, "kitchen-store.mjs"), `
-  export const fixture = { document: null, reads: 0 };
-  export async function getKitchenDocument() { fixture.reads++; return fixture.document; }
-`);
-await writeFile(join(directory, "recipe-store.mjs"), `
-  export const fixture = { records: [] };
-  export async function listCatalogRecipes() { return fixture.records; }
-  export async function listStoredRecipeEmbeddings() { return []; }
-  export async function getRecipeSourcePolicy() { return null; }
-`);
-const routeSource = await readFile(new URL("../app/api/chef/route.ts", import.meta.url), "utf8");
-await writeFile(join(directory, "chef-route.mjs"), ts.transpileModule(routeSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"@\/app\/lib\/([\w-]+)"/g, '"./$1.mjs"'));
-const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)));
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
+import { attachCatalogReadBinding } from "./helpers/catalog-binding.mjs";
+import { attachChefBinding } from "./helpers/chef-binding.mjs";
+import { createSqliteD1 } from "./helpers/sqlite-d1.mjs";
+// Execute the real transitive graph and replace only storage boundaries.
+const sources = await createSourceLoader({ name: "chef-context", externals: { "cloudflare:workers": "export const env = {};" }, overrides: {
+  "app/lib/kitchen-store.ts": `
+    export const fixture = { document: null, reads: 0 };
+    export async function getKitchenDocument() { fixture.reads++; return fixture.document; }
+    export async function saveKitchenDocument() { throw new Error("Chef cannot write kitchen state"); }
+    export class KitchenConflictError extends Error {}
+  `,
+  "app/lib/recipe-store.ts": `
+    export const fixture = { records: [] };
+    export async function listCatalogRecipes() { return fixture.records; }
+    export async function listStoredRecipeEmbeddings() { return []; }
+    export async function getRecipeSourcePolicy() { return null; }
+    export async function isRecipeCatalogConfigured() { return true; }
+    export function catalogRecipeId() { throw new Error("Chef cannot create catalog identities"); }
+  `,
+} });
+const operationalSql = await createSqliteD1();
+after(async () => { operationalSql.close(); await sources.dispose(); });
+const load = name => sources.import(name === "chef-route" ? "app/api/chef/route.ts" : `app/lib/${name}.ts`);
 const { chefMealPreview, chefMealHash, chefMealReadiness, chefPantryProjection, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
 const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
@@ -34,6 +31,10 @@ const { createPlannedMeal, localDate, addDateDays } = await load("kitchen-state"
 const { plannedDinnerFingerprint } = await load("cooking-session");
 const { fixture: kitchenFixture } = await load("kitchen-store");
 const { fixture: catalogFixture } = await load("recipe-store");
+const { env } = await sources.import("cloudflare:workers");
+env.DB = operationalSql.binding;
+await attachCatalogReadBinding(sources, env);
+await attachChefBinding(sources, env);
 const { POST } = await load("chef-route");
 const recipe = { id: "rice", title: "Rice", ingredients: [{ name: "rice, cooked", measure: "400 g" }, { name: "tomato", measure: "2" }], instructions: Array.from({ length: 30 }, (_, i) => `Source direction ${i + 1}.`), servings: 2, sourceUrl: "https://example.invalid/rice" };
 test("recipe version includes source quantities, directions and yield while ignoring display-only images", async () => {

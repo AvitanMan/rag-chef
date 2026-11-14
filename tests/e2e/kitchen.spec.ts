@@ -1,3 +1,4 @@
+import { isKitchenWrite, kitchenWriteRevision } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
 import { showPantryBatches } from "./pantry-helpers";
@@ -31,6 +32,34 @@ test("fresh kitchen browses synthetic recipes and persists a selected dinner", a
   await page.reload(); await navigate(page, "Plan");
   await expect(page.locator(".day-card.filled")).toHaveCount(1);
   await expect(page.locator(".day-card.filled")).toContainText("Tomato Rice");
+});
+
+test("a stale Plan amount edit cannot overwrite a replacement dinner saved by another tab", async ({ page, request }) => {
+  const today = "2026-11-12";
+  await page.clock.setFixedTime(new Date("2026-11-12T12:00:00+02:00"));
+  const catalog = await (await request.get("/api/recipes/catalog")).json();
+  const recipe = catalog.recipes.find((row: { id: string }) => row.id === "fixture-tomato-rice");
+  expect(recipe).toBeTruthy();
+  const dinner = { id: "plan-original", date: today, recipeId: recipe.id, recipe, title: recipe.title,
+    baseServings: 2, servings: 2, batches: 1, ingredientOverrides: {}, locked: false, status: "planned" as const };
+  await saveFixture(request, { ...emptyState(), migratedLegacy: true, meals: { [today]: dinner } });
+  await page.goto("/"); await navigate(page, "Plan");
+  const servings = page.locator(".day-card.filled").getByRole("spinbutton", { name: /^Servings / });
+  await expect(servings).toHaveValue("2");
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  const current = await readKitchen(request);
+  const replacement = { ...dinner, id: "plan-replacement", title: "Replacement dinner", servings: 6 };
+  await saveFixture(request, { ...current.state, meals: { [today]: replacement } });
+  const saved = await readKitchen(request);
+  const rejected = page.waitForResponse(response => isKitchenWrite(response.request()));
+  await servings.fill("4"); await servings.blur();
+  expect((await rejected).status()).toBe(409);
+  await expect(page.locator(".save-indicator")).toHaveText("Save conflict");
+  expect(await readKitchen(request)).toEqual(saved);
+  await page.getByRole("button", { name: "Load saved version", exact: true }).click();
+  await expect(page.locator(".day-card.filled")).toContainText("Replacement dinner");
+  await expect(servings).toHaveValue("6");
+  expect((await readKitchen(request)).state.meals[today]).toEqual(replacement);
 });
 
 test("zero stock is unavailable and removing duplicate names preserves the other ID", async ({ page, request }) => {
@@ -178,9 +207,9 @@ test("two tabs expose a revision conflict and keep server and browser versions u
     await expect(other.locator(".save-indicator")).toHaveText("Saved");
     // Hold a genuine unsaved edit while the first tab saves from the same revision.
     // Clean tabs now refresh automatically, so sequential edits should not conflict.
-    await other.route("**/api/kitchen", async route => {
-      if (route.request().method() === "PUT") {
-        otherRevision = route.request().postDataJSON().revision;
+    await other.route("**/api/kitchen**", async route => {
+      if (isKitchenWrite(route.request())) {
+        otherRevision = kitchenWriteRevision(route.request());
         writeStarted(); await heldWrite;
       }
       await route.continue();
@@ -188,12 +217,12 @@ test("two tabs expose a revision conflict and keep server and browser versions u
     await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
     await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
     await writing;
-    const pageWrite = page.waitForRequest(request => request.url().endsWith("/api/kitchen") && request.method() === "PUT");
+    const pageWrite = page.waitForRequest(request => isKitchenWrite(request));
     await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
     await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
-    expect((await pageWrite).postDataJSON().revision).toBe(otherRevision);
+    expect(kitchenWriteRevision(await pageWrite)).toBe(otherRevision);
     await expect.poll(async () => (await readKitchen(request)).state.pantry.map((stock: { name: string }) => stock.name)).toEqual(["rice"]);
-    const conflictResponse = other.waitForResponse(response => response.url().endsWith("/api/kitchen") && response.request().method() === "PUT");
+    const conflictResponse = other.waitForResponse(response => isKitchenWrite(response.request()));
     releaseWrite();
     expect((await conflictResponse).status()).toBe(409);
     await expect(other.getByRole("button", { name: "Load saved version", exact: true })).toBeVisible();

@@ -1,16 +1,10 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
-const directory = await mkdtemp(join(tmpdir(), "chef-causal-"));
-after(() => rm(directory, { recursive: true, force: true }));
-const source = await readFile(new URL("../app/lib/chef-verification.ts", import.meta.url), "utf8");
-await writeFile(join(directory, "verification.mjs"), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText);
-const { verifyChefAnswer, unsupportedCausalClaim } = await import(pathToFileURL(join(directory, "verification.mjs")).href);
+const sources = await createSourceLoader({ name: "chef-causal" });
+after(() => sources.dispose());
+const { verifyChefAnswer, unsupportedCausalClaim } = await sources.import("app/lib/chef-verification.ts");
 const evidence = [{ recipeId: "chowder", evidenceId: "S1", text: "Heat thoroughly but not boiling." }];
 const answer = text => ({ answer: text, recommendations: [], warnings: [], sourceFacts: [], chefChanges: [] });
 const claim = text => [{ id: "A1", text }];

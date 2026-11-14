@@ -1,3 +1,4 @@
+import { isKitchenWrite } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -115,13 +116,13 @@ test("completion survives dual storage failure and retry deducts only once", asy
     (window as unknown as { restoreStorage: typeof Storage.prototype.setItem }).restoreStorage = Storage.prototype.setItem;
     Storage.prototype.setItem = () => { throw new DOMException("Storage full", "QuotaExceededError"); };
   });
-  await page.route("**/api/kitchen", route => route.request().method() === "PUT" ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Unavailable" } }) }) : route.continue());
+  await page.route("**/api/kitchen**", route => isKitchenWrite(route.request()) ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Unavailable" } }) }) : route.continue());
   await review.getByRole("button", { name: "Mark dinner cooked", exact: true }).click();
   await expect(review.getByRole("button", { name: "Retry save", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true })).toBeVisible();
   expect((await read(request)).state.meals[TODAY].status).toBe("planned");
   await page.evaluate(() => { Storage.prototype.setItem = (window as unknown as { restoreStorage: typeof Storage.prototype.setItem }).restoreStorage; });
-  await page.unroute("**/api/kitchen");
+  await page.unroute("**/api/kitchen**");
   await review.getByRole("button", { name: "Retry save", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chosen dinner", exact: true })).toContainText("Cooked");
   await expect.poll(async () => (await read(request)).state.pantry[0].measure).toBe("300 g");

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
-import type { KitchenState, PantryStock, PlannedMeal } from "../lib/kitchen-types";
+import type { PantryStock, PlannedMeal } from "../lib/kitchen-types";
+import type { KitchenCommandSender } from "../lib/kitchen-commands";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { measureInputProblem } from "../lib/kitchen-validation";
 import {
   browsePantry, compatiblePantryTotals, groupPantryBatches, pantryBatchProblem, pantryDateInputProblem,
-  pantryUsagePreview, pantryWeekReservations, replacePantryBatch, samePantryBatch, pantryBatchUndoProblem, undoPantryBatch,
+  pantryUsagePreview, pantryWeekReservations, samePantryBatch, pantryBatchUndoProblem,
   type PantryBatchChange, type PantrySort,
 } from "../lib/pantry-browser";
 import { canonicalIngredient, formatMeasure, pantryAmountDetails, pantryStockEligibility, type ParsedMeasure } from "../lib/quantities";
@@ -14,8 +15,6 @@ import { pantryReviewTasks, type PantryReviewTask } from "../lib/pantry-review";
 import { pantryDateGroups, type PantryFilter } from "../lib/use-soon";
 import { Modal } from "./Modal";
 import { dateLabel } from "./WeeklyKitchenViews";
-
-type UpdateKitchen = (change: (state: KitchenState) => KitchenState) => void;
 
 export interface PantryViewProps {
   today: string;
@@ -37,7 +36,7 @@ export interface PantryViewProps {
   setDraft: (value: string) => void;
   add: () => void;
   remove: (id: string) => void;
-  update: UpdateKitchen;
+  command: KitchenCommandSender;
   error?: string;
   notice?: string;
   addedIds?: string[];
@@ -70,8 +69,8 @@ function focusDisclosure(event: MouseEvent<HTMLButtonElement>) {
 type FieldDraft = { snapshot: PantryStock; draft: string; problem: string; badDate: boolean; submitted?: PantryStock };
 
 /** A valid intermediate keystroke is still a draft, not an inventory change. */
-function PantryBatchField({ stock, field, descriptionId, update }: {
-  stock: PantryStock; field: "measure" | "useBy"; descriptionId: string; update: UpdateKitchen;
+function PantryBatchField({ stock, field, descriptionId, command }: {
+  stock: PantryStock; field: "measure" | "useBy"; descriptionId: string; command: KitchenCommandSender;
 }) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +106,7 @@ function PantryBatchField({ stock, field, descriptionId, update }: {
     const invalidBatch = pantryBatchProblem(next);
     if (invalidBatch) { setEdit(current => ({ ...current, problem: invalidBatch })); return; }
     setEdit(current => ({ ...current, draft: value, problem: "", submitted: next }));
-    update(state => replacePantryBatch(state, edit.snapshot, next));
+    command({ type: "ReplacePantryBatch", snapshot: edit.snapshot, replacement: next });
   }
 
   return <div className="pantry-batch-field">
@@ -131,8 +130,8 @@ function PantryBatchField({ stock, field, descriptionId, update }: {
   </div>;
 }
 
-function PantryBatchEditor({ snapshot, current, update, close, reload, done, recordChange, review }: {
-  snapshot: PantryStock; current: PantryStock | undefined; update: UpdateKitchen;
+function PantryBatchEditor({ snapshot, current, command, close, reload, done, recordChange, review }: {
+  snapshot: PantryStock; current: PantryStock | undefined; command: KitchenCommandSender;
   close: () => void; reload: () => void; done: (message: string) => void;
   recordChange: (change: PantryBatchChange) => void;
   review?: { position: number; total: number; reasons: string[]; next: () => void; last: boolean };
@@ -198,7 +197,7 @@ function PantryBatchEditor({ snapshot, current, update, close, reload, done, rec
           if (!replacement || problem || pantryBatchProblem(replacement) || stale || requested) return;
           const message = mode === "correct" ? `Batch correction applied for ${replacement.name}.` : mode === "use" ? `Usage subtracted from ${replacement.name}.` : `${replacement.name} marked finished; the empty batch is kept.`;
           setRequested({ stock: replacement, message });
-          update(state => replacePantryBatch(state, snapshot, replacement));
+          command({ type: "ReplacePantryBatch", snapshot, replacement });
         }}>
           <fieldset disabled={stale || Boolean(requested)} className="pantry-batch-editor-fields">
             <legend className="pantry-batch-legend">{mode === "correct" ? "Correct the recorded stock" : mode === "use" ? "Subtract from physical stock" : "Finish this batch"}</legend>
@@ -234,7 +233,7 @@ function PantryBatchEditor({ snapshot, current, update, close, reload, done, rec
 }
 
 export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0, select, search, setSearch, sort, setSort,
-  pantry, meals, week, setWeek, reviewMeal, draft, setDraft, add, remove, update, error, notice, addedIds = [] }: PantryViewProps) {
+  pantry, meals, week, setWeek, reviewMeal, draft, setDraft, add, remove, command, error, notice, addedIds = [] }: PantryViewProps) {
   const id = useId();
   const addInput = useRef<HTMLTextAreaElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -256,7 +255,7 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
       values: { ...(current.context === disclosureContext ? current.values : {}), [canonicalIngredient(change.after.name)]: true } }));
   }, [disclosureContext]);
   const undoProblem = lastChange ? pantryBatchUndoProblem(pantry, lastChange) : "";
-  // Acknowledge the functional update only after its result is visible in pantry props.
+  // Acknowledge the functional command only after its result is visible in pantry props.
   if (undoRequested && lastChange) {
     const current = pantry.find(stock => stock.id === lastChange.before.id);
     if (samePantryBatch(current, lastChange.before)) {
@@ -368,7 +367,7 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
           undoFocusId.current = lastChange.before.id;
           setGroupExpanded(canonicalIngredient(lastChange.before.name), true);
           setUndoRequested(true);
-          update(state => undoPantryBatch(state, lastChange));
+          command({ type: "UndoPantryBatch", change: lastChange });
         }}>Undo last batch edit</button><button type="button" className="text-button" disabled={undoRequested} onClick={() => {
           undoFocusId.current = lastChange.after.id;
           const current = pantry.find(stock => stock.id === lastChange.after.id);
@@ -446,8 +445,8 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
                 onFocusCapture={() => setPin(current => current?.id === item.id && current.context === context ? current : { id: item.id, order: displayed.map(stock => stock.id), context })}>
                 <div className="pantry-batch-identity"><strong>{item.name}</strong><small>Batch {full.batches.findIndex(stock => stock.id === item.id) + 1} of {full.batches.length}</small>
                   {addedIds.includes(item.id) && <span className="pantry-new-batch">Just added</span>}</div>
-                <PantryBatchField stock={item} field="measure" update={update} descriptionId={`${rowId}-amount`} />
-                <PantryBatchField stock={item} field="useBy" update={update} descriptionId={`${rowId}-date`} />
+                <PantryBatchField stock={item} field="measure" command={command} descriptionId={`${rowId}-amount`} />
+                <PantryBatchField stock={item} field="useBy" command={command} descriptionId={`${rowId}-date`} />
                 <div className="pantry-batch-notes">
                   <p id={`${rowId}-amount`}>{amount.explanation}</p>
                   <p id={`${rowId}-date`}>{!item.useBy ? "No date entered; date is unknown." : !eligibility.eligible && amount.kind !== "empty" ? `${eligibility.reason} Still included in physical on-hand totals.` : "Entered planning date, inclusive; not a food-safety assessment."}</p>
@@ -478,7 +477,7 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
           {search && <button className="secondary-button" onClick={() => setSearch("")}>Clear search</button>}
           {filter !== "all" && <button className="secondary-button" onClick={() => setFilter("all")}>Show all items</button>}</div>}
     </section>
-    {editing && <PantryBatchEditor key={`${editing.snapshot.id}:${editing.version}`} snapshot={editing.snapshot} current={pantry.find(stock => stock.id === editing.snapshot.id)} update={update} recordChange={rememberChange}
+    {editing && <PantryBatchEditor key={`${editing.snapshot.id}:${editing.version}`} snapshot={editing.snapshot} current={pantry.find(stock => stock.id === editing.snapshot.id)} command={command} recordChange={rememberChange}
       close={closeEditor} done={message => { setLocalNotice(message); closeEditor(); }}
       review={review ? { position: review.index + 1, total: review.tasks.length,
         reasons: reviewById.get(editing.snapshot.id)?.reasons.map(reason => reason.message) ?? [], next: advanceReview, last: review.index === review.tasks.length - 1 } : undefined}

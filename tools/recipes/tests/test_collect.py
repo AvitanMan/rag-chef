@@ -168,6 +168,67 @@ class CollectorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.send_to_app(c.extract_recipe(HTML, URL)["draft"], "https://example.com")
 
+    def app_response(self, status, value):
+        response = StringIO(json.dumps(value))
+        response.status = status
+        return response
+
+    def test_accepted_import_polls_only_status_and_returns_original_recipe_report(self):
+        saved = {"sourceUrl": URL, "status": "saved", "catalogId": "wikibooks:rice", "version": 2, "contentChanged": False, "embedding": "pending"}
+        status_path = "/api/admin/catalog/jobs/reviewed-rice"
+        replies = [self.app_response(202, {"ok": True, "job": {"status": "queued"}, "statusUrl": status_path}),
+                   self.app_response(200, {"ok": True, "job": {"status": "running"}, "statusUrl": status_path}),
+                   self.app_response(200, {"ok": True, "job": {"status": "succeeded", "result": {"ok": True, "results": [saved]}}, "statusUrl": status_path})]
+        calls = []
+        def open_request(req, timeout):
+            calls.append((req, timeout))
+            return replies.pop(0)
+        with patch.object(c.request, "build_opener", return_value=SimpleNamespace(open=open_request)) as builder, patch.object(c.time, "sleep"):
+            result = c.send_to_app(c.extract_recipe(HTML, URL)["draft"], "http://localhost:3000", embeddings_only=True)
+        self.assertEqual(result, saved)
+        self.assertEqual([req.get_method() for req, _ in calls], ["POST", "GET", "GET"])
+        self.assertEqual([req.full_url for req, _ in calls[1:]], ["http://localhost:3000" + status_path] * 2)
+        self.assertTrue(json.loads(calls[0][0].data)["retryEmbeddingsOnly"])
+        self.assertTrue(all(timeout > 0 for _, timeout in calls))
+        self.assertTrue(any(isinstance(handler, c.NoRedirect) for handler in builder.call_args.args))
+
+    def test_lost_import_acceptance_retries_exact_payload_and_idempotency_key(self):
+        saved = {"status": "saved", "embedding": "ready"}
+        calls = []
+        def open_request(req, timeout):
+            calls.append((req.data, {key.lower(): value for key, value in req.header_items()}))
+            if len(calls) == 1:
+                raise c.error.URLError("Accepted response lost")
+            return self.app_response(202, {"ok": True, "statusUrl": "/api/admin/catalog/jobs/existing-job",
+                "job": {"status": "succeeded", "result": {"ok": True, "results": [saved]}}})
+        with patch.object(c.request, "build_opener", return_value=SimpleNamespace(open=open_request)), patch.object(c.time, "sleep"):
+            self.assertEqual(c.send_to_app(c.extract_recipe(HTML, URL)["draft"], "http://localhost:3000"), saved)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], calls[1])
+        self.assertTrue(calls[0][1]["idempotency-key"])
+
+    def test_import_progress_rejects_unsafe_urls_before_followup_requests(self):
+        for status_path in ("https://evil.example/jobs/id", "//evil.example/jobs/id", "/api/admin/catalog/jobs/id?redirect=elsewhere", "/api/admin/catalog/jobs/../private"):
+            with self.subTest(status_path=status_path):
+                reply = self.app_response(202, {"ok": True, "job": {"status": "queued"}, "statusUrl": status_path})
+                calls = []
+                def open_request(req, timeout):
+                    calls.append(req)
+                    return reply
+                with patch.object(c.request, "build_opener", return_value=SimpleNamespace(open=open_request)), self.assertRaisesRegex(ValueError, "invalid import progress link"):
+                    c.send_to_app(c.extract_recipe(HTML, URL)["draft"], "http://localhost:3000")
+                self.assertEqual(len(calls), 1)
+
+    def test_pending_import_has_a_deadline_without_resubmitting(self):
+        reply = self.app_response(202, {"ok": True, "job": {"status": "queued"}, "statusUrl": "/api/admin/catalog/jobs/slow-import"})
+        calls = []
+        def open_request(req, timeout):
+            calls.append(req)
+            return reply
+        with patch.object(c.request, "build_opener", return_value=SimpleNamespace(open=open_request)), patch.object(c.time, "monotonic", side_effect=[0, 301]), self.assertRaisesRegex(ValueError, "still pending"):
+            c.send_to_app(c.extract_recipe(HTML, URL)["draft"], "http://localhost:3000")
+        self.assertEqual(len(calls), 1)
+
     def test_resume_and_embedding_retry_never_start_a_collector(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "run.json"

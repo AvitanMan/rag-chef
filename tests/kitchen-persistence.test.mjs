@@ -1,45 +1,24 @@
 import assert from "node:assert/strict";
 import { after, beforeEach, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
 // Execute the actual application modules and their SQL. Only the Worker binding
 // is replaced: a small D1 adapter forwards prepared statements to real SQLite.
-const directory = await mkdtemp(join(tmpdir(), "jff-kitchen-persistence-"));
+const sources = await createSourceLoader({ name: "kitchen-persistence", externals: { "cloudflare:workers": "export const env = { DB: undefined };" } });
 const database = new DatabaseSync(":memory:");
 const migration = await readFile(new URL("../drizzle/0001_friendly_titania.sql", import.meta.url), "utf8");
 database.exec(migration);
 
 after(async () => {
   database.close();
-  await rm(directory, { recursive: true, force: true });
+  await sources.dispose();
 });
 
-await writeFile(join(directory, "test-cloudflare.mjs"), "export const env = { DB: undefined };\n");
-for (const [name, sourcePath] of [
-  ["kitchen-types", "../app/lib/kitchen-types.ts"],
-  ["quantities", "../app/lib/quantities.ts"],
-  ["kitchen-store", "../app/lib/kitchen-store.ts"],
-  ["kitchen-validation", "../app/lib/kitchen-validation.ts"],
-  ["kitchen-route", "../app/api/kitchen/route.ts"],
-]) {
-  const source = await readFile(new URL(sourcePath, import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  await writeFile(join(directory, `${name}.mjs`), compiled
-    .replaceAll('"cloudflare:workers"', '"./test-cloudflare.mjs"')
-    .replaceAll('"@/app/lib/kitchen-store"', '"./kitchen-store.mjs"')
-    .replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
-}
-
-const { env } = await import(pathToFileURL(join(directory, "test-cloudflare.mjs")).href);
-const store = await import(pathToFileURL(join(directory, "kitchen-store.mjs")).href);
-const route = await import(pathToFileURL(join(directory, "kitchen-route.mjs")).href);
+const { env } = await sources.import("cloudflare:workers");
+const store = await sources.import("app/lib/kitchen-store.ts");
+const route = await sources.import("app/api/kitchen/route.ts");
 const queries = [];
 const binding = {
   prepare(sql) {

@@ -994,6 +994,7 @@ in an isolated Python environment. No separate vector database is required.
 | `GET /api/recipes` | Ranked search; setup-time live-source fallback |
 | `POST /api/chef` | Grounded answer or labeled catalog suggestions |
 | `GET /api/kitchen`, `PUT /api/kitchen` | Revision-checked kitchen persistence |
+| `POST /api/kitchen/commands` | Validated kitchen edits with durable retry receipts; see [service boundaries](service-boundaries.md#command-api-and-retries) |
 | `GET /api/admin/catalog` | Catalog and embedding status |
 | `POST /api/admin/catalog/demo` | Add original starters without AI or downloads |
 | `POST /api/admin/catalog` | Source sync; `{"embeddingsOnly":true}` refreshes only vectors |

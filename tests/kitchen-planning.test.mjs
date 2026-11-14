@@ -28,6 +28,20 @@ const meal = (date = "2026-10-22", value = recipe("rice")) => createPlannedMeal(
 const stock = (id, name, measure, useBy) => ({ id, name, measure, ...(useBy ? { useBy } : {}) });
 const kitchen = (pantry = [], meals = {}) => ({ schemaVersion: 2, pantry, meals, shoppingChecked: {}, migratedLegacy: true });
 
+test("completion uses the supplied household day for stock eligibility around UTC midnight", () => {
+  const dinner = meal("2026-11-01");
+  const initial = kitchen([stock("rice", "rice", "1 kg", "2026-11-01")], { [dinner.date]: dinner });
+  const at = "2026-11-01T23:30:00Z";
+  const previousDay = completeMeal(initial, dinner.date, true, at, "2026-11-01");
+  const nextDay = completeMeal(initial, dinner.date, true, at, "2026-11-02");
+  assert.equal(previousDay.pantry[0].measure, "600 g");
+  assert.equal(previousDay.meals[dinner.date].completion.deductions.length, 1);
+  assert.equal(nextDay.pantry[0].measure, "1 kg");
+  assert.equal(nextDay.meals[dinner.date].completion.deductions.length, 0);
+  assert.equal(nextDay.meals[dinner.date].status, "cooked");
+  assert.equal(initial.pantry[0].measure, "1 kg");
+});
+
 test("source descriptions use the same pantry coverage, shopping and completion identity", () => {
   const source = recipe("pasta-bake", [{ name: "any small pasta", measure: "400 g" }, { name: "medium zucchini, grated", measure: "3" }, { name: "cheese, grated", measure: "250 g" }]);
   const original = structuredClone(source);

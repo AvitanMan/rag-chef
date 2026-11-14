@@ -1,4 +1,5 @@
 import type { KitchenState } from "./kitchen-types";
+import { parseKitchenWriteQueue, type KitchenWriteQueue } from "./kitchen-write-queue";
 import { KITCHEN_CACHE_KEY } from "./kitchen-state";
 import { validateKitchenWrite } from "./kitchen-validation";
 
@@ -7,6 +8,7 @@ export interface CachedKitchen {
   revision: number;
   state: KitchenState;
   dirty: boolean;
+  writeQueue?: KitchenWriteQueue;
   updatedAt?: string;
   reason?: DraftReason;
 }
@@ -37,6 +39,7 @@ export function parseCachedKitchen(text: string | null): CachedKitchen | null {
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || typeof value.dirty !== "boolean") return null;
     validateKitchenWrite({ revision: value.revision, state: value.state });
+    if (value.writeQueue !== undefined) value.writeQueue = parseKitchenWriteQueue(value.writeQueue);
     if (value.updatedAt !== undefined && (typeof value.updatedAt !== "string" || !Number.isFinite(Date.parse(value.updatedAt)) || new Date(value.updatedAt).toISOString() !== value.updatedAt)) return null;
     if (value.reason !== undefined && !["edit", "before-restore", "before-recovery"].includes(value.reason)) return null;
     return value as CachedKitchen;
@@ -79,7 +82,9 @@ export function readRecoveryDrafts(storage: Pick<Storage, "length" | "key" | "ge
     try {
       const serialized = storage.getItem(id);
       const cached = parseCachedKitchen(serialized);
-      if (!cached?.dirty || !serialized || JSON.stringify(cached.state) === JSON.stringify(current)) continue;
+      // Equal projected kitchens can still contain an unconfirmed command and
+      // its inverse. The outbox must remain recoverable until both are settled.
+      if (!cached?.dirty || !serialized || !cached.writeQueue?.writes.length && JSON.stringify(cached.state) === JSON.stringify(current)) continue;
       entries.push({ serialized, cached, summary: { id, revision: cached.revision, updatedAt: cached.updatedAt ?? null,
         reason: cached.reason ?? "edit", pantryCount: cached.state.pantry.length, mealCount: Object.keys(cached.state.meals).length,
         differences: compareKitchens(current, cached.state) } });
