@@ -11,16 +11,14 @@ import { DINNER_AMOUNT_LIMITS, mealScale } from "../lib/kitchen-types";
 import type { Recipe } from "../lib/recipe-types";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { mealAmountLabel, formatMeasure, plannedIngredientMeasure, type ShoppingItem } from "../lib/quantities";
-import { beginShoppingPurchaseCycle, setShoppingItemBought } from "../lib/shopping-purchases";
+import type { DinnerAmountsPatch, KitchenCommandSender } from "../lib/kitchen-commands";
 import { ShoppingExport } from "./ShoppingExport";
-
-type UpdateKitchen = (change: (state: KitchenState) => KitchenState) => void;
 
 export function dateLabel(date: string, options: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" }): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en", options);
 }
 
-export function DurablePlanView({ week, today, setWeek, meals, update, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0 }: {
+export function DurablePlanView({ week, today, setWeek, meals, command, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0 }: {
   shoppingCount?: number;
   today?: string;
   focusDate?: string | null;
@@ -32,7 +30,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   week: string;
   setWeek: (week: string) => void;
   meals: Record<string, PlannedMeal>;
-  update: UpdateKitchen;
+  command: KitchenCommandSender;
   removeMeals: (dates: string[]) => void;
   chooseMeal: (date: string, recipe: Recipe, template?: PlannedMeal, expectedId?: string | null) => boolean;
   chooseDay: (date: string) => void;
@@ -70,11 +68,7 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
     if (meals[date]) setPending({ date, recipe, template, expectedId: meals[date].id });
     else chooseMeal(date, recipe, template, null);
   };
-  const patchMeal = (date: string, patch: Partial<PlannedMeal>) => update((state) => {
-    const meal = state.meals[date];
-    if (!meal || meal.status === "cooked" || (meal.locked && patch.locked !== false)) return state;
-    return { ...state, meals: { ...state.meals, [date]: { ...meal, ...patch } } };
-  });
+  const patchMeal = (date: string, expectedMealId: string, patch: DinnerAmountsPatch) => command({ type: "ChangeDinnerAmounts", date, expectedMealId, patch });
   const count = dates.filter((date) => meals[date]).length;
   const needsReview = dates.filter((date) => {
     const meal = meals[date];
@@ -121,15 +115,15 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
             {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
             {meal && <>
               <div className="meal-amounts">
-                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.servings} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.batches} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, { batches: Number(value) })} /></label>}
+                {meal.baseServings ? <label>Cook for<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.servings} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, meal.id, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.batches} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, meal.id, { batches: Number(value) })} /></label>}
               </div>
               {recipe && meal.status === "planned" && <button className="primary-button" onClick={() => cookMeal(date)} aria-label={`Cook ${meal.title} ${dateLabel(date)}`}>Cook</button>}
               {recipe && <details id={`amounts-${date}`} className="meal-review" open={reviewDate === date} onToggle={(event) => { if (event.currentTarget.open) setReviewDate(date); else setReviewDate((current) => current === date ? null : current); }}><summary>Adjust amounts</summary>
-                <DinnerAmounts meal={meal} patch={(patch) => patchMeal(date, patch)} /></details>}
+                <DinnerAmounts meal={meal} patch={(patch) => patchMeal(date, meal.id, patch)} /></details>}
               {meal.status === "cooked" && <button className="text-button" onClick={() => undoCooked(date)}>Undo cooked</button>}
               <details className="meal-more"><summary>More options</summary><div className="meal-controls">
                 {recipe && meal.status === "planned" && <button className="text-button" onClick={() => markCooked(date)}>Mark cooked without cooking mode</button>}
-                {meal.status !== "cooked" && <><button className="text-button" onClick={() => patchMeal(date, { locked: !meal.locked })}>{meal.locked ? "Unlock" : "Lock"}</button><button className="text-button" disabled={meal.locked} onClick={() => removeMeals([date])}>Remove</button></>}
+                {meal.status !== "cooked" && <><button className="text-button" onClick={() => command({ type: "SetDinnerLocked", date, expectedMealId: meal.id, locked: !meal.locked })}>{meal.locked ? "Unlock" : "Lock"}</button><button className="text-button" disabled={meal.locked} onClick={() => removeMeals([date])}>Remove</button></>}
               </div>
               {recipe && <label className="copy-meal">Copy dinner to<select aria-label={`Copy ${dateLabel(date)} dinner`} value="" onChange={(event) => { if (event.target.value) requestChoice(event.target.value, recipe, meal); }}><option value="">Choose day…</option>{dates.filter((target) => target !== date && !meals[target]?.locked && meals[target]?.status !== "cooked").map((target) => <option key={target} value={target}>{dateLabel(target)}{meals[target] ? " (replace)" : ""}</option>)}</select></label>}
               </details>
@@ -143,9 +137,9 @@ export function DurablePlanView({ week, today, setWeek, meals, update, removeMea
   );
 }
 
-export function DurableShoppingView({ items, checked, cycles, purchases, update, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: {
+export function DurableShoppingView({ items, checked, cycles, purchases, command, hasPlan, goPlan, reviewMeal, week, purchaseAction, purchaseHistory }: {
   items: ShoppingItem[]; checked: Record<string, boolean>; cycles?: KitchenState["shoppingCycles"]; purchases?: KitchenState["shoppingPurchases"];
-  update: UpdateKitchen; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode;
+  command: KitchenCommandSender; hasPlan: boolean; goPlan: () => void; reviewMeal: (date: string) => void; week: string; purchaseAction?: ReactNode; purchaseHistory?: ReactNode;
 }) {
   const toBuy = items.filter((item) => !checked[item.key]).sort((a, b) => Number(b.needsReview) - Number(a.needsReview));
   const bought = items.filter((item) => checked[item.key]);
@@ -155,11 +149,11 @@ export function DurableShoppingView({ items, checked, cycles, purchases, update,
     const batch = purchase?.items.find((entry) => entry.key === item.key && entry.cycleId === cycles?.[item.key]);
     const beginPurchase = (bought: boolean) => {
       if (!purchase || !batch) return;
-      const previous = { purchaseId: purchase.id, key: batch.key, cycleId: batch.cycleId, pantryId: batch.pantry.id }, cycleId = crypto.randomUUID();
-      update((state) => beginShoppingPurchaseCycle(state, previous, cycleId, bought));
+      const previous = { purchaseId: purchase.id, key: batch.key, cycleId: batch.cycleId, pantryId: batch.pantry.id };
+      command({ type: "BeginPurchaseCycle", previous, bought });
     };
     return <div className={`shopping-item ${checked[item.key] ? "checked" : ""}`} key={item.key}>
-        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { const done = event.target.checked, cycleId = crypto.randomUUID(); update((state) => setShoppingItemBought(state, item.key, done, cycleId)); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
+        <label><input type="checkbox" aria-label={`Bought ${item.name} ${item.measure}`} checked={Boolean(checked[item.key])} onChange={(event) => { command({ type: "SetShoppingBought", key: item.key, bought: event.target.checked }); }} /><span><strong>{item.name}</strong><small>{item.measure}</small></span></label>
         <div className="shopping-detail">
           {item.preparationNote && <small>{item.preparationNote}</small>}
           {item.needsReview && <><b>{item.preparationNote ? "Review preparation" : "Review amount"}</b><div>{item.mealDates.map((date) => <button className="text-button" key={date} aria-label={`Review ${item.name} for ${dateLabel(date)}`} onClick={() => reviewMeal(date)}>Review {dateLabel(date)}</button>)}</div></>}
@@ -184,14 +178,14 @@ export function DurableShoppingView({ items, checked, cycles, purchases, update,
       {reviewCount > 0 && <p className="quantity-note" role="status">{reviewCount} {reviewCount === 1 ? "item needs" : "items need"} review. You can still use this list.</p>}
       {items.length ? <>
         {toBuy.length ? <section className="shopping-list" aria-label="To buy">{toBuy.map(renderItem)}</section> : <p role="status">Everything on this list is checked.</p>}
-        {bought.length > 0 && <details className="bought-items"><summary>Bought ({bought.length})</summary><section className="shopping-list" aria-label="Bought items">{bought.map(renderItem)}</section><button className="text-button" onClick={() => update((state) => ({ ...state, shoppingChecked: Object.fromEntries(Object.entries(state.shoppingChecked).filter(([key]) => !key.startsWith(`${week}:`))) }))}>Uncheck all</button></details>}
+        {bought.length > 0 && <details className="bought-items"><summary>Bought ({bought.length})</summary><section className="shopping-list" aria-label="Bought items">{bought.map(renderItem)}</section><button className="text-button" onClick={() => command({ type: "UncheckShoppingWeek", week })}>Uncheck all</button></details>}
         <details className="shopping-help"><summary>How totals work</summary><p>Unfinished dinners in this week are added together, then compatible pantry amounts are subtracted. Cooked and uncooked ingredients stay separate. Unclear amounts and preparation differences need review. Changed quantities become unchecked. Checking an item does not change your pantry. For an item already added to pantry, choose “Need to buy again” to return it to the list, or “Record another purchase” to review another separate batch.</p></details>
       </> : <div className="empty-state"><strong>{hasPlan ? "No remaining shopping for these dinners." : "Plan a few dinners first."}</strong><p>{hasPlan ? "Known quantities are covered or the meals have been cooked." : "Choose dinners to build your shopping totals."}</p><button className="primary-button" onClick={goPlan}>Go to weekly plan</button></div>}
     </section>
   </div>;
 }
 
-export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patch: Partial<PlannedMeal>) => void }) {
+export function DinnerAmounts({ meal, patch }: { meal: PlannedMeal; patch: (patch: DinnerAmountsPatch) => void }) {
   const date = meal.date;
   const immutable = meal.locked || meal.status === "cooked";
   if (!meal.recipe) return null;

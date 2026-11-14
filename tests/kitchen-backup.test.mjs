@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
-const dir = await mkdtemp(join(tmpdir(), "jff-kitchen-backup-"));
-after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-stock", "kitchen-validation", "kitchen-backup", "kitchen-recovery"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
-  await writeFile(join(dir, `${name}.mjs`), code);
-}
-const { parseKitchenBackup, serializeKitchenBackup } = await import(pathToFileURL(join(dir, "kitchen-backup.mjs")).href);
-const { availablePantryNames } = await import(pathToFileURL(join(dir, "kitchen-stock.mjs")).href);
-const { migrateLegacyKitchen } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
-const { compareKitchens } = await import(pathToFileURL(join(dir, "kitchen-recovery.mjs")).href);
-const { DEFAULT_COOKING_PROFILE } = await import(pathToFileURL(join(dir, "kitchen-types.mjs")).href);
-const { parseLegacyCookingProfile, validateCookingProfile } = await import(pathToFileURL(join(dir, "kitchen-validation.mjs")).href);
+const sources = await createSourceLoader({ name: "kitchen-backup" });
+after(() => sources.dispose());
+const load = name => sources.import(`app/lib/${name}.ts`);
+const { parseKitchenBackup, serializeKitchenBackup } = await load("kitchen-backup");
+const { availablePantryNames } = await load("kitchen-stock");
+const { migrateLegacyKitchen } = await load("kitchen-state");
+const { compareKitchens } = await load("kitchen-recovery");
+const { DEFAULT_COOKING_PROFILE } = await load("kitchen-types");
+const { parseLegacyCookingProfile, validateCookingProfile } = await load("kitchen-validation");
 const kitchen = () => ({ schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "1 kg" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 
 test("favorites round-trip in backups and recovery reports changes without requiring them in older kitchens", () => {

@@ -1,4 +1,5 @@
 import { DEFAULT_OLLAMA_CHAT_MODEL, DEFAULT_OLLAMA_EMBED_MODEL } from "./chef-schema";
+import { readProviderText } from "./provider-response";
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const HEALTH_TIMEOUT_MS = 5_000;
@@ -29,7 +30,7 @@ export async function checkLocalVerifier(signal?: AbortSignal): Promise<Provider
   return verificationCapability(await checkOllamaReadiness(model, signal));
 }
 
-export async function checkOllamaReadiness(requestedModel = "", signal?: AbortSignal): Promise<OllamaHealth> {
+export async function checkOllamaReadiness(requestedModel = "", signal?: AbortSignal, options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<OllamaHealth> {
   const baseUrl = env("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL).replace(
     /\/+$/,
     "",
@@ -38,9 +39,9 @@ export async function checkOllamaReadiness(requestedModel = "", signal?: AbortSi
   const embedModel = env("OLLAMA_EMBED_MODEL", DEFAULT_OLLAMA_EMBED_MODEL);
 
   try {
-    const response = await fetchWithTimeout(`${baseUrl}/api/tags`, {
+    const response = await fetchProviderHealth(`${baseUrl}/api/tags`, {
       headers: { accept: "application/json" }, signal,
-    });
+    }, options);
     if (!response.ok) {
       return {
         ok: false,
@@ -55,7 +56,7 @@ export async function checkOllamaReadiness(requestedModel = "", signal?: AbortSi
       };
     }
 
-    const payload: unknown = await response.json();
+    const payload: unknown = JSON.parse(response.body);
     const installed = modelNames(payload);
     const chatModelInstalled = hasModel(installed, model);
     const embedModelInstalled = hasModel(installed, embedModel);
@@ -116,15 +117,19 @@ function env(name: string, fallback = ""): string {
   return value?.trim() || fallback;
 }
 
-async function fetchWithTimeout(
+/** Probe deadlines include the full response body, including error responses. */
+export async function fetchProviderHealth(
   url: string,
   init: RequestInit,
-  timeoutMs = HEALTH_TIMEOUT_MS,
-): Promise<Response> {
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<{ ok: boolean; status: number; body: string }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? HEALTH_TIMEOUT_MS);
+  const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
   try {
-    return await fetch(url, { ...init, signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal });
+    const response = await (options.fetchImpl ?? fetch)(url, { ...init, signal });
+    const body = await readProviderText(response, signal);
+    return { ok: response.ok, status: response.status, body };
   } finally {
     clearTimeout(timeout);
   }

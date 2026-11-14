@@ -583,12 +583,12 @@ export function consumptionPreview(meal: PlannedMeal, pantry: PantryStock[], tod
   return { deductions, notes };
 }
 
-export function completeMeal(state: KitchenState, date: string, deduct: boolean, now = new Date().toISOString()): KitchenState {
+export function completeMeal(state: KitchenState, date: string, deduct: boolean, now = new Date().toISOString(), today = currentLocalDate(new Date(now))): KitchenState {
   const meal = state.meals[date];
   if (!meal || meal.status === "cooked") return state;
   // A retained completion record is also an idempotency guard for imported data.
   if (meal.completion) return { ...state, meals: { ...state.meals, [date]: { ...meal, status: "cooked" } } };
-  const deductions = deduct ? consumptionPreview(meal, state.pantry, currentLocalDate(new Date(now))).deductions : [];
+  const deductions = deduct ? consumptionPreview(meal, state.pantry, today).deductions : [];
   const afterById = new Map(deductions.map((deduction) => [deduction.pantryId, deduction.after]));
   return {
     ...state,

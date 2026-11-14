@@ -1,11 +1,11 @@
+import { withGatewayTrace } from "@/app/lib/service-observability";
 import {
-  getKitchenDocument,
-  KitchenConflictError,
   KitchenValidationError,
   MAX_KITCHEN_BODY_BYTES,
-  saveKitchenDocument,
   validateKitchenWrite,
-} from "@/app/lib/kitchen-store";
+} from "@/app/lib/kitchen-validation";
+import { kitchenService, KitchenConflictError } from "@/app/lib/kitchen-service";
+import { requireHousehold, requireSameOrigin, HouseholdAuthError, householdError, type HouseholdContext } from "@/app/lib/household";
 
 export const dynamic = "force-dynamic";
 
@@ -24,28 +24,37 @@ function unavailable(): Response {
   }, 503);
 }
 
-export async function GET(): Promise<Response> {
+async function handleGET(request: Request): Promise<Response> {
   try {
-    return json(await getKitchenDocument());
-  } catch {
+    return json(await kitchenService.read(await requireHousehold(request)));
+  } catch (error) {
+    if (error instanceof HouseholdAuthError) return householdError(error);
     return unavailable();
   }
 }
 
-export async function PUT(request: Request): Promise<Response> {
+async function handlePUT(request: Request): Promise<Response> {
+  let context: HouseholdContext;
+  try {
+    requireSameOrigin(request);
+    context = await requireHousehold(request);
+    if (context.mode === "hosted" && (!request.headers.get("x-rag-chef-actor") || !request.headers.get("x-rag-chef-household"))) throw new HouseholdAuthError("SESSION_SCOPE_REQUIRED", "Refresh this tab before saving to the shared household.");
+  } catch (error) { return householdError(error); }
   const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
   if (contentType !== "application/json") {
     return json({ error: { code: "INVALID_CONTENT_TYPE", message: "Send the kitchen as application/json." } }, 415);
   }
   const declaredSize = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredSize) && declaredSize > MAX_KITCHEN_BODY_BYTES) {
+    void request.body?.cancel().catch(() => {});
     return json({ error: { code: "KITCHEN_TOO_LARGE", message: "The kitchen exceeds the storage limit." } }, 413);
   }
 
   let input: unknown;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     // Bound streamed bodies too: Content-Length is optional and untrusted.
-    const reader = request.body?.getReader();
+    reader = request.body?.getReader();
     if (!reader) throw new KitchenValidationError("The request body is required.");
     const decoder = new TextDecoder("utf-8", { fatal: true });
     let bytes = 0;
@@ -55,7 +64,7 @@ export async function PUT(request: Request): Promise<Response> {
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
       if (bytes > MAX_KITCHEN_BODY_BYTES) {
-        await reader.cancel();
+        void reader.cancel().catch(() => {});
         return json({ error: { code: "KITCHEN_TOO_LARGE", message: "The kitchen exceeds the storage limit." } }, 413);
       }
       body += decoder.decode(chunk.value, { stream: true });
@@ -63,13 +72,15 @@ export async function PUT(request: Request): Promise<Response> {
     body += decoder.decode();
     input = JSON.parse(body);
   } catch {
+    void reader?.cancel().catch(() => {});
     return json({ error: { code: "INVALID_KITCHEN", message: "The request must contain valid JSON." } }, 400);
-  }
+  } finally { reader?.releaseLock(); }
 
   try {
     const { revision, state } = validateKitchenWrite(input);
-    return json(await saveKitchenDocument(revision, state));
+    return json(await kitchenService.save(revision, state, context));
   } catch (error) {
+    if (error instanceof HouseholdAuthError) return householdError(error);
     if (error instanceof KitchenValidationError) {
       return json({ error: { code: "INVALID_KITCHEN", message: error.message } }, 400);
     }
@@ -82,3 +93,7 @@ export async function PUT(request: Request): Promise<Response> {
     return unavailable();
   }
 }
+
+export const GET = withGatewayTrace("kitchen.read", handleGET);
+
+export const PUT = withGatewayTrace("kitchen.save", handlePUT);

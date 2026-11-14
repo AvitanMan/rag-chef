@@ -1,20 +1,12 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
-const dir = await mkdtemp(join(tmpdir(), "jff-kitchen-recovery-"));
-after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["kitchen-types", "kitchen-state", "quantities", "kitchen-validation", "kitchen-recovery"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
-  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"');
-  await writeFile(join(dir, `${name}.mjs`), code);
-}
-const { compareKitchens, parseCachedKitchen, readRecoveryDrafts } = await import(pathToFileURL(join(dir, "kitchen-recovery.mjs")).href);
-const { KITCHEN_CACHE_KEY } = await import(pathToFileURL(join(dir, "kitchen-state.mjs")).href);
+const sources = await createSourceLoader({ name: "kitchen-recovery" });
+after(() => sources.dispose());
+const load = name => sources.import(`app/lib/${name}.ts`);
+const { compareKitchens, parseCachedKitchen, readRecoveryDrafts } = await load("kitchen-recovery");
+const { KITCHEN_CACHE_KEY } = await load("kitchen-state");
 const kitchen = () => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 const week = "2026-11-02";
 const riceKey = `${week}:rice`;

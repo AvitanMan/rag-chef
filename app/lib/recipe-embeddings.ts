@@ -1,3 +1,6 @@
+import { runModelOperation, type ModelAdmission } from "./model-admission";
+import { RuntimeAdmissionError } from "./runtime-admission-types";
+import { cancelProviderBody, readProviderText } from "./provider-response";
 import type { Recipe } from "./recipe-types";
 import { normalizePlanningIngredient } from "./quantities";
 
@@ -84,8 +87,13 @@ export interface TextEmbeddingResult {
 }
 
 export interface OllamaEmbeddingOptions {
+  admission?: ModelAdmission;
   contentHashes?: ReadonlyMap<string, string>;
   signal?: AbortSignal;
+  /** Durable workers renew their lease before each bounded provider request. */
+  beforeBatch?: () => Promise<void>;
+  /** Persist completed provider batches without waiting for the full refresh. */
+  onBatchComplete?: (records: readonly RecipeEmbeddingRecord[]) => Promise<void>;
   model?: string;
   baseUrl?: string;
   batchSize?: number;
@@ -94,6 +102,7 @@ export interface OllamaEmbeddingOptions {
 }
 
 type ResolvedOllamaEmbeddingOptions = {
+  admission?: ModelAdmission;
   signal?: AbortSignal;
   model: string;
   baseUrl: string;
@@ -326,7 +335,9 @@ export async function precomputeRecipeEmbeddings(
   let dimension: number | null = null;
 
   for (let offset = 0; offset < plan.stale.length; offset += resolved.batchSize) {
+    await options.beforeBatch?.();
     const batch = plan.stale.slice(offset, offset + resolved.batchSize);
+    const before = embeddings.length;
 
     try {
       const embedded = await requestOllamaBatch(
@@ -349,6 +360,7 @@ export async function precomputeRecipeEmbeddings(
         });
       });
     } catch (error) {
+      if (error instanceof RuntimeAdmissionError) throw error;
       const providerError = normalizeProviderError(error);
       failures.push({
         recipeIds: plan.stale.slice(offset).map((item) => item.recipeId),
@@ -361,6 +373,8 @@ export async function precomputeRecipeEmbeddings(
       });
       break;
     }
+    // Storage/lease failures are not provider failures and must propagate.
+    await options.onBatchComplete?.(embeddings.slice(before));
   }
 
   return {
@@ -395,17 +409,21 @@ export async function precomputeRecipeStepEmbeddings(recipes: readonly Recipe[],
   const embeddings: RecipeEmbeddingRecord[] = [], failures: RecipeEmbeddingFailure[] = [];
   let dimension: number | null = null;
   for (let offset = 0; offset < stale.length; offset += resolved.batchSize) {
+    await options.beforeBatch?.();
     const batch = stale.slice(offset, offset + resolved.batchSize);
+    const before = embeddings.length;
     try {
       const result = await requestOllamaBatch(batch.map((item) => buildRecipeStepText(item.recipe, item.chunkIndex)), resolved, dimension);
       dimension ??= result.dimension;
       result.vectors.forEach((vector, index) => embeddings.push({ recipeId: batch[index].recipe.id, chunkIndex: batch[index].chunkIndex,
         contentHash: batch[index].contentHash, model: resolved.model, kind: RECIPE_STEP_EMBEDDING_KIND, dimensions: vector.length, vector, embeddedAt: new Date().toISOString() }));
     } catch (error) {
+      if (error instanceof RuntimeAdmissionError) throw error;
       const problem = normalizeProviderError(error);
       failures.push({ recipeIds: [...new Set(stale.slice(offset).map((item) => item.recipe.id))], code: problem.code, message: problem.message, retryable: problem.retryable });
       break;
     }
+    await options.onBatchComplete?.(embeddings.slice(before));
   }
   return { model: resolved.model, checkedCount, skippedCount: checkedCount - stale.length, requestedCount: stale.length, completedCount: embeddings.length, dimension, embeddings, failures };
 }
@@ -458,7 +476,9 @@ function resolveOptions(
     baseUrl,
     batchSize,
     timeoutMs,
-    fetchImpl: options.fetchImpl ?? globalThis.fetch,
+    // Workerd's native fetch rejects being invoked as an options-object method.
+    fetchImpl: options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init)),
+    admission: options.admission,
   };
 }
 
@@ -507,8 +527,16 @@ async function requestOllamaBatch(
   options: ResolvedOllamaEmbeddingOptions,
   expectedDimension: number | null,
 ): Promise<{ vectors: number[][]; dimension: number }> {
+  return runModelOperation(options.admission, "ollama", "embedding", signal => requestAdmittedOllamaBatch(texts, { ...options, signal }, expectedDimension),
+    { signal: options.signal, timeoutMs: options.timeoutMs });
+}
+
+async function requestAdmittedOllamaBatch(
+  texts: string[], options: ResolvedOllamaEmbeddingOptions, expectedDimension: number | null,
+): Promise<{ vectors: number[][]; dimension: number }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+  const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
 
   try {
     const response = await options.fetchImpl(`${options.baseUrl}/api/embed`, {
@@ -522,10 +550,11 @@ async function requestOllamaBatch(
         input: texts,
         truncate: false,
       }),
-      signal: options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
+      signal,
     });
 
     if (!response.ok) {
+      cancelProviderBody(response);
       throw new RecipeEmbeddingProviderError(
         `Embedding provider returned HTTP ${response.status}.`,
         {
@@ -541,7 +570,7 @@ async function requestOllamaBatch(
 
     let payload: unknown;
     try {
-      payload = await response.json();
+      payload = JSON.parse(await readProviderText(response, signal));
     } catch {
       invalidProviderResponse("Embedding provider returned malformed JSON.");
     }

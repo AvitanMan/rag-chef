@@ -1,3 +1,4 @@
+import { isKitchenWrite } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
@@ -225,7 +226,7 @@ test("decimal and date drafts commit only on blur or Enter and a filtered row st
   const amount = row.getByRole("textbox", { name: "Available rice", exact: true });
   const date = row.getByLabel("Use by rice", { exact: true });
   const writes: string[] = [];
-  page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/kitchen")) writes.push(request.postData() ?? ""); });
+  page.on("request", request => { if (isKitchenWrite(request)) writes.push(request.postData() ?? ""); });
   await amount.fill("0");
   await page.clock.runFor(600);
   await expect(amount).toBeFocused();
@@ -388,7 +389,7 @@ for (const startingDate of ["blank", "valid"] as const) {
     const date = page.getByLabel("Use by rice", { exact: true });
     const before = await document(request);
     const writes: string[] = [];
-    page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/kitchen")) writes.push(request.postData() ?? ""); });
+    page.on("request", request => { if (isKitchenWrite(request)) writes.push(request.postData() ?? ""); });
     const invalid = await enterInvalidNativeDate(date, startingDate, isMobile);
     await commitDate(date, isMobile);
     await expect.poll(() => nativeDateState(date)).toEqual(invalid);
@@ -448,7 +449,7 @@ for (const kind of ["batch correction", "pantry import", "purchase"] as const) {
       await expect(date).toHaveValue(startingDate === "valid" ? TODAY : "");
       const before = await document(request);
       const writes: string[] = [];
-      page.on("request", request => { if (request.method() === "PUT" && request.url().endsWith("/api/kitchen")) writes.push(request.postData() ?? ""); });
+      page.on("request", request => { if (isKitchenWrite(request)) writes.push(request.postData() ?? ""); });
       const invalid = await enterInvalidNativeDate(date, startingDate, isMobile);
       await amount.fill("150 g");
       await expect.poll(() => nativeDateState(date)).toEqual(invalid);

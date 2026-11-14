@@ -3,7 +3,9 @@ import { expect, test } from "@playwright/test";
 test("fresh installation recovers from setup failure and reaches dinner without AI", async ({ page, request }) => {
   expect((await (await request.get("/api/recipes/catalog")).json()).recipes).toEqual([]);
   let calls = 0;
+  const setupKeys: (string | undefined)[] = [];
   await page.route("**/api/admin/catalog/demo", async route => {
+    setupKeys.push(route.request().headers()["idempotency-key"]);
     if (++calls === 1) return route.fulfill({ status: 503, json: { error: { message: "Temporary setup failure. Retry to finish." } } });
     return route.continue();
   });
@@ -18,7 +20,14 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   await expect(page.getByRole("button", { name: "Load starter recipes", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Load starter recipes", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Temporary setup failure");
+  const enqueued = page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/catalog/demo" && response.request().method() === "POST");
   await page.getByRole("button", { name: "Retry starter recipes", exact: true }).click();
+  const accepted = await enqueued;
+  expect(accepted.status()).toBe(202);
+  const acceptedJob = await accepted.json();
+  expect(acceptedJob.job.kind).toBe("demo"); expect(acceptedJob.job.id).toBeTruthy();
+  expect(acceptedJob.statusUrl).toBe(`/api/admin/catalog/jobs/${acceptedJob.job.id}`);
+  expect(setupKeys[0]).toBeTruthy(); expect(setupKeys[1]).toBe(setupKeys[0]);
   await expect(page.getByRole("button", { name: "Choose for tonight: Tomato Chickpea Pan", exact: true })).toBeVisible();
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state).not.toBeNull();
   const initial = await (await request.get("/api/kitchen")).json();
@@ -28,9 +37,14 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   expect(catalog).toHaveLength(3);
   expect(catalog.every((recipe: { source: { licenseId: string } }) => recipe.source.licenseId === "MIT")).toBeTruthy();
   // A retried setup is idempotent and does not rewrite the kitchen.
-  expect((await request.post("/api/admin/catalog/demo")).ok()).toBeTruthy();
+  const repeated = await request.post("/api/admin/catalog/demo", { headers: { "idempotency-key": "repeat-starter-setup" } });
+  expect(repeated.status()).toBe(202);
+  const repeatedJob = await repeated.json();
+  await expect.poll(async () => (await (await request.get(repeatedJob.statusUrl)).json()).job.status).toBe("succeeded");
+  const retry = await request.post("/api/admin/catalog/demo", { headers: { "idempotency-key": "repeat-starter-setup" } });
+  expect(retry.status()).toBe(202); expect((await retry.json()).job.id).toBe(repeatedJob.job.id);
   expect((await (await request.get("/api/recipes/catalog")).json()).recipes).toHaveLength(3);
-  expect((await (await request.get("/api/kitchen")).json()).state).toEqual(initial.state);
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(initial);
   expect((await request.post("/api/admin/catalog/demo", { headers: { origin: "https://untrusted.example" } })).status()).toBe(403);
   await page.getByRole("button", { name: "Choose for tonight: Tomato Chickpea Pan", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chosen dinner" })).toContainText("Tomato Chickpea Pan");

@@ -20,9 +20,18 @@ function meal(recipe: Recipe, cooked = false): PlannedMeal {
 async function importRecipe(request: APIRequestContext, title: string, instructions: string[]): Promise<Recipe> {
   const source = { sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:" + title.replaceAll(" ", "_"), title, ingredients: [{ name: "rice", measure: "200 g" }], instructions, servings: 2 };
   const reviewHash = createHash("sha256").update(JSON.stringify(source)).digest("hex");
-  const response = await request.post("/api/admin/recipes/import", { data: { recipes: [{ ...source, reviewed: true, reviewHash }] } });
-  expect(response.ok()).toBeTruthy();
-  const result = (await response.json()).results[0];
+  const response = await request.post("/api/admin/recipes/import", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { recipes: [{ ...source, reviewed: true, reviewHash }] } });
+  expect(response.status()).toBe(202);
+  const accepted = await response.json();
+  expect(accepted.statusUrl).toBe(`/api/admin/catalog/jobs/${accepted.job.id}`);
+  let job = accepted.job;
+  await expect.poll(async () => {
+    const status = await request.get(accepted.statusUrl);
+    expect(status.ok()).toBeTruthy();
+    job = (await status.json()).job;
+    return job.status;
+  }, { timeout: 30_000 }).toBe("succeeded");
+  const result = job.result.results[0];
   if (result.catalogId) importedIds.push(result.catalogId);
   expect(result.status).not.toBe("failed");
   const catalog = await (await request.get("/api/recipes/catalog")).json();

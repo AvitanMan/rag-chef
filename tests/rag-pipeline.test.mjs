@@ -1,18 +1,10 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 import { ragCases, ragRecipes } from "../tools/recipes/rag-cases.mjs";
-const directory = await mkdtemp(join(tmpdir(), "rag-pipeline-"));
-after(() => rm(directory, { recursive: true, force: true }));
-for (const name of ["recipe-instructions", "retrieval-ranking", "chef-evidence", "chef-context", "chef-verification", "recipe-embeddings", "quantities", "kitchen-types"]) {
-  const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
-  await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
-}
-const load = (name) => import(pathToFileURL(join(directory, `${name}.mjs`)).href);
+const sources = await createSourceLoader({ name: "rag-pipeline" });
+after(() => sources.dispose());
+const load = name => sources.import(`app/lib/${name}.ts`);
 const { bm25Scores, reciprocalRanks, retrievalTerms } = await load("retrieval-ranking");
 const { selectRecipeEvidence } = await load("chef-evidence");
 const { precomputeRecipeStepEmbeddings } = await load("recipe-embeddings");

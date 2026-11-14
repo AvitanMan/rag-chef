@@ -1,0 +1,11 @@
+{
+  "protocol": 1,
+  "controls": 1,
+  "schema": 9,
+  "migration": "0009_catalog_job_recipe_receipts",
+  "roles": {
+    "gateway": { "config": "wrangler.jsonc", "build": "server", "services": ["CATALOG", "CHEF"], "queueProducer": true },
+    "catalog": { "config": "wrangler.catalog.jsonc", "build": "catalog", "services": [], "queueProducer": true, "queueConsumer": true, "private": true },
+    "chef": { "config": "wrangler.chef.jsonc", "build": "chef", "services": ["CATALOG"], "private": true }
+  }
+}

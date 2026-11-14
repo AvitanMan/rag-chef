@@ -115,7 +115,7 @@ export function calibrateThresholds(semanticRecords, lexicalRecords, { decide, s
 
 export async function loadPureRanker() {
   const directory = await mkdtemp(join(tmpdir(), "rag-chef-relevance-"));
-  const names = ["retrieval-ranking", "recipe-query", "catalog-search", "recipe-embeddings", "recipe-browser", "recipe-constraints", "recipe-safety", "quantities", "kitchen-types"];
+  const names = ["retrieval-ranking", "recipe-query", "catalog-search", "recipe-embeddings", "model-admission", "runtime-admission-types", "provider-response", "recipe-browser", "recipe-constraints", "recipe-safety", "quantities", "kitchen-types"];
   try {
     for (const name of names) {
       const source = await readFile(join(ROOT, "app/lib", `${name}.ts`), "utf8");

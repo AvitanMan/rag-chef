@@ -32,6 +32,9 @@ export function sites(): Plugin {
       this.emitFile({ type: "asset", fileName: "kitchen-shell.json", source: JSON.stringify({ urls }) });
     },
     async closeBundle() {
+      // Auxiliary Workers build concurrently and share this output directory.
+      // Package application metadata once, rather than racing rm/cp operations.
+      if (this.environment.name !== "rsc") return;
       const outputDirectory = resolve(root, "dist", ".openai");
       const hostingConfig = resolve(root, ".openai", "hosting.json");
       const drizzleSource = resolve(root, "drizzle");

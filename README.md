@@ -8,8 +8,10 @@ RAG Chef is a local-first cooking app with a pantry, weekly plan, shopping list,
 and step-by-step cooking workspace. Optional AI answers use an approved recipe
 catalog, preserve source attribution, and withhold prose that cannot be verified.
 
-Built for one household on one Mac. Browsing, planning, shopping, starter recipes,
-and calculated dinner amounts work without an AI model.
+Local mode is built for one household on one Mac. Optional
+[hosted households](docs/hosted-households.md) add Google sign-in and shared
+household access. Browsing, planning, shopping, starter recipes, and calculated
+dinner amounts work without an AI model.
 
 ## Try it
 
@@ -26,7 +28,8 @@ pnpm dev
 Open [localhost:3000](http://localhost:3000) and select **Load starter recipes**.
 Three original MIT-licensed recipes let you try the complete flow without an
 account, model, or recipe download. Your pantry starts empty; adding starters
-changes only the catalog. The larger third-party evaluation corpus is never
+changes only the catalog. Starter setup runs in the background and shows progress
+until the recipes are ready. The larger third-party evaluation corpus is never
 loaded as application data.
 
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
@@ -96,7 +99,10 @@ flowchart LR
 ```
 
 React/Next.js-compatible app code runs through **Vinext/Vite** and Cloudflare's
-local runtime. **Drizzle** manages D1 migrations. **Ollama** supplies local models;
+local runtime. A private Catalog Worker handles recipe retrieval and queued
+imports/indexing. A private Chef Worker handles answers, model requests and
+readiness checks. The application Worker owns authentication and kitchen writes.
+All three share D1, and Chef accesses kitchens through a read-only application port. **Drizzle** manages D1 migrations. **Ollama** supplies local models;
 OpenAI is an optional generation provider. No separate vector database is needed.
 Original recipe text, selected evidence, calculated amounts, and suggested
 adaptations remain distinct; suggestions never silently rewrite saved meals.
@@ -137,6 +143,11 @@ state, configuration, and imported recipe runs are not copied into CI.
 
 - [Operating guide](docs/guide.md): kitchen flows, source import, configuration,
   backups, offline behavior, API routes, and troubleshooting.
+- [Service boundaries](docs/service-boundaries.md): Kitchen, Catalog and Chef
+  interfaces, durable kitchen commands, private Catalog/Chef Workers, background
+  jobs, shared model capacity and household request limits.
+- [Service rollout and rollback](docs/service-rollout.md): matched releases,
+  migration and readiness gates, deployment order and recovery.
 - [Evaluation](docs/evaluation.md): real-model commands, grading, and release evidence.
 - [Contributing](CONTRIBUTING.md): local verification and review expectations.
 - [NOTICE](NOTICE): recipe-source attribution and content licenses.
@@ -146,7 +157,7 @@ Wikibooks content retains its attribution and CC BY-SA terms; TheMealDB content
 has separate terms. Neither the recipe corpus nor your local database becomes
 MIT-licensed merely by being used with this application.
 
-Keep the application bound to loopback. This prototype has no application-wide
-multi-user authentication; publishing the code does not deploy a public kitchen.
+Keep standalone mode bound to loopback. Hosted mode requires explicit auth,
+database, and source configuration; publishing the code does not deploy a kitchen.
 Never commit `.env.local`, `.dev.vars`, `.wrangler/`, kitchen backups, or other
 personal local state. See the guide for exact offline and backup limits.

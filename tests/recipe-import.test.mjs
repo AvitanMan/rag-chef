@@ -1,56 +1,43 @@
 import assert from "node:assert/strict";
 import { after, beforeEach, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { DatabaseSync } from "node:sqlite";
-import ts from "typescript";
+import { readFile } from "node:fs/promises";
+import { createHmac } from "node:crypto";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
+import { createSqliteD1 } from "./helpers/sqlite-d1.mjs";
+import { attachCatalogReadBinding } from "./helpers/catalog-binding.mjs";
+import { attachChefBinding } from "./helpers/chef-binding.mjs";
 
-const dir = await mkdtemp(join(tmpdir(), "jff-recipe-import-"));
-const db = new DatabaseSync(":memory:");
-db.exec("PRAGMA foreign_keys=ON");
-for (const file of (await readdir(new URL("../drizzle/", import.meta.url))).filter((name) => name.endsWith(".sql")).sort()) {
-  db.exec(await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8"));
+const sources = await createSourceLoader({ name: "recipe-import", externals: { "cloudflare:workers": "export const env = { DB: undefined };" } });
+const sql = await createSqliteD1();
+const { db } = sql;
+const routes = {
+  route: "admin/recipes/import", "catalog-route": "recipes/catalog", "chef-route": "chef", "health-route": "health",
+  "admin-route": "admin/catalog", "metadata-route": "admin/recipes/metadata", "search-route": "recipes",
+};
+const load = name => sources.import(routes[name] ? `app/api/${routes[name]}/route.ts` : `app/lib/${name}.ts`);
+const { env } = await sources.import("cloudflare:workers");
+env.DB = sql.binding;
+let workerBindings = env;
+await attachCatalogReadBinding(sources, env);
+await attachChefBinding(sources, env, { bindings: () => workerBindings });
+const importRoute = await load("route");
+// Existing content/permission assertions inspect the terminal execution result.
+// The real HTTP route enqueues first; the isolated worker is driven explicitly.
+async function finishCatalogPost(handler, request) {
+  const response = await handler(request);
+  if (response.status !== 202) return response;
+  const accepted = await response.json();
+  assert.ok(accepted.job.id); assert.equal(accepted.statusUrl, `/api/admin/catalog/jobs/${accepted.job.id}`);
+  const { drainCatalogJobs } = await load("catalog-job-runner");
+  await drainCatalogJobs({ jobId: accepted.job.id, limit: 1 });
+  const statusRoute = await sources.import("app/api/admin/catalog/jobs/[id]/route.ts");
+  const status = await statusRoute.GET(new Request(new URL(accepted.statusUrl, request.url), { headers: request.headers }), { params: Promise.resolve({ id: accepted.job.id }) });
+  assert.equal(status.status, 200);
+  const { job } = await status.json();
+  assert.equal(job.status, "succeeded", JSON.stringify(job.error));
+  return Response.json(job.result);
 }
-await writeFile(join(dir, "cloudflare.mjs"), "export const env = {DB: undefined};");
-const modules = ["recipe-instructions", "chef-question-plan", "provider-readiness", "chef-planning-answer", "retrieval-ranking", "chef-verification", "chef-evidence", "chef-grounding", "chef-context", "recipe-query", "recipe-store", "recipe-embeddings", "recipe-import", "catalog-auth", "catalog-search", "recipe-browser", "recipe-safety", "recipe-constraints", "chef-schema", "kitchen-store", "kitchen-validation", "kitchen-state", "kitchen-types", "quantities"];
-const files = modules.map((name) => [name, `../app/lib/${name}.ts`]);
-files.push(["route", "../app/api/admin/recipes/import/route.ts"]);
-files.push(["catalog-route", "../app/api/recipes/catalog/route.ts"]);
-files.push(["chef-route", "../app/api/chef/route.ts"]);
-files.push(["health-route", "../app/api/health/route.ts"]);
-files.push(["admin-route", "../app/api/admin/catalog/route.ts"]);
-files.push(["metadata-route", "../app/api/admin/recipes/metadata/route.ts"]);
-files.push(["search-route", "../app/api/recipes/route.ts"]);
-files.push(["recipe-source", "../app/lib/recipe-source.ts"]);
-for (const [name, path] of files) {
-  const source = await readFile(new URL(path, import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
-    .replaceAll('"cloudflare:workers"', '"./cloudflare.mjs"')
-    .replace(/"(?:@\/app\/lib\/|\.\/)([\w-]+)"/g, '"./$1.mjs"');
-  await writeFile(join(dir, `${name}.mjs`), compiled);
-}
-const load = (name) => import(pathToFileURL(join(dir, name + ".mjs")).href);
-const { env } = await load("cloudflare");
-function statement(sql, values = []) {
-  return {
-    bind(...args) {
-      assert.ok(args.length <= 100, "D1 allows at most 100 bound parameters");
-      return statement(sql, args);
-    },
-    async first() { return db.prepare(sql).get(...values) ?? null; },
-    async all() { return { results: db.prepare(sql).all(...values) }; },
-    async run() { return db.prepare(sql).run(...values); },
-    sql, values,
-  };
-}
-env.DB = { prepare: statement, async batch(statements) {
-  db.exec("BEGIN");
-  try { const results = statements.map((s) => db.prepare(s.sql).run(...s.values)); db.exec("COMMIT"); return results; }
-  catch (error) { db.exec("ROLLBACK"); throw error; }
-} };
-const route = await load("route");
+const route = { ...importRoute, POST: request => finishCatalogPost(importRoute.POST, request) };
 const importer = await load("recipe-import");
 const store = await load("recipe-store");
 const embeddings = await load("recipe-embeddings");
@@ -61,7 +48,8 @@ const search = await load("catalog-search");
 const catalogRoute = await load("catalog-route");
 const chefRoute = await load("chef-route");
 const healthRoute = await load("health-route");
-const adminRoute = await load("admin-route");
+const rawAdminRoute = await load("admin-route");
+const adminRoute = { ...rawAdminRoute, POST: request => finishCatalogPost(rawAdminRoute.POST, request) };
 const chefSchema = await load("chef-schema");
 const constraintRules = await load("recipe-constraints");
 const metadataRoute = await load("metadata-route");
@@ -69,12 +57,16 @@ const searchRoute = await load("search-route");
 const originalFetch = globalThis.fetch;
 let modelCalls = 0;
 beforeEach(() => {
+  workerBindings = env;
+  delete env.CATALOG_TASKS;
+  if (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='catalog_jobs'").get()) db.exec("DELETE FROM catalog_jobs");
   db.exec("DELETE FROM recipe_embeddings; DELETE FROM recipes; DELETE FROM recipe_sync_runs; DELETE FROM recipe_sources; DELETE FROM kitchen_state;");
+  sql.intercept(undefined); sql.queries.length = 0;
   delete process.env.CATALOG_ADMIN_TOKEN;
   modelCalls = 0;
   globalThis.fetch = async () => { modelCalls++; return Response.json({ embeddings: [[1, 2, 3]] }); };
 });
-after(async () => { globalThis.fetch = originalFetch; db.close(); await rm(dir, { recursive: true, force: true }); });
+after(async () => { globalThis.fetch = originalFetch; db.close(); await sources.dispose(); });
 
 async function draft(index = 0, overrides = {}) {
   const data = {
@@ -92,6 +84,192 @@ async function importOne(value) {
   assert.equal(response.status, 200);
   return (await response.json()).results[0];
 }
+
+async function jobStatus(accepted, request = new Request(`http://localhost:3000${accepted.statusUrl}`)) {
+  const statusRoute = await sources.import("app/api/admin/catalog/jobs/[id]/route.ts");
+  return statusRoute.GET(request, { params: Promise.resolve({ id: accepted.job.id }) });
+}
+
+test("catalog acceptance persists before queue publication and status reads never execute ingestion", async () => {
+  const value = await draft(), publications = [];
+  env.CATALOG_TASKS = { async send(message) {
+    publications.push(message);
+    assert.equal(db.prepare("SELECT status FROM catalog_jobs WHERE id=?").get(message.jobId).status, "queued");
+    assert.equal(db.prepare("SELECT count(*) AS n FROM recipes").get().n, 0);
+    throw new Error("Queue publication interrupted");
+  } };
+  const request = () => req([value], { headers: { "Idempotency-Key": "one-reviewed-import" } });
+  const response = await importRoute.POST(request()); assert.equal(response.status, 202);
+  const accepted = await response.json(); assert.equal(accepted.job.status, "queued"); assert.equal(accepted.job.attempts, 0);
+  assert.equal(publications.length, 1); assert.equal(modelCalls, 0);
+  sql.queries.length = 0;
+  const progress = await jobStatus(accepted); assert.equal(progress.status, 200); assert.equal(progress.headers.get("cache-control"), "no-store");
+  const report = await progress.json(); assert.equal(report.job.status, "queued"); assert.equal(report.job.input, undefined);
+  assert.ok(sql.queries.every(({ sql }) => /^\s*SELECT\b/i.test(sql)), "status polling cannot perform queued work");
+  assert.equal(modelCalls, 0); assert.equal(db.prepare("SELECT count(*) AS n FROM recipes").get().n, 0);
+  const repeated = await importRoute.POST(request()); assert.equal(repeated.status, 202); assert.equal((await repeated.json()).job.id, accepted.job.id);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM catalog_jobs").get().n, 1);
+  const changed = await importRoute.POST(req([await draft(1)], { headers: { "Idempotency-Key": "one-reviewed-import" } }));
+  assert.equal(changed.status, 409); assert.equal((await changed.json()).error.code, "CATALOG_REQUEST_ID_REUSED");
+  const finished = await finishCatalogPost(importRoute.POST, request()); assert.equal(finished.status, 200); assert.equal((await finished.json()).results[0].status, "saved");
+  assert.equal((await (await jobStatus(accepted)).json()).job.status, "succeeded");
+  assert.equal(db.prepare("SELECT count(*) AS n FROM recipes").get().n, 1);
+});
+
+test("a source revoked while ingestion is queued cannot be reapproved by the later worker", async () => {
+  await store.upsertApprovedRecipeSource(importer.WIKIBOOKS_SOURCE);
+  const response = await importRoute.POST(req([await draft()])); assert.equal(response.status, 202);
+  const accepted = await response.json();
+  db.exec("UPDATE recipe_sources SET approval_status='revoked',allow_embed=0");
+  const { drainCatalogJobs } = await load("catalog-job-runner"); await drainCatalogJobs({ jobId: accepted.job.id });
+  const report = await (await jobStatus(accepted)).json();
+  assert.equal(report.job.status, "failed"); assert.equal(report.job.error.code, "SOURCE_DISABLED");
+  assert.equal(db.prepare("SELECT approval_status FROM recipe_sources").get().approval_status, "revoked");
+  assert.equal(db.prepare("SELECT count(*) AS n FROM recipes").get().n, 0); assert.equal(modelCalls, 0);
+});
+
+test("busy model capacity queues a correlated durable retry and preserves saved recipe content", async t => {
+  const logs = [];
+  t.mock.method(console, "info", entry => logs.push(JSON.parse(entry)));
+  env.MODEL_OLLAMA_CONCURRENCY = "1";
+  const { acquireModelPermit, releaseModelPermit } = await load("runtime-admission");
+  const { drainCatalogJobs } = await load("catalog-job-runner");
+  const permit = await acquireModelPermit("ollama");
+  globalThis.fetch = async (_url, init) => { modelCalls++; return Response.json({ embeddings: JSON.parse(init.body).input.map(() => [1, 2, 3]) }); };
+  try {
+    const response = await importRoute.POST(req([await draft()], { headers: { "Idempotency-Key": "busy-import" } }));
+    assert.equal(response.status, 202); const accepted = await response.json();
+    const started = Date.now(); await drainCatalogJobs({ jobId: accepted.job.id });
+    const failed = (await (await jobStatus(accepted)).json()).job;
+    assert.equal(failed.status, "queued"); assert.equal(failed.error.code, "service_busy"); assert.equal(failed.attempts, 1);
+    assert.ok(failed.availableAt >= started + 300_000); assert.equal(modelCalls, 0);
+    const saved = db.prepare("SELECT id,version,normalized_content_sha256,updated_at FROM recipes ORDER BY id").all(); assert.equal(saved.length, 1);
+    await releaseModelPermit(permit);
+    db.prepare("UPDATE catalog_jobs SET available_at=? WHERE id=?").run(Date.now() - 1, accepted.job.id);
+    await drainCatalogJobs({ jobId: accepted.job.id });
+    const finished = (await (await jobStatus(accepted)).json()).job;
+    assert.equal(finished.status, "succeeded"); assert.equal(finished.attempts, 2); assert.ok(modelCalls > 0);
+    assert.deepEqual(db.prepare("SELECT id,version,normalized_content_sha256,updated_at FROM recipes ORDER BY id").all(), saved);
+    const attempts = logs.filter(entry => entry.operation === "catalog.job.run");
+    assert.deepEqual(attempts.map(entry => [entry.status, entry.attempt]), [[429, 1], [200, 2]]);
+    assert.ok(attempts.every(entry => entry.requestId === accepted.job.id && entry.jobId === accepted.job.id));
+    assert.ok(logs.some(entry => entry.operation === "model.embedding" && entry.status === 429 && entry.jobId === accepted.job.id));
+  } finally { await releaseModelPermit(permit); delete env.MODEL_OLLAMA_CONCURRENCY; }
+});
+
+test("a failed indexing batch retains completed vectors and its durable retry skips them", async () => {
+  for (let index = 0; index < 10; index++) await importOne(await draft(index));
+  const recipesBefore = db.prepare("SELECT * FROM recipes").all();
+  db.exec("DELETE FROM recipe_embeddings");
+  const providerBatches = [];
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body); providerBatches.push(body.input.length);
+    assert.ok(body.input.length <= 8);
+    if (providerBatches.length === 3) throw new Error("Embedding provider interrupted");
+    return Response.json({ embeddings: body.input.map(() => [1, 2, 3]) });
+  };
+  const queued = await rawAdminRoute.POST(new Request("http://localhost:3000/api/admin/catalog", { method: "POST", body: JSON.stringify({ embeddingsOnly: true }) }));
+  assert.equal(queued.status, 202); const accepted = await queued.json();
+  const { drainCatalogJobs } = await load("catalog-job-runner");
+  await drainCatalogJobs({ jobId: accepted.job.id });
+  const interrupted = (await (await jobStatus(accepted)).json()).job;
+  assert.equal(interrupted.status, "queued"); assert.equal(interrupted.attempts, 1); assert.equal(interrupted.error.code, "EMBEDDING_PROVIDER_FAILED");
+  assert.ok(interrupted.availableAt > interrupted.updatedAt);
+  assert.deepEqual(providerBatches, [8, 8, 8]);
+  const completed = db.prepare("SELECT * FROM recipe_embeddings ORDER BY recipe_id,kind,chunk_index").all();
+  assert.equal(completed.length, 16, "each complete provider batch is persisted before the later failure");
+  assert.equal((await drainCatalogJobs({ jobId: accepted.job.id })).processed, 0, "retry waits until its durable backoff expires");
+  db.prepare("UPDATE catalog_jobs SET available_at=? WHERE id=?").run(Date.now() - 1, accepted.job.id);
+  providerBatches.length = 0;
+  globalThis.fetch = async (_url, options) => {
+    const body = JSON.parse(options.body); providerBatches.push(body.input.length);
+    return Response.json({ embeddings: body.input.map(() => [1, 2, 3]) });
+  };
+  await drainCatalogJobs({ jobId: accepted.job.id });
+  const finished = (await (await jobStatus(accepted)).json()).job;
+  assert.equal(finished.status, "succeeded"); assert.equal(finished.attempts, 2);
+  assert.deepEqual(providerBatches, [8, 2, 4], "retry does not request the already persisted search or step vectors");
+  assert.equal(db.prepare("SELECT count(*) AS n FROM recipe_embeddings").get().n, 30);
+  for (const prior of completed) assert.deepEqual(db.prepare("SELECT * FROM recipe_embeddings WHERE recipe_id=? AND kind=? AND chunk_index=?").get(prior.recipe_id, prior.kind, prior.chunk_index), prior);
+  assert.deepEqual(db.prepare("SELECT * FROM recipes").all(), recipesBefore);
+});
+
+test("an import retry after capacity rejection cannot revert a newer reviewed recipe or its vectors", async () => {
+  env.MODEL_OLLAMA_CONCURRENCY = "1";
+  const { acquireModelPermit, releaseModelPermit } = await load("runtime-admission");
+  const { drainCatalogJobs } = await load("catalog-job-runner");
+  const permit = await acquireModelPermit("ollama");
+  try {
+    const response = await importRoute.POST(req([await draft()], { headers: { "Idempotency-Key": "old-reviewed-import" } }));
+    const accepted = await response.json(); assert.equal(response.status, 202);
+    await drainCatalogJobs({ jobId: accepted.job.id });
+    assert.equal((await (await jobStatus(accepted)).json()).job.error.code, "service_busy");
+    assert.equal(modelCalls, 0);
+    await releaseModelPermit(permit);
+    const newer = await importOne(await draft(0, { title: "New reviewed rice", ingredients: [{ name: "rice", measure: "900 g" }] }));
+    assert.equal(newer.version, 2); assert.equal(newer.embedding, "ready");
+    const snapshot = () => Object.fromEntries(["recipes", "recipe_ingredients", "recipe_instruction_sections", "recipe_instruction_steps", "recipe_embeddings"]
+      .map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()]));
+    const before = snapshot(), callsBefore = modelCalls;
+    db.prepare("UPDATE catalog_jobs SET available_at=? WHERE id=?").run(Date.now() - 1, accepted.job.id);
+    await drainCatalogJobs({ jobId: accepted.job.id });
+    const finished = (await (await jobStatus(accepted)).json()).job;
+    assert.equal(finished.status, "failed"); assert.equal(finished.attempts, 2);
+    assert.equal(finished.error.code, "CATALOG_JOB_RECIPE_CHANGED");
+    assert.deepEqual(snapshot(), before); assert.equal(modelCalls, callsBefore);
+    assert.equal((await drainCatalogJobs({ jobId: accepted.job.id })).processed, 0);
+  } finally { await releaseModelPermit(permit); delete env.MODEL_OLLAMA_CONCURRENCY; }
+});
+
+test("invalid request identities and unauthorized status reads cannot create or expose catalog work", async () => {
+  const value = await draft();
+  for (const key of ["", " ", "a".repeat(201)]) assert.equal((await importRoute.POST(req([value], { headers: { "Idempotency-Key": key } }))).status, 400);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM catalog_jobs").get().n, 0);
+  const jobs = await load("catalog-job-store");
+  const { job } = await jobs.enqueueCatalogJob({ actorId: "other-local-actor", actorMode: "local", requestId: "other", input: { kind: "demo" } });
+  const response = await jobStatus({ job, statusUrl: `/api/admin/catalog/jobs/${job.id}` });
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).job, undefined);
+});
+
+test("hosted job status belongs to its submitting administrator and hosted imports never invoke local providers", async () => {
+  const authz = await load("household");
+  const secret = "isolated-catalog-job-auth-secret-for-tests-341"; // gitleaks:allow -- synthetic signing key for disposable test sessions only.
+  const ids = ["job-admin", "job-other-admin", "job-member"], at = new Date().toISOString();
+  for (const id of ids) {
+    db.prepare("INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,?,?,?)").run(id, id, `${id}@example.test`, 1, at, at);
+    db.prepare("INSERT INTO session(id,userId,token,expiresAt,createdAt,updatedAt) VALUES(?,?,?,?,?,?)").run(`${id}-session`, id, `${id}-token`, new Date(Date.now() + 86_400_000).toISOString(), at, at);
+  }
+  const settings = { DB: env.DB, RAG_CHEF_HOSTED: "1", BETTER_AUTH_URL: "https://chef.test", BETTER_AUTH_SECRET: secret,
+    GOOGLE_CLIENT_ID: "isolated-client", GOOGLE_CLIENT_SECRET: "isolated-secret", HOSTED_RECIPE_SOURCE_IDS: "wikibooks",
+    PLATFORM_ADMIN_EMAILS: "job-admin@example.test,job-other-admin@example.test" };
+  function hostedRequest(path, user, body) {
+    const token = `${user}-token`, signature = createHmac("sha256", secret).update(token).digest("base64");
+    return new Request(`https://chef.test${path}`, { headers: { origin: "https://chef.test", "content-type": "application/json",
+      ...(user ? { cookie: `__Secure-better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}` } : {}) },
+      ...(body !== undefined ? { method: "POST", body: JSON.stringify(body) } : {}) });
+  }
+  authz.configureHouseholdRuntime(settings);
+  try {
+    const imported = await importRoute.POST(hostedRequest("/api/admin/recipes/import", "job-admin", { recipes: [await draft()] }));
+    assert.equal(imported.status, 202); const accepted = await imported.json();
+    assert.equal((await jobStatus(accepted, hostedRequest(accepted.statusUrl, "job-admin"))).status, 200);
+    assert.equal((await jobStatus(accepted, hostedRequest(accepted.statusUrl, "job-other-admin"))).status, 404);
+    assert.equal((await jobStatus(accepted, hostedRequest(accepted.statusUrl, "job-member"))).status, 403);
+    assert.equal((await jobStatus(accepted, hostedRequest(accepted.statusUrl))).status, 401);
+    for (const body of [{}, { embeddingsOnly: true }]) assert.equal((await rawAdminRoute.POST(hostedRequest("/api/admin/catalog", "job-admin", body))).status, 403);
+    assert.equal((await importRoute.POST(hostedRequest("/api/admin/recipes/import", "job-admin", { recipes: [await draft()], retryEmbeddingsOnly: true }))).status, 403);
+    const { drainCatalogJobs } = await load("catalog-job-runner"); await drainCatalogJobs({ jobId: accepted.job.id });
+    const finished = (await (await jobStatus(accepted, hostedRequest(accepted.statusUrl, "job-admin"))).json()).job;
+    assert.equal(finished.status, "succeeded"); assert.equal(finished.result.results[0].embedding, "not_required");
+    assert.equal(modelCalls, 0); assert.equal(db.prepare("SELECT count(*) AS n FROM kitchen_state").get().n, 0);
+    authz.configureHouseholdRuntime({ ...settings, PLATFORM_ADMIN_EMAILS: "job-other-admin@example.test" });
+    assert.equal((await jobStatus(accepted, hostedRequest(accepted.statusUrl, "job-admin"))).status, 403);
+  } finally {
+    authz.configureHouseholdRuntime(env);
+    for (const id of ids) db.prepare("DELETE FROM user WHERE id=?").run(id);
+  }
+});
 
 test("catalog normalization preserves procedural instructions and recognises only explicit method labels", async () => {
   await importOne(await draft(0));
@@ -134,6 +312,20 @@ test("full catalog reports unavailable storage instead of a starter fallback", a
   try {
     assert.equal((await catalogRoute.GET()).status, 503);
   } finally { env.DB = binding; }
+});
+
+test("catalog browse and retrieval issue only reads and preserve catalog, kitchen and command receipts", async () => {
+  await importOne(await draft());
+  await kitchen.saveKitchenDocument(0, { schemaVersion: 2, pantry: [{ id: "rice", name: "rice", measure: "500 g" }], meals: {}, shoppingChecked: {}, migratedLegacy: true });
+  const snapshot = () => Object.fromEntries(["recipes", "recipe_sources", "recipe_embeddings", "kitchen_state", "kitchen_command_receipt"].map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()]));
+  const before = snapshot(); sql.queries.length = 0;
+  const catalog = await catalogRoute.GET(new Request("http://localhost:3000/api/recipes/catalog"));
+  assert.equal(catalog.status, 200); assert.equal((await catalog.json()).recipes.length, 1);
+  const found = await searchRoute.GET(new Request("http://localhost:3000/api/recipes?q=Test%20rice"));
+  assert.equal(found.status, 200); assert.equal((await found.json()).recipes.length, 1);
+  assert.ok(sql.queries.length > 0);
+  assert.ok(sql.queries.every(({ sql }) => /^\s*SELECT\b/i.test(sql)), "retrieval never enqueues work, writes embeddings, or changes kitchen state");
+  assert.deepEqual(snapshot(), before);
 });
 
 test("ten reviewed recipes round-trip through real SQL without changing kitchen state", async () => {
@@ -1752,5 +1944,54 @@ test("a proposed vegan change cannot hide retained dairy in a removal tail", asy
     mockChef([], out => ({ ...out, answerStatus: "answered", answer: "Consider this change.", recommendations: [], chefChanges: [{ recipeId: "R1", change, reason: "Proposed adaptation." }] }));
     const result = await (await chefRoute.POST(chefRequest({ query: "Make this recipe vegan.", context: { recipeId: imported.catalogId } }))).json();
     assert.equal(result.answerStatus, "unverified", change); assert.equal(result.verification.reason, "exclusion_conflict"); assert.deepEqual(result.chefChanges, []);
+  }
+});
+
+test("hosted search and Chef retain saved exclusions, isolate source scope, and make no model or live-source calls", async () => {
+  await importOne(await draft(0, { title: "Plain Rice", ingredients: [{ name: "rice", measure: "200 g" }] }));
+  await importOne(await draft(1, { title: "Peanut Rice", ingredients: [{ name: "rice", measure: "200 g" }, { name: "peanut", measure: "50 g" }] }));
+  await importOne(await draft(2, { title: "Chicken Rice", ingredients: [{ name: "rice", measure: "200 g" }, { name: "chicken", measure: "200 g" }] }));
+  await store.upsertApprovedRecipeSource({ id: "local-only", name: "Local-only source", url: "https://example.test/", licenseId: "MIT", permissionBasis: "Original synthetic fixture", approvalStatus: "approved", approvedBy: "Test", allowDisplay: true, allowCache: true, allowIndexText: true, allowEmbed: true });
+  const localRecipe = { ...(await store.listCatalogRecipes())[0].recipe, id: "local-only-rice", title: "Private Local Rice" };
+  await store.upsertCatalogRecipe({ sourceId: "local-only", recipe: localRecipe, contentHash: await embeddings.recipeEmbeddingContentHash(localRecipe), searchText: "Private Local Rice" });
+  const authz = await load("household");
+  const at = new Date().toISOString(), secret = "isolated-catalog-session-signing-secret-38c4a"; // gitleaks:allow -- synthetic signing key for disposable test sessions only.
+  db.prepare("INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,?,?,?)").run("hosted-reader", "Reader", "reader@example.test", 1, at, at);
+  db.prepare("INSERT INTO session(id,userId,token,expiresAt,createdAt,updatedAt) VALUES(?,?,?,?,?,?)").run("reader-session", "hosted-reader", "reader-token", new Date(Date.now() + 86400000).toISOString(), at, at);
+  db.prepare("INSERT INTO organization(id,name,slug,createdAt) VALUES(?,?,?,?)").run("reader-home", "Reader home", "reader-home", at);
+  db.prepare("INSERT INTO household_settings(organizationId,timezone) VALUES(?,?)").run("reader-home", "UTC");
+  db.prepare("INSERT INTO member(id,organizationId,userId,role,createdAt) VALUES(?,?,?,?,?)").run("reader-membership", "reader-home", "hosted-reader", "owner", at);
+  const signature = createHmac("sha256", secret).update("reader-token").digest("base64");
+  const headers = { cookie: `__Secure-better-auth.session_token=${encodeURIComponent(`reader-token.${signature}`)}`, origin: "https://chef.test", "content-type": "application/json", "x-rag-chef-actor": "hosted-reader", "x-rag-chef-household": "reader-home" };
+  const hostedRequest = (path, body) => new Request(`https://chef.test${path}`, { headers, ...(body ? { method: "POST", body: JSON.stringify(body) } : {}) });
+  workerBindings = { ...env, RAG_CHEF_HOSTED: "1", BETTER_AUTH_URL: "https://chef.test", BETTER_AUTH_SECRET: secret, GOOGLE_CLIENT_ID: "isolated-client", GOOGLE_CLIENT_SECRET: "isolated-secret", HOSTED_RECIPE_SOURCE_IDS: "wikibooks" };
+  authz.configureHouseholdRuntime(workerBindings);
+  const networkCalls = [];
+  globalThis.fetch = async url => { networkCalls.push(String(url)); throw new Error("Hosted phase one must not contact any provider or live recipe source"); };
+  try {
+    const context = await authz.requireHousehold(hostedRequest("/api/kitchen"));
+    await kitchen.saveKitchenDocument(0, { schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true,
+      cookingProfile: { version: 1, allergies: ["peanut"], diet: "Vegan", dislikes: [], skillLevel: "Confident beginner", budget: "Medium", equipment: ["Stovetop"] } }, context);
+    const catalog = await catalogRoute.GET(hostedRequest("/api/recipes/catalog"));
+    assert.equal(catalog.status, 200);
+    assert.ok(!(await catalog.json()).recipes.some(recipe => recipe.title === "Private Local Rice"));
+    const searchResponse = await searchRoute.GET(hostedRequest("/api/recipes?q=rice&equipment=Oven"));
+    assert.equal(searchResponse.status, 200);
+    assert.deepEqual((await searchResponse.json()).recipes.map(recipe => recipe.title), ["Plain Rice"]);
+    for (const provider of ["ollama", "openai"]) {
+      const response = await chefRoute.POST(hostedRequest("/api/chef", { query: "Suggest rice for dinner", pantry: ["peanut"], provider, profile: { allergies: [], diet: "No restriction", equipment: ["Oven"] } }));
+      assert.equal(response.status, 200);
+      const answer = await response.json();
+      assert.deepEqual(answer.recipes.map(recipe => recipe.title), ["Plain Rice"]);
+      assert.notEqual(answer.generation, "ai");
+    }
+    const health = await healthRoute.GET(hostedRequest("/api/health?provider=openai"));
+    assert.equal(health.status, 503);
+    assert.equal((await health.json()).capabilities.generation.ready, false);
+    assert.deepEqual(networkCalls, []);
+  } finally {
+    workerBindings = env;
+    authz.configureHouseholdRuntime(env);
+    db.exec("DELETE FROM organization WHERE id='reader-home'; DELETE FROM user WHERE id='hosted-reader';");
   }
 });

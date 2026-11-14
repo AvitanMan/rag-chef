@@ -1,36 +1,19 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
+import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
-// Render the real components, without mounting the kitchen hook or touching data.
-const directory = await mkdtemp(join(tmpdir(), "jff-recipe-presentation-"));
-after(() => rm(directory, { recursive: true, force: true }));
-const require = createRequire(import.meta.url);
-for (const [folder, name, extension] of [
-  ["components", "RagChefApp", "tsx"], ["components", "WeeklyKitchenViews", "tsx"], ["components", "CookingWorkspace", "tsx"],
-  ["components", "IngredientChips", "tsx"], ["components", "Modal", "tsx"],
-  ...["PersonalRecipeAmountsEditor", "CatalogSetup", "ValidatedInput", "ThemeToggle", "PantryImportPreview", "PantryView", "ChefGrounding", "PlanningFacts", "PurchasePreview", "ChosenDinner", "DinnerCompletionReview", "UseSoon", "ShoppingExport", "CookingTechniqueReferences"].map((name) => ["components", name, "tsx"]),
-  ...["recipe-instructions", "retrieval-ranking", "chef-context", "chef-schema", "recipe-query", "pantry-input", "pantry-browser", "pantry-review", "shopping-export", "use-kitchen", "kitchen-state", "kitchen-types", "quantities", "recipe-browser", "recipe-presentation", "kitchen-validation", "kitchen-recovery", "cooking-session", "kitchen-backup", "kitchen-stock", "use-soon", "kitchen-planning", "recipe-constraints", "recipe-safety", "shopping-purchases"].map((name) => ["lib", name, "ts"]),
-]) {
-  const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
-    .replace(/"(react(?:-dom|\/jsx-runtime)?)"/g, (_, module) => JSON.stringify(pathToFileURL(require.resolve(module)).href))
-    .replace(/"\.{1,2}\/(?:lib\/)?([\w-]+)"/g, '"./$1.mjs"');
-  await writeFile(join(directory, `${name}.mjs`), compiled);
-}
-const { RecipeCard, RecipeDrawer } = await import(pathToFileURL(join(directory, "RagChefApp.mjs")).href);
-const { ChefGrounding } = await import(pathToFileURL(join(directory, "ChefGrounding.mjs")).href);
-const { DinnerAmounts, DurablePlanView, DurableShoppingView } = await import(pathToFileURL(join(directory, "WeeklyKitchenViews.mjs")).href);
-const { recipePantryDetails } = await import(pathToFileURL(join(directory, "recipe-browser.mjs")).href);
-const { metricMeasure } = await import(pathToFileURL(join(directory, "recipe-presentation.mjs")).href);
-const { createPlannedMeal } = await import(pathToFileURL(join(directory, "kitchen-state.mjs")).href);
+// Render the actual component graph without mounting hooks or touching data.
+const sources = await createSourceLoader({ name: "recipe-presentation" });
+after(() => sources.dispose());
+const { RecipeCard, RecipeDrawer } = await sources.import("app/components/RagChefApp.tsx");
+const { ChefGrounding } = await sources.import("app/components/ChefGrounding.tsx");
+const { DinnerAmounts, DurablePlanView, DurableShoppingView } = await sources.import("app/components/WeeklyKitchenViews.tsx");
+const { recipePantryDetails } = await sources.import("app/lib/recipe-browser.ts");
+const { metricMeasure } = await sources.import("app/lib/recipe-presentation.ts");
+const { createPlannedMeal } = await sources.import("app/lib/kitchen-state.ts");
+const { applyKitchenCommand } = await sources.import("app/lib/kitchen-commands.ts");
 const noop = () => {};
 const recipe = {
   id: "wikibooks:test", title: "Test Rice", image: null, category: "Dinner", cuisine: "Home cooking",
@@ -260,7 +243,7 @@ test("the changes panel appears only for actual changes to the selected recipe",
   assert.doesNotMatch(drawer({ chefResult: { ...chefResult, chefChanges: [{ ...chefResult.chefChanges[0], recipeId: "other" }] } }), /changes-panel|Use less salt/);
 });
 
-const planProps = { week: "2026-10-19", today: "2026-10-21", setWeek: noop, meals: {}, update: noop, chooseMeal: noop, chooseDay: noop, cookMeal: noop, reviewDate: null, setReviewDate: noop, generatePlan: noop, preferReviewedMains: true, setPreferReviewedMains: noop, openMeal: noop, markCooked: noop, undoCooked: noop, goShopping: noop, catalogState: "ready", retryCatalog: noop, planningNotice: "" };
+const planProps = { week: "2026-10-19", today: "2026-10-21", setWeek: noop, meals: {}, command: noop, chooseMeal: noop, chooseDay: noop, cookMeal: noop, reviewDate: null, setReviewDate: noop, generatePlan: noop, preferReviewedMains: true, setPreferReviewedMains: noop, openMeal: noop, markCooked: noop, undoCooked: noop, goShopping: noop, catalogState: "ready", retryCatalog: noop, planningNotice: "" };
 const plan = (props = {}) => renderToStaticMarkup(createElement(DurablePlanView, { ...planProps, ...props }));
 
 test("compact weekly plan marks only today and provides a current-week shortcut", () => {
@@ -297,7 +280,7 @@ const shoppingItems = [
   { key: "2026-10-19:oil", name: "Oil", measure: "10 ml", requiredMeasure: "10 ml", pantryMeasure: "", needsReview: false, notes: [], recipeTitles: ["Rice dinner"], mealDates: ["2026-10-21"] },
   { key: "2026-10-19:salt", name: "Salt", measure: "Review amount", requiredMeasure: "To taste", pantryMeasure: "", needsReview: true, notes: ["Unclear source amount"], recipeTitles: ["Rice dinner"], mealDates: ["2026-10-21", "2026-10-22"] },
 ];
-const shoppingProps = { items: shoppingItems, checked: { "2026-10-19:rice": true }, update: noop, hasPlan: true, goPlan: noop, reviewMeal: noop, week: "2026-10-19" };
+const shoppingProps = { items: shoppingItems, checked: { "2026-10-19:rice": true }, command: noop, hasPlan: true, goPlan: noop, reviewMeal: noop, week: "2026-10-19" };
 const shopping = (props = {}) => renderToStaticMarkup(createElement(DurableShoppingView, { ...shoppingProps, ...props }));
 
 test("shopping keeps unchecked review rows first and bought items collapsed below", () => {
@@ -338,9 +321,10 @@ test("shopping check, uncheck and reset actions alter only checks in the selecte
     if (!element || typeof element !== "object") return [];
     return [element, ...[element.props?.children].flat(Infinity).flatMap(children)];
   };
-  let state = { pantry: [{ id: "rice", name: "Rice", measure: "100 g" }], meals: { saved: true }, shoppingChecked: { "2026-10-19:rice": true, "2026-10-26:rice": true } };
+  let state = { schemaVersion: 2, migratedLegacy: true, pantry: [{ id: "rice", name: "Rice", measure: "100 g" }], meals: { "2026-10-19": createPlannedMeal("2026-10-19", recipe) }, shoppingChecked: { "2026-10-19:rice": true, "2026-10-26:rice": true } };
   const pantry = state.pantry, meals = state.meals;
-  const props = { ...shoppingProps, update: (change) => { state = change(state); } };
+  let sequence = 0;
+  const props = { ...shoppingProps, command: (intent) => { state = applyKitchenCommand(state, { ...intent, commandId: `check-${sequence++}`, expectedRevision: 0 }, { revision: 0 }); } };
   const nodes = children(DurableShoppingView(props));
   nodes.find((node) => node.props?.["aria-label"] === "Bought Salt Review amount").props.onChange({ target: { checked: true } });
   assert.equal(state.shoppingChecked["2026-10-19:salt"], true);
@@ -361,7 +345,7 @@ test("an unsupported pinned question keeps the original source accessible withou
 });
 
 test("calculated dinner amounts label overrides separately from original source evidence", async () => {
-  const { PlanningFacts } = await import(pathToFileURL(join(directory, "PlanningFacts.mjs")).href);
+  const { PlanningFacts } = await sources.import("app/components/PlanningFacts.tsx");
   const html = renderToStaticMarkup(createElement(PlanningFacts, { result: { resolvedContext: { servings: 4 }, planningFacts: [{ recipeId: recipe.id, ingredientIndex: 0, name: "rice", measure: "350 g", needsReview: false, basis: "saved_override" }] } }));
   assert.match(html, /Your dinner amounts/); assert.match(html, /4 servings/); assert.match(html, /350 g/); assert.match(html, /Saved amount override/);
   const source = grounding({ answerKind: "planning_quantities", generation: "catalog_fallback", resolvedContext: { recipeId: recipe.id }, evidenceRetrieval: { [recipe.id]: { method: "full_recipe", complete: false } } });
