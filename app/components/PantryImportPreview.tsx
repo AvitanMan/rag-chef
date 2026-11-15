@@ -6,10 +6,13 @@ import { pantryInputProblem, type PantryInputRow } from "../lib/pantry-input";
 import { measureInputProblem } from "../lib/kitchen-validation";
 import { canonicalIngredient, parseMeasure } from "../lib/quantities";
 import type { PantryStock } from "../lib/kitchen-types";
+import { pantryLocationLabel, withPantryLocation } from "../lib/pantry-location";
+import { PantryLocationSelect } from "./PantryLocationSelect";
 
-export function PantryImportPreview({ rows, pantry, change, close, confirm, disabled, editExisting }: {
+export function PantryImportPreview({ rows, pantry, change, close, confirm, disabled, editExisting, submitError }: {
   rows: PantryInputRow[]; pantry: PantryStock[]; change: (rows: PantryInputRow[]) => void;
   close: () => void; confirm: () => void; disabled: boolean; editExisting?: (id: string) => void;
+  submitError?: string;
 }) {
   const [nativeDateErrors, setNativeDateErrors] = useState<string[]>([]);
   const error = pantryInputProblem(rows, pantry);
@@ -38,7 +41,7 @@ export function PantryImportPreview({ rows, pantry, change, close, confirm, disa
       if (!event.currentTarget.reportValidity() || error || nativeDateErrors.some(Boolean) || disabled) return;
       confirm();
     }}>
-      <header><h2>Review pantry ingredients</h2><p>{rows.length} ingredients · Edit names, optional amounts and use-by dates. Each row adds a separate batch; existing stock stays as it is.</p></header>
+      <header><h2>Review pantry ingredients</h2><p>{rows.length} ingredients · Edit names, locations, optional amounts and use-by dates. Check suggested locations before confirming. Each row adds a separate batch; existing stock stays as it is.</p></header>
       <div className="pantry-import-rows" role="region" aria-label="Ingredients to import" tabIndex={0}>
         {rows.map((row, index) => {
           const rowError = pantryInputProblem([row], []).replace(/^Ingredient 1 /, `Ingredient ${index + 1} `);
@@ -50,6 +53,8 @@ export function PantryImportPreview({ rows, pantry, change, close, confirm, disa
             <label>Amount {index + 1}<input value={row.measure} maxLength={160} aria-invalid={Boolean(measureInputProblem(row.measure))} aria-describedby={description} placeholder="Unknown" onChange={(event) => change(rows.map((item, i) => i === index ? { ...item, measure: event.target.value } : item))} /></label>
             <label>Use by {index + 1}<input type="date" min="0001-01-01" max="9999-12-31" value={row.useBy ?? ""} aria-invalid={Boolean(dateError)} aria-describedby={dateDescription}
               onInput={(event) => inputDate(index, event.currentTarget)} onInvalid={(event) => captureDateValidity(index, event.currentTarget)} /></label>
+            <PantryLocationSelect label={`Location ${index + 1}`} value={row.location} disabled={disabled}
+              onChange={location => change(rows.map((item, i) => i === index ? withPantryLocation(item, location) : item))} />
             <button type="button" className="text-button" aria-label={`Remove preview ingredient ${index + 1}`} onClick={() => {
               setNativeDateErrors((errors) => errors.filter((_, i) => i !== index));
               change(rows.filter((_, i) => i !== index));
@@ -60,14 +65,14 @@ export function PantryImportPreview({ rows, pantry, change, close, confirm, disa
             {repeated.includes(names[index]) && <small role="status">This ingredient appears in more than one preview row. Each row will be added as a separate batch; amounts and dates will not be merged.</small>}
             {matching[index].length > 0 && <small>Already in your pantry. {editExisting && "Correct an existing batch instead if you are updating it. "}Confirming adds a new batch without changing existing stock.</small>}
             {matching[index].map((stock, stockIndex) => <small key={stock.id}>
-              Existing batch {stockIndex + 1}: <strong>{stock.name}</strong> · {stock.measure || "Amount unknown"} · {stock.useBy ? `Use by ${stock.useBy}` : "Use-by date unknown"}
+              Existing batch {stockIndex + 1}: <strong>{stock.name}</strong> · {stock.measure || "Amount unknown"} · {stock.useBy ? `Use by ${stock.useBy}` : "Use-by date unknown"} · {pantryLocationLabel(stock.location)}
               {editExisting && <> <button type="button" className="text-button" disabled={disabled} aria-label={`Correct existing ${stock.name} batch ${stockIndex + 1} for ingredient ${index + 1}`} onClick={() => editExisting(stock.id)}>Correct existing batch</button></>}
             </small>)}
             {rowError ? <small id={`pantry-preview-error-${index}`} className="field-error">{rowError}</small> : row.measure && !parseMeasure(row.measure) && <small>Amount kept as a note; check units before shopping.</small>}
           </div>;
         })}
       </div>
-      <footer>{error && <p role="alert" className="field-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={Boolean(error) || disabled}>{confirmLabel}</button></div></footer>
+      <footer>{(error || submitError) && <p role="alert" className="field-error">{error || submitError}</p>}<div className="modal-actions"><button type="button" className="secondary-button" onClick={close}>Cancel</button><button type="submit" className="primary-button" disabled={Boolean(error) || disabled}>{confirmLabel}</button></div></footer>
     </form>
   </Modal>;
 }

@@ -26,11 +26,16 @@ pnpm dev
 ```
 
 Open [localhost:3000](http://localhost:3000) and select **Load starter recipes**.
-Three original MIT-licensed recipes let you try the complete flow without an
+Eleven original MIT-licensed recipes, including eight everyday dinners, let you try the complete flow without an
 account, model, or recipe download. Your pantry starts empty; adding starters
 changes only the catalog. Starter setup runs in the background and shows progress
 until the recipes are ready. The larger third-party evaluation corpus is never
 loaded as application data.
+
+For an existing collection, open **Recipes → Everyday dinners → Add everyday dinners**.
+The new collection covers pasta, chicken, rice, eggs and potatoes, with complete
+preparation steps. These are original recipes awaiting cooking trials; total times
+are unmeasured. See the [collection notes](docs/everyday-dinners.md).
 
 1. Review allergies, diet, and equipment in **Settings**; add what you have to **Pantry**.
 2. Choose a dinner. Review portions and missing ingredients in its dinner panel.

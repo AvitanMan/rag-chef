@@ -1,6 +1,6 @@
 import type { KitchenCommand } from "./kitchen-commands";
 import { EMPTY_KITCHEN } from "./kitchen-types";
-import { KitchenValidationError, MAX_KITCHEN_BODY_BYTES, measureInputProblem, validateCookingProfile, validateKitchenState } from "./kitchen-validation";
+import { KitchenValidationError, MAX_KITCHEN_BODY_BYTES, measureInputProblem, pantryLocationInputProblem, validateCookingProfile, validateKitchenState } from "./kitchen-validation";
 
 export const MAX_KITCHEN_COMMAND_BYTES = MAX_KITCHEN_BODY_BYTES;
 type Entry = Record<string, unknown>;
@@ -88,12 +88,13 @@ export function parseKitchenCommand(value: unknown): KitchenCommand {
         shape(["week", "today", "drafts", "occurredAt"]); date(command.week); date(command.today); timestamp(command.occurredAt);
         const drafts = list(command.drafts, 500); const ids = new Set(), keys = new Set();
         for (const value of drafts) {
-          const draft = object(value); fields(draft, ["key", "name", "measure", "pantryId"], ["useBy", "cycleId"]);
+          const draft = object(value); fields(draft, ["key", "name", "measure", "pantryId"], ["useBy", "cycleId", "location"]);
           text(draft.key, 500); text(draft.name); amount(draft.measure); id(draft.pantryId);
           if (!draft.key.startsWith(`${command.week}:`) || ids.has(draft.pantryId) || keys.has(draft.key)) invalid("Invalid or duplicate purchase item.");
           ids.add(draft.pantryId); keys.add(draft.key);
           if (Object.hasOwn(draft, "useBy") && draft.useBy !== "") date(draft.useBy);
           if (Object.hasOwn(draft, "cycleId")) id(draft.cycleId);
+          if (Object.hasOwn(draft, "location") && (draft.location === undefined || pantryLocationInputProblem(draft.location))) invalid("Invalid storage location.");
         }
         break;
       }

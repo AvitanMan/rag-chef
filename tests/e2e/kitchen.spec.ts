@@ -1,7 +1,7 @@
 import { isKitchenWrite, kitchenWriteRevision } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
-import { showPantryBatches } from "./pantry-helpers";
+import { openPantryAdd, showPantryBatches } from "./pantry-helpers";
 
 const emptyState = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: false });
 async function readKitchen(request: APIRequestContext) { return (await request.get("/api/kitchen")).json(); }
@@ -25,7 +25,8 @@ test("fresh kitchen browses synthetic recipes and persists a selected dinner", a
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
   const card = page.locator(".recipe-card").filter({ has: page.getByRole("heading", { name: "Tomato Rice", exact: true }) });
   await expect(card).toBeVisible();
-  await expect(card).toContainText("0 of 2 ingredients in pantry");
+  await expect(card.locator(".recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: No food ingredients matched yet.");
+  await expect(card.locator(".recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: rice, tomato");
   await card.getByRole("button", { name: /^Choose for tonight:/ }).click();
   await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
   await expect.poll(async () => Object.values((await (await request.get("/api/kitchen")).json()).state?.meals ?? {}).length).toBe(1);
@@ -67,13 +68,15 @@ test("zero stock is unavailable and removing duplicate names preserves the other
   await page.goto("/"); await navigate(page, "Plan");
   await navigate(page, "Recipes");
   await page.getByRole("searchbox", { name: "Search recipes" }).fill("Tomato Rice");
-  await expect(page.locator(".recipe-card")).toContainText("1 of 2 ingredients in pantry");
+  await expect(page.locator(".recipe-card .recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: rice");
+  await expect(page.locator(".recipe-card .recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: tomato");
   await navigate(page, "Pantry");
   await page.getByRole("button", { name: "Remove rice", exact: true }).first().click();
   await expect.poll(async () => (await readKitchen(request)).state.pantry.map((row: { id: string }) => row.id)).toEqual(["rice-positive", "tomato-zero"]);
   await page.getByRole("textbox", { name: "Available rice", exact: true }).fill("0 g");
   await navigate(page, "Recipes");
-  await expect(page.locator(".recipe-card")).toContainText("0 of 2 ingredients in pantry");
+  await expect(page.locator(".recipe-card .recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: No food ingredients matched yet.");
+  await expect(page.locator(".recipe-card .recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: rice, tomato");
 });
 
 test("allergy aliases and diet conflicts agree across browsing, planning and Chef", async ({ page, request }) => {
@@ -178,6 +181,7 @@ test("offline pantry edits survive closing the tab and can be explicitly recover
   await page.goto("/"); await navigate(page, "Plan");
   await navigate(page, "Pantry");
   await context.setOffline(true);
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("textbox", { name: "Available beans", exact: true }).fill("400 g");
@@ -214,10 +218,12 @@ test("two tabs expose a revision conflict and keep server and browser versions u
       }
       await route.continue();
     });
+    await openPantryAdd(other);
     await other.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
     await other.getByRole("button", { name: "Add to pantry", exact: true }).click();
     await writing;
     const pageWrite = page.waitForRequest(request => isKitchenWrite(request));
+    await openPantryAdd(page);
     await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice");
     await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
     expect(kitchenWriteRevision(await pageWrite)).toBe(otherRevision);

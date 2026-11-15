@@ -456,7 +456,8 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
       const before = match.stock.measure;
       const after = formatMeasure(cleanNumber(match.parsed.quantity - consumed), match.parsed.unit);
       deductions.push({ pantryId: match.stock.id, name: match.stock.name, before, after,
-        ...(match.stock.useBy ? { useBy: match.stock.useBy } : {}) });
+        ...(match.stock.useBy ? { useBy: match.stock.useBy } : {}),
+        ...(match.stock.location ? { location: match.stock.location } : {}) });
       match.stock.measure = after;
     }
     const covered = cleanNumber(requirement.quantity - remaining);
@@ -638,7 +639,8 @@ function previewMealUndo(state: KitchenState, date: string): { state: KitchenSta
       for (let suffix = 2; existingIds.has(id); suffix += 1) id = `${base}:${suffix}`;
     }
     existingIds.add(id);
-    pantry.push({ id, name, measure: formatMeasure(quantity, before.unit), ...(deduction.useBy ? { useBy: deduction.useBy } : {}) });
+    pantry.push({ id, name, measure: formatMeasure(quantity, before.unit), ...(deduction.useBy ? { useBy: deduction.useBy } : {}),
+      ...(deduction.location ? { location: deduction.location } : {}) });
   }
   // Check the complete restoration before changing either stock or completion.
   // Restoring into existing rows is still allowed when the pantry is full.
