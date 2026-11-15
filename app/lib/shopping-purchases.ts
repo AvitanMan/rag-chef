@@ -1,9 +1,9 @@
-import type { KitchenState, PantryStock, ShoppingPurchase } from "./kitchen-types";
+import type { KitchenState, PantryLocation, PantryStock, ShoppingPurchase } from "./kitchen-types";
 import { buildShoppingList, parseMeasure, type ShoppingItem } from "./quantities";
 import { addDateDays } from "./kitchen-state";
-import { measureInputProblem } from "./kitchen-validation";
+import { measureInputProblem, pantryLocationInputProblem } from "./kitchen-validation";
 
-export interface PurchaseDraft { key: string; cycleId?: string; name: string; measure: string; useBy?: string; pantryId: string }
+export interface PurchaseDraft { key: string; cycleId?: string; name: string; measure: string; useBy?: string; location?: PantryLocation; pantryId: string }
 
 export interface ShoppingPurchaseSelection { purchaseId: string; key: string; cycleId?: string; pantryId: string }
 
@@ -40,7 +40,7 @@ export function beginShoppingPurchaseCycle(state: KitchenState, previous: Shoppi
     shoppingCycles: { ...state.shoppingCycles, [previous.key]: cycleId } };
 }
 
-export function purchaseDraftProblems(draft: Pick<PurchaseDraft, "measure" | "useBy">): { measure: string; useBy: string } {
+export function purchaseDraftProblems(draft: Pick<PurchaseDraft, "measure" | "useBy" | "location">): { measure: string; useBy: string; location: string } {
   const measure = measureInputProblem(draft.measure)
     || (parseMeasure(draft.measure)?.quantity === 0 ? "Enter a positive purchased amount, or leave an unknown amount blank." : "");
   let useBy = "";
@@ -49,7 +49,7 @@ export function purchaseDraftProblems(draft: Pick<PurchaseDraft, "measure" | "us
     if (typeof draft.useBy !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(draft.useBy) || Number(draft.useBy.slice(0, 4)) < 1
       || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== draft.useBy) useBy = "Enter a valid use-by date in YYYY-MM-DD format, or leave it blank.";
   }
-  return { measure, useBy };
+  return { measure, useBy, location: pantryLocationInputProblem(draft.location) };
 }
 
 export function purchasePreviewProblem(state: KitchenState, week: string, today: string, drafts: PurchaseDraft[]): string {
@@ -63,7 +63,7 @@ export function purchasePreviewProblem(state: KitchenState, week: string, today:
     if (!source || source.name !== draft.name || draft.cycleId !== state.shoppingCycles?.[draft.key] || keys.has(draft.key) || ids.has(draft.pantryId)) return "Shopping or pantry changed. Close this preview and review the current bought items.";
     keys.add(draft.key); ids.add(draft.pantryId);
     const problems = purchaseDraftProblems(draft);
-    if (problems.measure || problems.useBy) return problems.measure || problems.useBy;
+    if (problems.measure || problems.useBy || problems.location) return problems.measure || problems.useBy || problems.location;
   }
   return "";
 }
@@ -72,13 +72,14 @@ export function purchasePreviewProblem(state: KitchenState, week: string, today:
 export function applyBoughtItems(state: KitchenState, week: string, today: string, drafts: PurchaseDraft[], id: string, at: string): KitchenState {
   if (state.shoppingPurchases?.some((purchase) => purchase.id === id) || purchasePreviewProblem(state, week, today, drafts)) return state;
   const items = drafts.map((draft) => ({ key: draft.key, ...(draft.cycleId ? { cycleId: draft.cycleId } : {}),
-    pantry: { id: draft.pantryId, name: draft.name, measure: draft.measure.trim(), ...(draft.useBy ? { useBy: draft.useBy } : {}) } }));
+    pantry: { id: draft.pantryId, name: draft.name, measure: draft.measure.trim(), ...(draft.useBy ? { useBy: draft.useBy } : {}),
+      ...(draft.location ? { location: draft.location } : {}) } }));
   return { ...state, pantry: [...state.pantry, ...items.map((item) => item.pantry)],
     shoppingPurchases: [...(state.shoppingPurchases ?? []), { id, week, at, items }] };
 }
 
 function sameStock(current: PantryStock | undefined, original: PantryStock): boolean {
-  if (!current || current.name !== original.name || current.useBy !== original.useBy) return false;
+  if (!current || current.name !== original.name || current.useBy !== original.useBy || current.location !== original.location) return false;
   if (current.measure === original.measure) return true;
   const amount = parseMeasure(current.measure), purchased = parseMeasure(original.measure);
   // Cooking undo can normalize units. Unknown notes must still match verbatim.

@@ -1,7 +1,7 @@
 Third-party recipe content
 
 Original starter recipes
-app/lib/demo-recipes.ts contains original RAG Chef starter recipes distributed
+app/lib/demo-recipes.ts and app/lib/everyday-recipes.ts contain original RAG Chef recipes distributed
 under this repository's MIT license. They are separate from both the synthetic
 test fixtures and the third-party evaluation corpus described below. Loading
 them is an explicit setup action; it does not copy the user's kitchen.

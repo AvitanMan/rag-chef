@@ -28,14 +28,17 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   expect(acceptedJob.job.kind).toBe("demo"); expect(acceptedJob.job.id).toBeTruthy();
   expect(acceptedJob.statusUrl).toBe(`/api/admin/catalog/jobs/${acceptedJob.job.id}`);
   expect(setupKeys[0]).toBeTruthy(); expect(setupKeys[1]).toBe(setupKeys[0]);
+  await expect(page.locator(".recipe-card").first()).toBeVisible();
+  await page.locator(".side-nav, .mobile-nav").getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
   await expect(page.getByRole("button", { name: "Choose for tonight: Tomato Chickpea Pan", exact: true })).toBeVisible();
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state).not.toBeNull();
   const initial = await (await request.get("/api/kitchen")).json();
   expect(initial.state.pantry).toEqual([]);
   expect(initial.state.meals).toEqual({});
   const catalog = (await (await request.get("/api/recipes/catalog")).json()).recipes;
-  expect(catalog).toHaveLength(3);
+  expect(catalog).toHaveLength(11);
   expect(catalog.every((recipe: { source: { licenseId: string } }) => recipe.source.licenseId === "MIT")).toBeTruthy();
+  expect(catalog.filter((recipe: { tags: string[] }) => recipe.tags.includes("everyday"))).toHaveLength(8);
   // A retried setup is idempotent and does not rewrite the kitchen.
   const repeated = await request.post("/api/admin/catalog/demo", { headers: { "idempotency-key": "repeat-starter-setup" } });
   expect(repeated.status()).toBe(202);
@@ -43,7 +46,9 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   await expect.poll(async () => (await (await request.get(repeatedJob.statusUrl)).json()).job.status).toBe("succeeded");
   const retry = await request.post("/api/admin/catalog/demo", { headers: { "idempotency-key": "repeat-starter-setup" } });
   expect(retry.status()).toBe(202); expect((await retry.json()).job.id).toBe(repeatedJob.job.id);
-  expect((await (await request.get("/api/recipes/catalog")).json()).recipes).toHaveLength(3);
+  const repeatedCatalog = (await (await request.get("/api/recipes/catalog")).json()).recipes;
+  expect(repeatedCatalog).toHaveLength(11);
+  expect([...repeatedCatalog].sort((a, b) => a.id.localeCompare(b.id))).toEqual([...catalog].sort((a, b) => a.id.localeCompare(b.id)));
   expect(await (await request.get("/api/kitchen")).json()).toEqual(initial);
   expect((await request.post("/api/admin/catalog/demo", { headers: { origin: "https://untrusted.example" } })).status()).toBe(403);
   await page.getByRole("button", { name: "Choose for tonight: Tomato Chickpea Pan", exact: true }).click();

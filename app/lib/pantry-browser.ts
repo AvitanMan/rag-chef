@@ -120,15 +120,15 @@ export function pantryBatchProblem(stock: PantryStock): string {
     validateKitchenState({ ...EMPTY_KITCHEN, pantry: [stock] });
     return "";
   } catch (error) {
-    return error instanceof Error ? error.message.replace(/state\.pantry\[0\]\.(name|measure|useBy)/g,
-      (_, field: string) => field === "name" ? "Ingredient name / form" : field === "measure" ? "Amount on hand" : "Entered planning date")
+    return error instanceof Error ? error.message.replace(/state\.pantry\[0\]\.(name|measure|useBy|location)/g,
+      (_, field: string) => field === "name" ? "Ingredient name / form" : field === "measure" ? "Amount on hand" : field === "location" ? "Storage location" : "Entered planning date")
       : "Check this batch’s name, amount and date.";
   }
 }
 
 export function samePantryBatch(current: PantryStock | undefined, snapshot: PantryStock): boolean {
   return Boolean(current && current.id === snapshot.id && current.name === snapshot.name
-    && current.measure === snapshot.measure && current.useBy === snapshot.useBy);
+    && current.measure === snapshot.measure && current.useBy === snapshot.useBy && current.location === snapshot.location);
 }
 
 /** Call inside the parent's functional update, not just against rendered props. */

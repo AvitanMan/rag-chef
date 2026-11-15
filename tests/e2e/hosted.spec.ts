@@ -2,6 +2,7 @@ import { isKitchenWrite } from "./kitchen-requests";
 import { createHmac } from "node:crypto";
 import { test, expect, type BrowserContext, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
+import { openPantryManagement } from "./pantry-helpers";
 
 test.skip(process.env.RAG_CHEF_HOSTED_TEST !== "1", "Requires disposable hosted identities and signed sessions.");
 const baseURL = process.env.RAG_CHEF_TEST_BASE_URL!;
@@ -50,6 +51,7 @@ async function pantry(page: Page) {
   await navigate(page, "Pantry");
   await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeVisible();
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  await openPantryManagement(page);
 }
 
 test("anonymous pages hide kitchens and protected APIs reject anonymous access", async ({ page, request }) => {
@@ -124,7 +126,7 @@ test("hosted pantry stocktake changes the shared household and preserves another
     await save(context.request, home.headers, { ...emptyState(), pantry: [{ id: "review-rice", name: "rice", measure: "" }, { id: "neighbor-beans", name: "beans", measure: "1 kg" }] });
     await pantry(page);
     const before = await document(context.request);
-    await page.getByRole("region", { name: "Pantry stocktake", exact: true }).getByRole("button", { name: "Review pantry", exact: true }).click();
+    await page.getByRole("region", { name: "Pantry stocktake", exact: true }).getByRole("button", { name: "Add amounts for better shopping estimates", exact: true }).click();
     const review = page.getByRole("dialog", { name: "Review batch rice", exact: true });
     await expect(review).toBeVisible();
     expect(await document(context.request)).toEqual(before);
@@ -146,7 +148,7 @@ test("revoking a member rejects an open stocktake draft and removes private brow
     await joinKitchen(ownerContext, context, member);
     const before = await save(ownerContext.request, home.headers, { ...emptyState(), pantry: [{ id: "revoked-rice", name: "rice", measure: "" }] });
     await pantry(page);
-    await page.getByRole("region", { name: "Pantry stocktake", exact: true }).getByRole("button", { name: "Review pantry", exact: true }).click();
+    await page.getByRole("region", { name: "Pantry stocktake", exact: true }).getByRole("button", { name: "Add amounts for better shopping estimates", exact: true }).click();
     const review = page.getByRole("dialog", { name: "Review batch rice", exact: true });
     await review.getByRole("textbox", { name: "Amount on hand", exact: true }).fill("9 kg");
     await page.evaluate(({ user, household }) => {

@@ -354,26 +354,29 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     setSavePhase(paused.current ? "conflict" : "pending");
   }, [cache]);
 
-  const dispatch = useCallback((value: KitchenCommand) => {
+  const dispatch = useCallback((value: KitchenCommand): boolean => {
+    if (!ready) return false;
     try {
       // Match the JSON wire representation, including omitted optional fields.
       const command = parseKitchenCommand(JSON.parse(JSON.stringify(value)));
       const next = applyKitchenCommand(latest.current, command, { revision: revision.current, canEditProfile });
-      if (next === latest.current) return;
-      if (writes.current.some(write => write.kind === "command" && write.command.commandId === command.commandId)) return;
+      if (next === latest.current) return false;
+      if (writes.current.some(write => write.kind === "command" && write.command.commandId === command.commandId)) return false;
       const preceding = !writes.current.length && savedJson.current !== JSON.stringify(latest.current) ? appendKitchenSnapshot([], latest.current) : writes.current;
       writes.current = appendKitchenCommand(preceding, command);
       latest.current = next; setState(next);
       cache(next, true);
       setSavePhase(paused.current ? "conflict" : "pending");
+      return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "The kitchen command could not be prepared.");
       setSavePhase(paused.current ? "conflict" : "error");
+      return false;
     }
-  }, [cache, canEditProfile]);
+  }, [cache, canEditProfile, ready]);
 
-  const command = useCallback((input: KitchenCommandInput) => {
-    dispatch({ ...input, commandId: crypto.randomUUID(), expectedRevision: revision.current });
+  const command = useCallback((input: KitchenCommandInput): boolean => {
+    return dispatch({ ...input, commandId: crypto.randomUUID(), expectedRevision: revision.current });
   }, [dispatch]);
 
   const refreshSavedKitchen = useCallback(async (signal?: AbortSignal): Promise<KitchenDocument | null> => {

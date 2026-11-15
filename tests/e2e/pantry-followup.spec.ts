@@ -339,14 +339,14 @@ test("usage and Undo double-clicks each apply once, preserving the batch ID, rec
   // The second pointer click can dismiss the resized confirmation; persistence must still be exactly once.
   if (await editor.isVisible()) await finishEditor(editor);
   await expect(undoPanel(page)).toHaveCount(1);
-  await expect(undoPanel(page)).toContainText("rice: 500 g");
-  await expect(undoPanel(page)).toContainText("rice: 400 g");
+  await expect(undoPanel(page)).toContainText("rice: Unsorted · 500 g");
+  await expect(undoPanel(page)).toContainText("rice: Unsorted · 400 g");
   expect(writes).toHaveLength(1);
   expect((await document(request)).revision).toBe(before.revision + 1);
   await undoPanel(page).getByRole("button", { name: "Undo last batch edit", exact: true }).dblclick();
   await expectSaved(page, request, state);
   await expect(undoPanel(page)).toHaveCount(0);
-  await expect(page.getByText("Undid the last batch edit for rice. Follow the kitchen save indicator for sync status.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Undid the last batch edit for rice.", { exact: true })).toBeVisible();
   await page.clock.runFor(700);
   expect(writes).toHaveLength(2);
   expect((await document(request)).revision).toBe(before.revision + 2);
@@ -474,7 +474,7 @@ test("a later inline edit invalidates Undo even when its new amount is physicall
   await expectSaved(page, request, replaceStock(state, { ...stock, measure: "0.4 kg" }));
   await expect(undoPanel(page)).toContainText("This batch has been edited or used since this change. Undo would overwrite later changes.");
   await expect(undoPanel(page).getByRole("button", { name: "Undo last batch edit", exact: true })).toBeDisabled();
-  await expect(undoPanel(page)).toContainText("rice: 400 g");
+  await expect(undoPanel(page)).toContainText("rice: Unsorted · 400 g");
   const before = await document(request), writes = watchWrites(page);
   await expectReadOnly(page, request, before, writes);
 });
@@ -503,8 +503,8 @@ for (const change of ["changed", "removed"] as const) {
     await expect(editor.getByLabel("Amount on hand", { exact: true })).toBeDisabled();
     await editor.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(undoPanel(page)).toHaveCount(1);
-    await expect(undoPanel(page)).toContainText("rice: 500 g");
-    await expect(undoPanel(page)).toContainText("rice: 400 g");
+    await expect(undoPanel(page)).toContainText("rice: Unsorted · 500 g");
+    await expect(undoPanel(page)).toContainText("rice: Unsorted · 400 g");
     await expect(undoPanel(page)).toContainText(change === "changed" ? "Undo would overwrite later changes" : "This batch has been removed. Undo will not recreate it.");
     await expect(undoPanel(page).getByRole("button", { name: "Undo last batch edit", exact: true })).toBeDisabled();
     if (change === "removed") {

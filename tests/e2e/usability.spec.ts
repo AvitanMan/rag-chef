@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
-import { showPantryBatches } from "./pantry-helpers";
+import { openPantryAdd, showPantryBatches } from "./pantry-helpers";
 
 async function discussFirstRecipe(page: Page) {
   await page.locator(".recipe-card").first().getByRole("button", { name: /^View / }).click();
@@ -343,6 +343,7 @@ test("Today is immediately actionable and saving reveals and focuses the new din
 for (const count of [1, 18, 50]) {
   test(`${count}-row import keeps actions visible, including while editing the last row`, async ({ page }) => {
     await page.goto("/"); await navigate(page, "Pantry");
+    await openPantryAdd(page);
     const input = page.getByRole("textbox", { name: "New pantry ingredient", exact: true });
     const text = Array.from({ length: count }, (_, i) => `ingredient ${i}: 100 g`).join("\n");
     await input.fill(text); await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
@@ -363,7 +364,7 @@ for (const count of [1, 18, 50]) {
 
 test("reviewed mains lead instant picks and API failure keeps safe picks with retry", async ({ page, request }) => {
   const catalog = await (await request.get("/api/recipes/catalog")).json();
-  const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { ...catalog.metadataByRecipeId[r.id], coreDinner: r.id === "fixture-vegan-beans", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
+  const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { ...catalog.metadataByRecipeId[r.id], coreDinner: r.id === "fixture-vegan-beans", dinnerRole: r.id === "fixture-vegan-beans" ? "main" : "side", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
   await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
   await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "200 g" }, { id: "tomato", name: "tomato", measure: "2" }] });
   await page.goto("/"); await navigate(page, "Recipes");

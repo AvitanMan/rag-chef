@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { Recipe, RecipeMetadata } from "../../app/lib/recipe-types";
 import type { KitchenState } from "../../app/lib/kitchen-types";
-import { showPantryBatches } from "./pantry-helpers";
+import { openPantryAdd, showPantryBatches } from "./pantry-helpers";
 
 const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL;
 if (!modelURL || new URL(modelURL).hostname !== "127.0.0.1") throw new Error("Use the disposable model stub through pnpm test:e2e.");
@@ -56,7 +56,8 @@ test.describe("instant dinner picks", () => {
     await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
     await expect(page.locator(".recipe-card")).toHaveCount(3);
     await expect(page.locator(".recipe-card").first()).toContainText("Tomato Rice");
-    await expect(page.locator(".recipe-card").first()).toContainText("2 of 2 ingredients in pantry");
+    await expect(page.locator(".recipe-card").first().locator(".recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: rice, tomato");
+    await expect(page.locator(".recipe-card").first().locator(".recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: No other food ingredients missing by name.");
     await expect(page.locator(".recipe-card").first()).toContainText("Names only · amounts not checked");
     await expect(page.getByRole("button", { name: "Find my dinner", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh matches", exact: true })).toHaveCount(0);
@@ -141,20 +142,23 @@ test.describe("instant dinner picks", () => {
   });
 
   test("instant picks update as stock expires, is added, and becomes depleted", async ({ page, request }) => {
+    const tomatoCard = page.locator(".recipe-card").filter({ has: page.getByRole("heading", { name: "Tomato Rice", exact: true }) });
     await page.clock.install({ time: new Date("2026-10-22T23:59:45+03:00") });
     await saveKitchen(request, { ...emptyKitchen(), pantry: [{ id: "rice", name: "rice", measure: "200 g", useBy: "2026-10-22" }, { id: "tomato-zero", name: "tomato", measure: "0" }] });
     await openChef(page);
     await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
-    await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
+    await expect(tomatoCard.locator(".recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: rice");
+    await expect(tomatoCard.locator(".recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: tomato");
     await page.clock.fastForward(31_000);
     await expect(page.getByRole("heading", { name: "Dinner ideas", exact: true })).toBeVisible();
-    await expect(page.locator(".recipe-card").filter({ hasText: "0 of 2 ingredients in pantry" })).toHaveCount(3);
+    await expect(page.locator(".recipe-card .recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText(Array(3).fill("Have: No food ingredients matched yet."));
     await page.getByRole("button", { name: "+ Add ingredient", exact: true }).click();
     await page.getByRole("textbox", { name: "Ingredient name", exact: true }).fill("tomato");
     await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
     await page.getByRole("button", { name: "Confirm new batch", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Pantry picks", exact: true })).toBeVisible();
-    await expect(page.locator(".recipe-card").first().locator(".pantry-coverage")).toHaveText("1 of 2 ingredients in pantry");
+    await expect(tomatoCard.locator(".recipe-pantry-fit p").filter({ hasText: /^Have:/ })).toHaveText("Have: tomato");
+    await expect(tomatoCard.locator(".recipe-pantry-fit p").filter({ hasText: /^Missing:/ })).toHaveText("Missing: rice");
     await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
     await showPantryBatches(page);
     await page.getByRole("textbox", { name: "Available tomato", exact: true }).last().fill("0");
@@ -528,6 +532,7 @@ test("a new pantry context and request replace an older pending Chef result", as
   await page.getByRole("button", { name: /^(Find my dinner|Update dinner ideas)$/ }).click();
   await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
   await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("beans");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
@@ -585,6 +590,7 @@ test("changing the pantry cancels a pending Chef request even without starting a
   await expect.poll(async () => (await (await fetch(`${modelURL}/__test/control`)).json() as { pending: number }).pending).toBe(1);
   const failed = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/api/chef"));
   await page.getByRole("button", { name: /Pantry/ }).filter({ visible: true }).first().click();
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("unique test beans");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await failed;

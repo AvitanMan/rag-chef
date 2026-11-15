@@ -19,7 +19,7 @@ const root = fileURLToPath(new URL("../../", import.meta.url));
 const directory = await mkdtemp(join(tmpdir(), "rag-chef-test-"));
 const project = join(directory, "project");
 const state = devRuntime ? join(project, ".wrangler", "state") : join(directory, "d1-state");
-const artifacts = resolve(root, "output", "playwright", `${mode}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}`);
+const artifacts = resolve(root, "output", "playwright", `${mode}-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${process.pid}`);
 await mkdir(artifacts, { recursive: true });
 await mkdir(project);
 const children = new Set();

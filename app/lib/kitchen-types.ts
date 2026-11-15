@@ -21,12 +21,17 @@ export const DEFAULT_COOKING_PROFILE: CookingProfile = {
   skillLevel: "Confident beginner", budget: "Medium", equipment: ["Oven", "Stovetop"],
 };
 
+export const PANTRY_LOCATION_VALUES = ["fridge", "freezer", "cupboard", "spice-rack"] as const;
+export type PantryLocation = typeof PANTRY_LOCATION_VALUES[number];
+
 export interface PantryStock {
   id: string;
   name: string;
   measure: string;
   /** User-entered planning date, inclusive; absence means the date is unknown. */
   useBy?: string;
+  /** User-chosen storage only; absence means Unsorted. */
+  location?: PantryLocation;
 }
 
 export interface PantryDeduction {
@@ -35,6 +40,7 @@ export interface PantryDeduction {
   before: string;
   after: string;
   useBy?: string;
+  location?: PantryLocation;
 }
 
 /** Personal planning quantities for exactly one version of a source recipe. */

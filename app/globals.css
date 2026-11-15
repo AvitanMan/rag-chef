@@ -474,7 +474,7 @@ img {
   max-width: 430px;
 }
 
-.pantry-quick-add input {
+.pantry-quick-add input, .pantry-quick-add textarea {
   background: var(--paper);
   border: 1px solid var(--line-dark);
   border-radius: 11px;
@@ -485,7 +485,9 @@ img {
   width: 100%;
 }
 
-.pantry-quick-add input:focus {
+.pantry-quick-add textarea { min-width: 0; min-height: 64px; padding: 10px 13px; resize: vertical; font: inherit; line-height: 1.5; }
+
+.pantry-quick-add input:focus, .pantry-quick-add textarea:focus {
   border-color: var(--green-2);
   box-shadow: 0 0 0 3px rgba(36, 92, 66, 0.12);
 }
@@ -605,6 +607,9 @@ img {
 }
 
 .recipe-section.catalog-browser { padding-top: 0; }
+.recipe-section.pantry-dinner-results { padding-top: 0; }
+.pantry-dinner-results > .panel { margin-bottom: 20px; }
+.pantry-dinner-results > .panel p { font-size: 14px; line-height: 1.6; }
 
 .recipe-grid {
   display: grid;
@@ -2186,9 +2191,9 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .pantry-filters { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 .pantry-filters button { min-height: 44px; }
 .pantry-filters [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
-.pantry-browser-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
-.pantry-browser-controls label { display: grid; gap: 8px; flex: 1 1 190px; min-width: 0; font-size: 13px; font-weight: 600; }
-.pantry-browser-controls input, .pantry-browser-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
+.pantry-browser-controls, .pantry-quick-search { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.pantry-browser-controls label, .pantry-quick-search label { display: grid; gap: 8px; flex: 1 1 190px; min-width: 0; font-size: 13px; font-weight: 600; }
+.pantry-browser-controls input, .pantry-browser-controls select, .pantry-quick-search input { width: 100%; min-width: 0; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
 .shopping-export-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .shopping-export-fallback label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
 .shopping-export-fallback textarea { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; line-height: 1.5; }
@@ -2238,10 +2243,39 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 }
 
 /* Batch-preserving pantry browser; keep these rules local to the pantry UI. */
-.pantry-batch-browser { max-width: 1240px; margin-inline: auto; }
+/* Both lists reflect the same stock; a removal must not anchor to their changing heights. */
+.pantry-batch-browser { max-width: 1240px; margin-inline: auto; overflow-anchor: none; }
 .pantry-batch-browser .section-heading h2 { margin: 0 0 10px; }
 .pantry-batch-browser .section-heading p { margin: 0; line-height: 1.6; }
 .pantry-batch-browser .quantity-note { font-size: 12px; }
+.pantry-tonight { margin-top: 28px; }
+.pantry-tonight-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.pantry-tonight-heading h3 { margin: 0; font-size: 22px; }
+.pantry-tonight-heading > span { color: var(--ink-soft); font-size: 13px; }
+.pantry-quick-search { max-width: 540px; margin-top: 16px; }
+.pantry-quick-search .text-button { min-height: 44px; }
+.pantry-tonight-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.pantry-tonight-item { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+.pantry-tonight-ingredient { display: flex; align-items: center; flex: 1 1 auto; gap: 12px; min-width: 0; min-height: 72px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pantry-ingredient-details { flex: 0 0 auto; min-width: 52px; min-height: 44px; padding-inline: 4px; }
+.pantry-tonight-ingredient:hover { border-color: var(--green); }
+.pantry-tonight-ingredient[aria-pressed="true"] { border-color: var(--green); background: var(--green-pale); box-shadow: inset 0 0 0 1px var(--green); }
+.pantry-tonight-ingredient:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.pantry-tonight-ingredient > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.pantry-tonight-ingredient strong { display: block; font-size: 15px; line-height: 1.4; }
+.pantry-tonight-ingredient small { display: block; margin-top: 4px; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.pantry-selection-mark { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid var(--line-dark); border-radius: 50%; font-size: 19px; }
+.pantry-tonight-ingredient[aria-pressed="true"] .pantry-selection-mark { background: var(--green-solid); color: var(--on-green); border-color: var(--green-solid); }
+.pantry-tonight-selection { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin-top: 20px; padding: 18px; border-radius: 12px; background: var(--cream); }
+.pantry-tonight-selection p { flex: 1 1 220px; min-width: 0; margin: 0; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.pantry-tonight-selection .pantry-selection-changed { flex-basis: 100%; }
+.pantry-tonight-selection > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
+.pantry-tonight-selection button, .pantry-managed-note button { min-height: 44px; white-space: normal; }
+.pantry-quick-empty { margin: 20px 0; color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.pantry-managed-note { margin: 14px 0 0; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.pantry-management { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); scroll-margin-top: 24px; }
+.pantry-management > summary { min-height: 48px; align-content: center; color: var(--ink-soft); font-size: 14px; font-weight: 600; cursor: pointer; }
+.pantry-management > summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 6px; }
 .pantry-planning-help { margin-block: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--neutral); }
 .pantry-planning-help p { margin: 6px 0; font-size: 13px; line-height: 1.6; }
 .pantry-planning-help summary { cursor: pointer; min-height: 44px; align-content: center; font-size: 14px; font-weight: 600; }
@@ -2250,6 +2284,8 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .pantry-review-summary h3 { margin: 0 0 8px; font-size: 18px; }
 .pantry-review-summary p { margin: 6px 0; font-size: 14px; line-height: 1.6; }
 .pantry-review-summary button, .pantry-disclosure-actions button { min-height: 44px; white-space: normal; }
+.pantry-review-actions { display: flex; align-items: start; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.pantry-review-actions .text-button { text-align: left; }
 .pantry-disclosure-actions, .pantry-group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .pantry-disclosure-actions { margin-top: 14px; }
 .pantry-group-heading .pantry-on-hand-summary { font-size: 15px; line-height: 1.6; }
@@ -2319,10 +2355,15 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .use-soon-empty p { font-size: 13px; line-height: 1.6; }
 .use-soon-empty button { min-height: 44px; }
 @media (max-width: 1100px) {
+  .pantry-tonight-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pantry-batch-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pantry-batch-identity { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
+  .pantry-tonight-list { grid-template-columns: 1fr; }
+  .pantry-tonight-selection { padding: 14px; }
+  .pantry-tonight-selection > div { width: 100%; }
+  .pantry-tonight-selection .primary-button { flex: 1 1 100%; }
   .pantry-ingredient-group { padding: 14px; }
   .pantry-group-totals { grid-template-columns: 1fr; }
   .pantry-group-totals div + div { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -2347,3 +2388,88 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .session-notice { padding: 14px 24px; background: var(--warning); display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
 fieldset.form-grid { border: 0; padding: 0; margin: 0; min-width: 0; }
 @media (max-width: 650px) { .account-panel { padding: 22px; } }
+.recipe-description { margin: 8px 0 12px; line-height: 1.6; }
+.recipe-pantry-fit { margin: 12px 0; padding: 12px; background: var(--cream); border-radius: 10px; line-height: 1.55; }
+.recipe-pantry-fit p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.recipe-pantry-fit small { color: var(--ink-soft); }
+
+/* Storage is a view of the saved kitchen, with optional details kept compact. */
+.pantry-storage-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.pantry-storage-tabs button { min-height: 44px; }
+.pantry-storage-tabs button[aria-pressed="true"] { color: var(--green); background: var(--green-pale); border-color: var(--green); }
+.pantry-storage-mobile { display: none; margin-top: 18px; gap: 8px; font-size: 14px; font-weight: 600; }
+.pantry-storage-mobile select { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-dark); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+.pantry-storage-mobile select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.pantry-add-disclosure { margin-top: 12px; }
+.pantry-add-disclosure > summary { cursor: pointer; min-height: 44px; align-content: center; color: var(--green); font-size: 14px; font-weight: 600; }
+.pantry-add-disclosure > summary:focus-visible, .pantry-selection-chips h3:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 6px; }
+.pantry-add-disclosure[open] > summary { margin-bottom: 8px; }
+.pantry-selection-chips { width: 100%; min-width: 0; margin: 16px 0; }
+.pantry-selection-chips h3 { margin: 0 0 8px; font: inherit; font-size: 14px; font-weight: 650; }
+.pantry-picks-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.pantry-picks-heading h3 { margin: 0; }
+.pantry-picks-heading button { min-height: 44px; }
+.pantry-selection-chips ul { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.pantry-selection-chips li { min-width: 0; max-width: 100%; }
+.pantry-selection-chips .pantry-pick-chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; max-width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--green); border-radius: 22px; background: var(--green-pale); color: var(--green); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.pantry-pick-chip > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pantry-pick-chip > span:last-child { flex-shrink: 0; font-size: 20px; }
+.pantry-selection-chips .pantry-pick-unavailable { background: var(--neutral); color: var(--ink-soft); border-style: dashed; border-color: var(--line-dark); }
+.pantry-pick-chip small { display: block; font-size: 11px; margin-top: 2px; }
+.pantry-pick-chip:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.pantry-selection-changed { font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
+.pantry-find-actions { border: 1px solid var(--line); }
+.pantry-dinner-results > .panel { padding: 18px 22px; }
+.pantry-dinner-results > .panel h2 { margin: 0 0 10px; font-size: clamp(24px, 3vw, 32px); }
+.pantry-dinner-results > .panel .pantry-selection-chips { margin-block: 12px; }
+.pantry-dinner-results > .panel .pantry-selection-chips h3 { font-size: 14px; }
+.pantry-dinner-header > p { margin-block: 8px; }
+.pantry-dinner-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.pantry-dinner-actions button { min-height: 44px; }
+.pantry-dinner-results .recipe-card-body { padding: 18px; }
+.pantry-dinner-results .recipe-description { margin-block: 6px 10px; font-size: 14px; }
+.pantry-dinner-results .recipe-pantry-fit { margin-block: 10px; padding: 10px 12px; font-size: 14px; }
+.pantry-placement-drafts { min-width: 0; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+.pantry-placement-drafts legend { font-size: 13px; color: var(--ink-soft); padding-inline: 6px; }
+.pantry-placement-drafts > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 1fr); gap: 8px 16px; align-items: center; padding: 8px 0; }
+.pantry-placement-drafts strong { overflow-wrap: anywhere; font-size: 14px; }
+.pantry-placement-drafts small { grid-column: 1 / -1; color: var(--ink-soft); line-height: 1.5; }
+.pantry-location-select { display: grid; gap: 6px; min-width: 0; font-size: 13px; }
+.pantry-location-select select, .pantry-move-dialog select { width: 100%; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line-dark); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; }
+.pantry-location-select select:focus-visible, .pantry-move-dialog select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.pantry-tonight-item { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.pantry-tonight-item .pantry-tonight-ingredient { flex: 1 1 144px; }
+.pantry-tonight-item > .text-button { flex: 0 0 auto; min-height: 44px; margin-left: auto; }
+.pantry-spice-checklist { padding: 14px 18px; margin-top: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream); }
+.pantry-spice-checklist summary { min-height: 44px; align-content: center; cursor: pointer; font-size: 15px; font-weight: 600; }
+.pantry-spice-checklist p { margin-top: 4px; font-size: 13px; line-height: 1.6; }
+.pantry-spice-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; margin-bottom: 16px; }
+.pantry-spice-options > div { min-width: 0; }
+.pantry-spice-options label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; }
+.pantry-spice-options input { width: 18px; height: 18px; accent-color: var(--green); }
+.pantry-spice-options small { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--ink-soft); padding-left: 28px; }
+.pantry-spice-options button, .pantry-spice-checklist > button { min-height: 44px; }
+.pantry-move-dialog { width: min(100%, 560px); overflow-wrap: anywhere; }
+.pantry-move-dialog h2 { margin-top: 0; }
+.pantry-move-dialog p { line-height: 1.6; }
+.pantry-move-dialog label { display: grid; gap: 8px; margin-block: 16px; }
+.pantry-move-dialog .modal-actions { flex-wrap: wrap; }
+.pantry-move-dialog button { min-height: 44px; }
+@media (max-width: 600px) {
+  .pantry-placement-drafts > div { grid-template-columns: 1fr; }
+  .pantry-spice-options { grid-template-columns: 1fr; }
+  .pantry-spice-checklist { padding: 12px; }
+}
+@media (max-width: 860px) {
+  .pantry-storage-tabs { display: none; }
+  .pantry-storage-mobile { display: grid; }
+  .pantry-find-actions.has-picks { position: sticky; bottom: max(calc(var(--kitchen-overlay-inset, 92px) + 8px), calc(env(safe-area-inset-bottom) + 86px)); z-index: 20; box-shadow: 0 4px 22px rgba(24, 53, 42, 0.16); padding: 10px 12px; gap: 8px; }
+  .pantry-find-actions { flex-wrap: nowrap; padding: 8px 10px; gap: 8px; }
+  .pantry-find-actions p { flex: 1 1 0; font-size: 13px; }
+  .pantry-find-actions > div { width: auto; flex: 0 1 auto; min-width: 0; }
+  .pantry-find-actions.has-picks p { flex: 0 0 auto; font-size: 13px; white-space: nowrap; }
+  .pantry-find-actions.has-picks > div { width: auto; gap: 8px; }
+  .pantry-find-actions .primary-button, .pantry-find-actions.has-picks .primary-button { flex: 0 1 auto; min-width: 0; padding: 10px 12px; }
+  .pantry-tonight-ingredient, .pantry-tonight-item > button, .pantry-selection-chips button { scroll-margin-block: 16px 180px; }
+  .pantry-dinner-results > .panel { padding: 16px; }
+}

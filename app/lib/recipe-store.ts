@@ -1,4 +1,5 @@
 import type { Recipe, RecipeMetadata } from "./recipe-types";
+import { builtinOriginalMetadata } from "./builtin-original-metadata";
 import { hostedMode, householdSetting, initializeHouseholdRuntime } from "./household";
 import { catalogJobWriteGuard } from "./catalog-job-store";
 import type { CatalogJobFence, CatalogJobSqlGuard } from "./catalog-job-types";
@@ -551,8 +552,8 @@ export async function listCatalogRecipes(
   const steps = result[3].results as StepRow[];
   const metadata = parseMetadataRows((result[4]?.results ?? []) as MetadataRow[]);
 
-  return recipeRows.map((row) => ({
-    recipe: {
+  return recipeRows.map((row) => {
+    const recipe: Recipe = {
       id: row.id,
       title: row.title,
       image: row.image_url,
@@ -577,15 +578,19 @@ export async function listCatalogRecipes(
         steps.filter((item) => item.recipe_id === row.id),
       ),
       tags: parseStringArray(row.tags_json),
-    },
-    catalogId: row.id,
-    sourceId: row.source_id,
-    sourceRecordId: row.source_record_id,
-    version: row.version,
-    contentHash: row.normalized_content_sha256,
-    searchText: row.search_text,
-    ...(metadata[row.id] ? { metadata: metadata[row.id] } : {}),
-  }));
+    };
+    const recipeMetadata = metadata[row.id] ?? builtinOriginalMetadata(recipe, row.normalized_content_sha256);
+    return {
+      recipe,
+      catalogId: row.id,
+      sourceId: row.source_id,
+      sourceRecordId: row.source_record_id,
+      version: row.version,
+      contentHash: row.normalized_content_sha256,
+      searchText: row.search_text,
+      ...(recipeMetadata ? { metadata: recipeMetadata } : {}),
+    };
+  });
 }
 
 export async function listRecipeMetadata(): Promise<Record<string, RecipeMetadata>> {
