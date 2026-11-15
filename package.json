@@ -38,14 +38,14 @@
     "test:hosted-dev": "node tools/testing/run-isolated.mjs hosted-dev"
   },
   "dependencies": {
-    "better-auth": "1.7.21",
+    "better-auth": "1.7.22",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.69.0",
+    "@cloudflare/vite-plugin": "1.69.1",
     "@playwright/test": "1.65.0",
     "@types/node": "22.19.19",
     "@types/react": "19.3.0",
@@ -59,7 +59,7 @@
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.3.8",
-    "wrangler": "4.160.1"
+    "wrangler": "4.161.0"
   },
   "type": "module"
 }
