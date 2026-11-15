@@ -56,7 +56,10 @@ export function Modal({ children, close, className, label, labelledBy }: {
         .filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length > 0);
       const first = elements[0], last = elements.at(-1);
       if (!first) { event.preventDefault(); return; }
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { event.preventDefault(); last?.focus(); }
+      const active = document.activeElement;
+      // Details dialogs focus their heading first; it precedes the tab sequence without being in it.
+      const beforeFirst = active instanceof Node && Boolean(first.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING);
+      if (event.shiftKey && (active === first || active === ref.current || beforeFirst)) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>{children}</dialog>;
 }

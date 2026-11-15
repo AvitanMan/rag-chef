@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 import type { CookingProfile, KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
 import { isKitchenWrite } from "./kitchen-requests";
-import { openPantryAdd } from "./pantry-helpers";
+import { openPantryIngredientManagement, openPantryAdd } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -252,7 +252,7 @@ test("ingredient Details opens its saved batch and Add another batch still requi
   const before = await saved(request);
   const management = page.locator("details.pantry-management");
   await expect(management).not.toHaveAttribute("open");
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   await expect(management).toHaveAttribute("open", "");
   const amount = page.locator("#pantry-row-rice").getByRole("textbox", { name: "Available rice", exact: true });
   await expect(amount).toBeFocused();

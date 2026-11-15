@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { PantryLocation, PantryStock, PlannedMeal } from "../lib/kitchen-types";
 import type { PantryInputRow } from "../lib/pantry-input";
-import { PANTRY_LOCATIONS, pantryLocationLabel, withPantryLocation } from "../lib/pantry-location";
+import { PANTRY_LOCATIONS, pantryLocationLabel, withPantryLocation, type PantryLocationFilter } from "../lib/pantry-location";
 import type { KitchenCommandSender } from "../lib/kitchen-commands";
 import { addDateDays, weekStart } from "../lib/kitchen-state";
 import { measureInputProblem } from "../lib/kitchen-validation";
@@ -21,7 +21,8 @@ import { PantryLocationSelect } from "./PantryLocationSelect";
 import { PantrySelectionChips } from "./PantrySelectionChips";
 import { pantryDinnerPicks } from "../lib/pantry-dinner";
 import { isBasicSeasoning } from "../lib/pantry-recipe-fit";
-import { PantryAddForm, PantryMoveDialog, SpiceRackChecklist, type PantryDraftLocations, type PantryLocationFilter } from "./PantryStorageControls";
+import { PantryAddForm, PantryMoveDialog, SpiceRackChecklist, type PantryDraftLocations } from "./PantryStorageControls";
+import { PantryIngredientDetails } from "./PantryIngredientDetails";
 
 export interface PantryViewProps {
   today: string;
@@ -35,6 +36,8 @@ export interface PantryViewProps {
   setSearch: (value: string) => void;
   sort: PantrySort;
   setSort: (value: PantrySort) => void;
+  storage: PantryLocationFilter;
+  setStorage: (value: PantryLocationFilter) => void;
   pantry: PantryStock[];
   meals: PlannedMeal[];
   week: string;
@@ -150,14 +153,18 @@ function PantryBatchField({ stock, field, descriptionId, command }: {
   </div>;
 }
 
-function PantryBatchEditor({ snapshot, current, command, close, reload, done, recordChange, review }: {
+type PantryBatchAction = "correct" | "use" | "finish";
+
+function PantryBatchEditor({ snapshot, current, command, close, reload, done, recordChange, review, initialMode = "correct", onApplied }: {
   snapshot: PantryStock; current: PantryStock | undefined; command: KitchenCommandSender;
   close: () => void; reload: () => void; done: (message: string) => void;
   recordChange: (change: PantryBatchChange) => void;
+  initialMode?: PantryBatchAction;
+  onApplied?: (stock: PantryStock, message: string) => void;
   review?: { position: number; total: number; reasons: string[]; next: () => void; last: boolean };
 }) {
   const id = useId();
-  const [mode, setMode] = useState<"correct" | "use" | "finish">("correct");
+  const [mode, setMode] = useState<PantryBatchAction>(initialMode);
   const [name, setName] = useState(snapshot.name);
   const [measure, setMeasure] = useState(snapshot.measure);
   const [useBy, setUseBy] = useState(snapshot.useBy ?? "");
@@ -187,7 +194,8 @@ function PantryBatchEditor({ snapshot, current, command, close, reload, done, re
     if (!applied || !requested || recorded.current) return;
     recorded.current = true;
     if (!samePantryBatch(snapshot, requested.stock)) recordChange({ before: { ...snapshot }, after: { ...requested.stock } });
-  }, [applied, requested, recordChange, snapshot]);
+    onApplied?.(requested.stock, requested.message);
+  }, [applied, requested, recordChange, snapshot, onApplied]);
 
   function readDateDraft(input: HTMLInputElement) {
     setUseBy(input.value);
@@ -262,7 +270,7 @@ function PantryBatchEditor({ snapshot, current, command, close, reload, done, re
   </Modal>;
 }
 
-export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0, focusPicks = false, select, search, setSearch, sort, setSort,
+export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0, focusPicks = false, select, search, setSearch, sort, setSort, storage, setStorage,
   pantry, meals, week, setWeek, reviewMeal, draft, setDraft, draftLocations, setDraftLocation, add, remove, command, error, notice, addedIds = [],
   selectedIngredients = [], toggleIngredient, findDinners, clearSelection, managementOpen, setManagementOpen }: PantryViewProps) {
   const id = useId();
@@ -279,20 +287,21 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
   const management = useRef<HTMLDetailsElement>(null);
   const returnToReview = useRef(false);
   const returnFromMove = useRef(false);
-  const storageContext = JSON.stringify([focusId, focusRequest]);
-  const [storageChoice, setStorageChoice] = useState<{ context: string; value: PantryLocationFilter }>({ context: storageContext, value: "all" });
-  const storage = storageChoice.context === storageContext && (storageChoice.value !== "unsorted" || pantry.some(stock => !stock.location)) ? storageChoice.value : "all";
-  function setStorage(value: PantryLocationFilter) { setStorageChoice({ context: storageContext, value }); }
+  const detailsTrigger = useRef<HTMLElement | null>(null);
+  const [details, setDetails] = useState<{ key: string; name: string; focusStockId?: string } | null>(null);
+  const [detailsFocusRequest, setDetailsFocusRequest] = useState(0);
+  const [revealingBatch, setRevealingBatch] = useState<{ id: string } | null>(null);
   const [moving, setMoving] = useState<PantryStock[] | null>(null);
   const disclosureContext = JSON.stringify([filter, search, focusId, focusRequest, addedIds, storage]);
   const [allExpanded, setAllExpanded] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<{ context: string; values: Record<string, boolean> }>({ context: disclosureContext, values: {} });
   const [review, setReview] = useState<{ tasks: PantryReviewTask[]; index: number } | null>(null);
-  const [editing, setEditing] = useState<{ snapshot: PantryStock; version: number } | null>(null);
+  const [editing, setEditing] = useState<{ snapshot: PantryStock; version: number; mode?: PantryBatchAction } | null>(null);
   const [localNotice, setLocalNotice] = useState("");
   const [lastChange, setLastChange] = useState<PantryBatchChange | null>(null);
   const [undoRequested, setUndoRequested] = useState(false);
   const [undoError, setUndoError] = useState("");
+  const [undoFromDetails, setUndoFromDetails] = useState(false);
   const rememberChange = useCallback((change: PantryBatchChange) => {
     undoFocusId.current = null;
     setLastChange(change); setUndoRequested(false); setUndoError("");
@@ -305,7 +314,12 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
     const current = pantry.find(stock => stock.id === lastChange.before.id);
     if (samePantryBatch(current, lastChange.before)) {
       setLocalNotice(`Undid the last batch edit for ${lastChange.before.name}.`);
+      if (undoFromDetails && details) {
+        setDetails({ key: canonicalIngredient(current!.name), name: current!.name, focusStockId: current!.id });
+        setDetailsFocusRequest(request => request + 1);
+      }
       setLastChange(null); setUndoRequested(false);
+      setUndoFromDetails(false);
     } else if (undoProblem) {
       setUndoRequested(false);
     }
@@ -315,6 +329,7 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
   const inStorage = (stock: PantryStock) => storage === "all" || (stock.location ?? "unsorted") === storage;
   const dateGroups = useMemo(() => pantryDateGroups(pantry, today), [pantry, today]);
   const fullGroups = useMemo(() => new Map(groupPantryBatches(pantry).map(group => [group.key, group])), [pantry]);
+  const detailsGroup = details ? fullGroups.get(details.key) : undefined;
   const activePantry = useMemo(() => pantry.filter(stock => pantryStockEligibility(stock, today).eligible), [pantry, today]);
   const locationPantry = activePantry.filter(inStorage);
   const locationCount = groupPantryBatches(locationPantry).length;
@@ -328,6 +343,8 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
   const hasFoodPick = picks.some(pick => pick.available && !isBasicSeasoning(pick.name));
   const unavailableSelections = picks.filter(pick => !pick.available);
   const unavailableCount = pantry.filter(stock => inStorage(stock) && !pantryStockEligibility(stock, today).eligible).length;
+  const soonCount = dateGroups.soon.filter(inStorage).length;
+  const pastCount = dateGroups.past.filter(inStorage).length;
   const reservations = useMemo(() => pantryWeekReservations(pantry, meals, week, today), [pantry, meals, week, today]);
   const reviewTasks = useMemo(() => pantryReviewTasks(pantry, meals, week, today), [pantry, meals, week, today]);
   const attentionTasks = reviewTasks.filter(task => task.reasons.some(reason => reason.kind !== "unknown"));
@@ -360,9 +377,10 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
     addInput.current?.scrollIntoView({ block: "center" });
   }
 
-  function openManagement() {
+  function openManagement(nextFilter: PantryFilter = "all") {
     if (!management.current) return;
-    setSearch(""); setFilter("all");
+    setSearch(""); setFilter(nextFilter);
+    setManagementOpen(true);
     management.current.open = true;
     management.current.querySelector("summary")?.focus();
     management.current.scrollIntoView({ block: "start", behavior: "instant" });
@@ -372,18 +390,81 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
     if (stocks.length) setMoving(stocks.map(stock => ({ ...stock })));
   }
 
-  function showIngredientDetails(key: string, stockId: string) {
-    const current = pantry.find(stock => stock.id === stockId);
-    if (!current || !pantryStockEligibility(current, today).eligible) return;
-    // Reuse the inline editor's pin so a different advanced filter cannot hide this batch.
-    setPin({ id: stockId, order: [...visible.keys()], context });
-    setGroupExpanded(key, true);
-    if (management.current) management.current.open = true;
+  function showIngredientDetails(key: string, trigger: HTMLElement) {
+    const group = fullGroups.get(key);
+    if (!group) return;
+    detailsTrigger.current = trigger;
+    setLocalNotice("");
+    setDetails({ key, name: group.name });
+  }
+
+  function closeDetails() {
+    setDetails(null);
     requestAnimationFrame(() => {
-      const row = document.getElementById(`pantry-row-${stockId}`);
-      row?.scrollIntoView({ block: "center", behavior: "instant" });
-      row?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+      const trigger = detailsTrigger.current;
+      (trigger?.isConnected && trigger.getClientRects().length ? trigger : heading.current)?.focus({ preventScroll: true });
     });
+  }
+
+  function showDetailsManagement() {
+    const stock = detailsGroup?.batches[0];
+    if (!stock) return;
+    setDetails(null); setStorage("all"); setSearch(""); setFilter("all"); setManagementOpen(true);
+    setExpandedGroups({ context: JSON.stringify(["all", "", focusId, focusRequest, addedIds, "all"]), values: { [canonicalIngredient(stock.name)]: true } });
+    setRevealingBatch({ id: stock.id });
+  }
+
+  function startDetailsAction(stock: PantryStock, action: PantryBatchAction | "move") {
+    const current = pantry.find(item => item.id === stock.id);
+    if (!current) return;
+    setDetails({ key: canonicalIngredient(current.name), name: current.name, focusStockId: current.id });
+    setLocalNotice("");
+    if (action === "move") startMove([current]);
+    else setEditing({ snapshot: { ...current }, version: 0, mode: action });
+  }
+
+  function finishDetailsAction(stock: PantryStock, message: string) {
+    setMoving(null); setEditing(null);
+    setDetails({ key: canonicalIngredient(stock.name), name: stock.name, focusStockId: stock.id });
+    setLocalNotice(message);
+  }
+
+  function undoLastChange(fromDetails: boolean) {
+    if (!lastChange || pantryBatchUndoProblem(pantry, lastChange)) return;
+    if (!command({ type: "UndoPantryBatch", change: lastChange })) {
+      setUndoError("Undo was not applied. Resolve pending kitchen changes and try again.");
+      return;
+    }
+    setUndoError("");
+    setUndoFromDetails(fromDetails);
+    if (!fromDetails) {
+      undoFocusId.current = lastChange.before.id;
+      setStorage("all");
+      setGroupExpanded(canonicalIngredient(lastChange.before.name), true);
+    }
+    setUndoRequested(true);
+  }
+
+  function dismissEditUndo(fromDetails: boolean) {
+    if (!lastChange) return;
+    if (!fromDetails) {
+      undoFocusId.current = lastChange.after.id;
+      const current = pantry.find(stock => stock.id === lastChange.after.id);
+      if (current) setGroupExpanded(canonicalIngredient(current.name), true);
+    } else setDetailsFocusRequest(request => request + 1);
+    setLastChange(null);
+  }
+
+  function editUndo(fromDetails = false) {
+    return lastChange && <section className="pantry-edit-undo" aria-label="Last pantry batch edit">
+      <div><strong>Last batch edit: {lastChange.after.name}</strong>
+        <p>{lastChange.before.name}: {pantryLocationLabel(lastChange.before.location)} · {lastChange.before.measure || "Amount unknown"} · {lastChange.before.useBy ? `Entered date ${dateLabel(lastChange.before.useBy)}` : "No date entered"} → {lastChange.after.name}: {pantryLocationLabel(lastChange.after.location)} · {lastChange.after.measure || "Amount unknown"} · {lastChange.after.useBy ? `Entered date ${dateLabel(lastChange.after.useBy)}` : "No date entered"}</p>
+        <small>Undo restores this batch only, if it has not changed again. Available until you leave Pantry, reload, or dismiss it.</small>
+        {undoProblem && <p role="status">{undoProblem}</p>}</div>
+      {undoError && <p role="alert" className="field-error">{undoError}</p>}
+      <div className="modal-actions"><button type="button" className="secondary-button" disabled={Boolean(undoProblem) || undoRequested || Boolean(editing) || Boolean(moving)} onClick={() => undoLastChange(fromDetails)}>Undo last batch edit</button>
+        <button type="button" className="text-button" disabled={undoRequested} onClick={() => dismissEditUndo(fromDetails)}>Dismiss edit undo</button></div>
+    </section>;
   }
 
   function closeEditor() {
@@ -418,6 +499,16 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
     setGroupExpanded(canonicalIngredient(stock.name), true);
     setEditing({ snapshot: { ...stock }, version: 0 });
   }
+
+  useEffect(() => {
+    if (!revealingBatch) return;
+    const frame = requestAnimationFrame(() => {
+      const row = document.getElementById(`pantry-row-${revealingBatch.id}`);
+      row?.scrollIntoView({ block: "center", behavior: "instant" });
+      row?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [revealingBatch]);
 
   useEffect(() => {
     if (editing || !returnToReview.current) return;
@@ -519,6 +610,11 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
       {error && <p role="alert" className="field-error">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {localNotice && <p role="status">{localNotice}</p>}
+      {(soonCount > 0 || pastCount > 0) && <div className="pantry-date-shortcuts" role="group" aria-label="Pantry date reminders">
+        <span>Dates in {locationLabel}</span>
+        {soonCount > 0 && <button type="button" className="secondary-button" onClick={() => openManagement("soon")}>Use soon ({soonCount} {soonCount === 1 ? "batch" : "batches"})</button>}
+        {pastCount > 0 && <button type="button" className="secondary-button" onClick={() => openManagement("past")}>Past entered date ({pastCount} {pastCount === 1 ? "batch" : "batches"})</button>}
+      </div>}
       <section className="pantry-tonight" aria-label="Ingredients for tonight">
         <div className="pantry-tonight-heading"><h3>What would you like to use?</h3><span role="status">{search.trim() ? `Showing ${tonightGroups.length} of ${locationCount}` : locationCount} available {locationCount === 1 ? "ingredient" : "ingredients"} in {locationLabel}</span></div>
         {showPicks && <div ref={picksSection} className="pantry-picks-section"><PantrySelectionChips picks={picks} remove={toggleIngredient} clear={() => {
@@ -543,41 +639,18 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
                 <span><strong>{group.name}</strong><small className="pantry-location-badges">{[...new Set(group.batches.map(stock => pantryLocationLabel(stock.location)))].join(" · ")}</small>{(amount || date) && <small>{[amount ? `${group.unknownCount ? "Known amount: " : ""}${amount}` : "", date ? `Use by ${dateLabel(date)}` : ""].filter(Boolean).join(" · ")}</small>}</span>
               </button>
               <button type="button" className="text-button pantry-ingredient-details" aria-label={`Details for ${group.name}`}
-                onClick={() => showIngredientDetails(group.key, group.batches[0].id)}>Details</button>
+                onClick={event => showIngredientDetails(group.key, event.currentTarget)}>Details</button>
             </div>;
           })}
         </div>
         {!tonightGroups.length && <p className="pantry-quick-empty">{search ? "No ingredients match your search in this location." : pantry.length ? "No available ingredients in this view. Add food here, choose another location, or review saved amounts and dates below." : "Start with a few ingredients you already have. No measuring needed."}</p>}
-        {unavailableCount > 0 && <p className="pantry-managed-note">{unavailableCount} finished or past-date {unavailableCount === 1 ? "batch is" : "batches are"} kept in {locationLabel}. <button type="button" className="text-button" onClick={openManagement}>Review saved batches</button></p>}
+        {unavailableCount > 0 && <p className="pantry-managed-note">{unavailableCount} finished or past-date {unavailableCount === 1 ? "batch is" : "batches are"} kept in {locationLabel}. <button type="button" className="text-button" onClick={() => openManagement()}>Review saved batches</button></p>}
       </section>
       <div ref={findActions} className={`pantry-tonight-selection pantry-find-actions${picks.length ? " has-picks" : ""}`}>
         <p role="status">{picks.length ? `${picks.length} picked` : "Pick ingredients for dinner ideas."}</p>
         <div><button className="primary-button" type="button" disabled={!hasFoodPick} onClick={() => { if (hasFoodPick) findDinners(); }}>Find dinners</button></div>
       </div>
-      {lastChange && <section className="pantry-edit-undo" aria-label="Last pantry batch edit">
-        <div><strong>Last batch edit: {lastChange.after.name}</strong>
-          <p>{lastChange.before.name}: {pantryLocationLabel(lastChange.before.location)} · {lastChange.before.measure || "Amount unknown"} · {lastChange.before.useBy ? `Entered date ${dateLabel(lastChange.before.useBy)}` : "No date entered"} → {lastChange.after.name}: {pantryLocationLabel(lastChange.after.location)} · {lastChange.after.measure || "Amount unknown"} · {lastChange.after.useBy ? `Entered date ${dateLabel(lastChange.after.useBy)}` : "No date entered"}</p>
-          <small>Undo restores this batch only, if it has not changed again. Available until you leave Pantry, reload, or dismiss it.</small>
-          {undoProblem && <p role="status">{undoProblem}</p>}</div>
-        {undoError && <p role="alert" className="field-error">{undoError}</p>}
-        <div className="modal-actions"><button type="button" className="secondary-button" disabled={Boolean(undoProblem) || undoRequested || Boolean(editing) || Boolean(moving)} onClick={() => {
-          if (pantryBatchUndoProblem(pantry, lastChange)) return;
-          if (!command({ type: "UndoPantryBatch", change: lastChange })) {
-            setUndoError("Undo was not applied. Resolve pending kitchen changes and try again.");
-            return;
-          }
-          setUndoError("");
-          undoFocusId.current = lastChange.before.id;
-          setStorage("all");
-          setGroupExpanded(canonicalIngredient(lastChange.before.name), true);
-          setUndoRequested(true);
-        }}>Undo last batch edit</button><button type="button" className="text-button" disabled={undoRequested} onClick={() => {
-          undoFocusId.current = lastChange.after.id;
-          const current = pantry.find(stock => stock.id === lastChange.after.id);
-          if (current) setGroupExpanded(canonicalIngredient(current.name), true);
-          setLastChange(null);
-        }}>Dismiss edit undo</button></div>
-      </section>}
+      {editUndo()}
       <details ref={management} className="pantry-management" open={managementOpen} onToggle={event => setManagementOpen(event.currentTarget.open)}>
       <summary>Manage amounts, dates and batches</summary>
       <section className="pantry-review-summary" aria-label="Pantry stocktake">
@@ -622,7 +695,7 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
           const available = compatiblePantryTotals(full.batches.map(stock => reservations.byId.get(stock.id)?.available ?? null));
           const groupId = `${id}-group-${encodeURIComponent(group.key)}`;
           const expanded = (expandedGroups.context === disclosureContext ? expandedGroups.values[group.key] : undefined)
-            ?? (allExpanded || filter !== "all" || Boolean(search.trim()) || full.batches.some(stock => stock.id === focusId || addedIds.includes(stock.id)));
+            ?? (allExpanded || filter !== "all" || Boolean(search.trim()) || full.batches.some(stock => stock.id === focusId || stock.id === revealingBatch?.id || addedIds.includes(stock.id)));
           const needsReview = full.batches.filter(stock => attentionIds.has(stock.id)).length;
           const optionalAmounts = full.batches.filter(stock => amountIds.has(stock.id)).length;
           const dueSoon = full.batches.filter(stock => soonIds.has(stock.id)).length;
@@ -692,7 +765,10 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
           {filter !== "all" && <button className="secondary-button" onClick={() => setFilter("all")}>Show all items</button>}</div>}
       </details>
     </section>
+    {details && !moving && !editing && <PantryIngredientDetails name={detailsGroup?.name ?? details.name} stocks={detailsGroup?.batches ?? []} today={today}
+      notice={localNotice} undo={editUndo(true)} focusStockId={details.focusStockId} focusRequest={detailsFocusRequest} close={closeDetails} action={startDetailsAction} manage={showDetailsManagement} />}
     {moving && <PantryMoveDialog snapshots={moving} pantry={pantry} command={command} recordChange={rememberChange}
+      onApplied={details ? stock => finishDetailsAction(stock, `Moved ${stock.name} to ${pantryLocationLabel(stock.location)}.`) : undefined}
       close={() => setMoving(null)} done={stock => {
         returnFromMove.current = true;
         setMoving(null); setLocalNotice(`Moved ${stock.name} to ${pantryLocationLabel(stock.location)}.`);
@@ -700,9 +776,10 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
         setSearch("");
       }} />}
     {editing && <PantryBatchEditor key={`${editing.snapshot.id}:${editing.version}`} snapshot={editing.snapshot} current={pantry.find(stock => stock.id === editing.snapshot.id)} command={command} recordChange={rememberChange}
+      initialMode={editing.mode} onApplied={details ? finishDetailsAction : undefined}
       close={closeEditor} done={message => { setLocalNotice(message); closeEditor(); }}
       review={review ? { position: review.index + 1, total: review.tasks.length,
         reasons: reviewById.get(editing.snapshot.id)?.reasons.map(reason => reason.message) ?? [], next: advanceReview, last: review.index === review.tasks.length - 1 } : undefined}
-      reload={() => { const current = pantry.find(stock => stock.id === editing.snapshot.id); if (current) setEditing({ snapshot: { ...current }, version: editing.version + 1 }); }} />}
+      reload={() => { const current = pantry.find(stock => stock.id === editing.snapshot.id); if (current) setEditing({ snapshot: { ...current }, version: editing.version + 1, mode: editing.mode }); }} />}
   </div>;
 }

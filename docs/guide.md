@@ -281,10 +281,14 @@ comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
 In **Pantry**, start with a simple saved list organized by **All**, **Fridge**,
-**Freezer**, **Cupboard**, and **Spice rack**. **All** opens first. **Unsorted**
+**Freezer**, **Cupboard**, and **Spice rack**. **All** opens first in a new app session. **Unsorted**
 appears when saved batches have no location, including older pantry entries.
 Opening a tab never assigns or moves stock. Locations describe where you keep
 food; they do not establish its condition, temperature, or readiness to cook.
+Your chosen location is remembered while the app stays open, including a return
+from dinner ideas. Back and Forward restore the location belonging to that
+navigation entry. This view choice is not saved in your kitchen or backup and
+does not become a persistent preference after reload.
 
 Enter names separated by commas or new lines, such as `rice, tomatoes, garlic`.
 On a populated pantry, open **Add ingredients** when you need it. It opens
@@ -317,8 +321,24 @@ Location buttons on desktop and the **Location** selector on mobile show the
 number of available ingredients, excluding finished and past-date batches. The
 ingredient heading uses the selected location; search shows the matching count
 out of that location’s available ingredients. A separate note links to saved
-finished or past-date batches. Each everyday row has ingredient selection and
-**Details**; open Details for batch actions such as Move, usage, and finishing.
+finished or past-date batches. **Dates in …** offers **Use soon** and **Past entered
+date** shortcuts for the chosen location. Their counts are saved batches across
+that location, independent of search; they open the matching filter in **Manage
+amounts, dates and batches**. They do not change stock or select ingredients.
+
+Each everyday row has ingredient selection and **Details**. Details opens a
+compact dialog containing every saved batch of that ingredient, across all
+locations, in saved order. Each card shows its location, physical amount and
+entered date, including finished or past-date status. **Move**, **Use some**,
+**Mark finished**, and **Edit details** open the existing confirmation flows for
+that particular batch. Use some requires a known positive amount; use Edit
+details to enter an amount when it is unknown. Mark finished keeps the batch
+with zero stock. A confirmed change or Cancel returns to Details, with the batch
+in focus; the latest guarded batch-edit Undo is available there. Opening Details
+or confirming unchanged values never writes stock. **Manage batches** opens the
+full batch tools for the ingredient; those tools also retain removal and
+reservation details. **Close** returns to ingredient picking.
+
 If a change cannot be applied, its inputs stay editable so you can resolve the
 pending kitchen changes and try again. An unsuccessful removal or Undo keeps its
 original recovery action.
@@ -504,9 +524,11 @@ exactly matches the after-change snapshot—even equivalent amount text such as
 `400 g` versus `0.4 kg` does not match. Meals, cooking deductions, purchase
 receipts, shopping checks/cycles, and other batches stay untouched. Edits and
 successful undo follow the normal kitchen save indicator; only the undo record
-is transient, not the stock change. Undo or dismissal returns keyboard focus to
-that batch's **Edit batch** button, or **Your pantry** if the batch is hidden or
-removed.
+is transient, not the stock change. In the full Manage view, Undo or dismissal
+returns keyboard focus to that batch's **Edit batch** button, or **Your pantry**
+if the batch is hidden or removed. In compact Details, focus returns to the
+selected batch's heading, or the ingredient heading if that batch is no longer
+shown.
 
 **Remove** has a separate **Undo** recovery bar above the page content. Removing
 unlocked dinners (including **Clear unlocked**) uses that same bar, available

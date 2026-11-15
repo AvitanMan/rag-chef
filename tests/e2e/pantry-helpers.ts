@@ -52,3 +52,12 @@ export async function showPantryBatches(page: Page) {
   const showAll = page.getByRole("button", { name: "Show all batches", exact: true });
   if (await showAll.isVisible() && await showAll.isEnabled()) await showAll.click();
 }
+
+/** Open the detailed management workflow from the everyday ingredient dialog. */
+export async function openPantryIngredientManagement(page: Page, name: string) {
+  await page.getByRole("button", { name: `Details for ${name}`, exact: true }).click();
+  const details = page.getByRole("dialog", { name: `Details for ${name}`, exact: true });
+  await expect(details).toBeVisible();
+  await details.getByRole("button", { name: "Manage batches", exact: true }).click();
+  await expect(details).toHaveCount(0);
+}

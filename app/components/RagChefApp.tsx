@@ -24,7 +24,7 @@ import { PantryView } from "./PantryView";
 import type { PantryDraftLocations } from "./PantryStorageControls";
 import { PantryDinnerResults } from "./PantryDinnerResults";
 import { availableTonightIngredients, findPantryDinners, tonightSuggestionPantry, type PantryDinnerMatch } from "../lib/pantry-dinner";
-import { suggestPantryLocation } from "../lib/pantry-location";
+import { normalizePantryLocation, suggestPantryLocation, type PantryLocationFilter } from "../lib/pantry-location";
 import { constraintsForRecipeQuery, queryRequestsRecipes } from "../lib/recipe-query";
 
 import { IngredientChips } from "./IngredientChips";
@@ -325,6 +325,9 @@ export default function RagChefApp() {
   const [selectedIngredients, setSelectedIngredients] = useState<string[]>([]);
   const [focusPantryPicks, setFocusPantryPicks] = useState(false);
   const [pantryManagementOpen, setPantryManagementOpen] = useState(false);
+  const [pantryStorageChoice, setPantryStorageChoice] = useState<PantryLocationFilter>("all");
+  const pantryStorage = normalizePantryLocation(pantryStorageChoice, kitchen.state.pantry);
+  if (pantryStorageChoice !== pantryStorage) setPantryStorageChoice(pantryStorage);
   const [removals, setRemovals] = useState<{ id: string; label: string; pantry: PantryStock[]; meals: PlannedMeal[] }[]>([]);
   const recoveryRef = useRef<HTMLElement>(null);
   const mobileNavRef = useRef<HTMLElement>(null);
@@ -536,7 +539,7 @@ export default function RagChefApp() {
   useEffect(() => {
     if (!hydrated) return;
     const restore = (event: PopStateEvent) => {
-      let saved: { view?: View; flow?: ChefFlow; useSoonId?: string | null; pantryFilter?: PantryFilter; pantryFocusId?: string | null; pantryIngredients?: string[] } | undefined;
+      let saved: { view?: View; flow?: ChefFlow; useSoonId?: string | null; pantryFilter?: PantryFilter; pantryFocusId?: string | null; pantryIngredients?: string[]; pantryLocation?: unknown } | undefined;
       try {
         saved = hosted ? JSON.parse(privateTabStorage.getItem(`navigation:${event.state?.ragChefNavigationRef}`) ?? "null") : event.state?.ragChefNavigation;
       } catch { return; } // A private history entry may no longer belong to this session.
@@ -550,6 +553,7 @@ export default function RagChefApp() {
         pantryFilter: saved.pantryFilter === "soon" || saved.pantryFilter === "past" || saved.pantryFilter === "undated" || saved.pantryFilter === "unknown" || saved.pantryFilter === "empty" ? saved.pantryFilter : "all" as PantryFilter,
         pantryFocusId: typeof saved.pantryFocusId === "string" && currentPantry.some(item => item.id === saved.pantryFocusId) ? saved.pantryFocusId : null,
         ...(saved.view === "pantry" && saved.pantryIngredients ? { pantryIngredients: saved.pantryIngredients } : {}),
+        ...(saved.view === "pantry" ? { pantryLocation: normalizePantryLocation(saved.pantryLocation, currentPantry) } : {}),
       };
       // Normalize stale history in place so Back cannot loop through a removed item.
       navigationSnapshot.current = JSON.stringify(restored);
@@ -569,6 +573,7 @@ export default function RagChefApp() {
       setToday(currentDate); setView(restored.view); setChefFlow(restored.flow); setFocusPantryPicks(false);
       if (restored.pantryIngredients) setSelectedIngredients(restored.pantryIngredients);
       else if (restored.flow.kind === "pantry") setSelectedIngredients(restored.flow.ingredients);
+      if (restored.view === "pantry") setPantryStorageChoice(restored.pantryLocation ?? "all");
       setUseSoonId(restored.useSoonId); setPantryFilter(restored.pantryFilter); setPantryFocusId(restored.pantryFocusId);
     };
     window.addEventListener("popstate", restore);
@@ -577,14 +582,14 @@ export default function RagChefApp() {
   useEffect(() => {
     if (!hydrated) return;
     const snapshot = { view, flow: chefFlow, useSoonId: activeUseSoonId, pantryFilter, pantryFocusId,
-      ...(view === "pantry" ? { pantryIngredients: selectedIngredients } : {}) };
+      ...(view === "pantry" ? { pantryIngredients: selectedIngredients, pantryLocation: pantryStorage } : {}) };
     const serialized = JSON.stringify(snapshot);
     if (serialized === navigationSnapshot.current) return;
     const previous = navigationSnapshot.current ? JSON.parse(navigationSnapshot.current) : null;
-    // Editing picks updates the current Pantry entry; completed searches keep their own history entries.
-    const editingPantryPicks = view === "pantry" && previous?.view === "pantry"
-      && JSON.stringify({ ...previous, pantryIngredients: undefined }) === JSON.stringify({ ...snapshot, pantryIngredients: undefined });
-    const replace = !navigationSnapshot.current || Boolean(useSoonId && !activeUseSoonId) || editingPantryPicks;
+    // Picks and location choices update this Pantry entry; completed searches keep their own entries.
+    const editingPantry = view === "pantry" && previous?.view === "pantry"
+      && JSON.stringify({ ...previous, pantryIngredients: undefined, pantryLocation: undefined }) === JSON.stringify({ ...snapshot, pantryIngredients: undefined, pantryLocation: undefined });
+    const replace = !navigationSnapshot.current || Boolean(useSoonId && !activeUseSoonId) || editingPantry;
     navigationSnapshot.current = serialized;
     if (hosted) {
       try {
@@ -592,7 +597,7 @@ export default function RagChefApp() {
         window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: undefined, ragChefNavigationRef: id }, "");
       } catch { /* Do not place private kitchen data in unscoped browser history. */ }
     } else window.history[replace ? "replaceState" : "pushState"]({ ...window.history.state, ragChefNavigation: snapshot }, "");
-  }, [view, chefFlow, hydrated, activeUseSoonId, useSoonId, pantryFilter, pantryFocusId, selectedIngredients, hosted, privateTabStorage]);
+  }, [view, chefFlow, hydrated, activeUseSoonId, useSoonId, pantryFilter, pantryFocusId, selectedIngredients, pantryStorage, hosted, privateTabStorage]);
 
   const loadPlanningCatalog = useCallback(async () => {
     setCatalogState("loading");
@@ -947,6 +952,7 @@ export default function RagChefApp() {
 
   function reviewPantry(filter: PantryFilter, id?: string) {
     setPantrySearch("");
+    setPantryStorageChoice("all");
     if (id) setPantryFocusRequest(request => request + 1);
     setPantryFilter(filter); setPantryFocusId(id ?? null); navigate("pantry");
   }
@@ -1290,6 +1296,7 @@ export default function RagChefApp() {
             selectedIngredients={selectedIngredients} toggleIngredient={toggleTonightIngredient} focusPicks={focusPantryPicks}
             findDinners={findTonightDinners} clearSelection={() => setSelectedIngredients([])}
             managementOpen={pantryManagementOpen} setManagementOpen={setPantryManagementOpen}
+            storage={pantryStorage} setStorage={setPantryStorageChoice}
             today={today} filter={pantryFilter} setFilter={setPantryFilter} focusId={pantryFocusId} focusRequest={pantryFocusRequest} select={selectUseSoon}
             search={pantrySearch} setSearch={setPantrySearch} sort={pantrySort} setSort={setPantrySort}
             draft={pantryDraft}
@@ -1427,7 +1434,7 @@ export default function RagChefApp() {
           return;
         }
         setPantryAddedIds(additions.map(stock => stock.id)); setPantryAddedDetailed(true);
-        setPantryFilter("all"); setPantrySearch(""); setPantryFocusId(additions[0]?.id ?? null);
+        setPantryFilter("all"); setPantrySearch(""); setPantryStorageChoice("all"); setPantryFocusId(additions[0]?.id ?? null);
         setPantryPreview(null); if (pantryPreviewClearsDraft.current) setPantryDraft(""); setPantryError("");
       }} />}
       {purchaseItems && <PurchasePreview items={purchaseItems} state={kitchen.state} week={week} today={today} close={() => setPurchaseItems(null)} confirm={confirmPurchases} />}

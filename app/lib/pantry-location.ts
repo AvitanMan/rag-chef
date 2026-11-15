@@ -1,4 +1,6 @@
-import type { PantryLocation } from "./kitchen-types";
+import type { PantryLocation, PantryStock } from "./kitchen-types";
+
+export type PantryLocationFilter = "all" | "unsorted" | PantryLocation;
 
 export const PANTRY_LOCATIONS: { value: PantryLocation; label: string }[] = [
   { value: "fridge", label: "Fridge" },
@@ -6,6 +8,12 @@ export const PANTRY_LOCATIONS: { value: PantryLocation; label: string }[] = [
   { value: "cupboard", label: "Cupboard" },
   { value: "spice-rack", label: "Spice rack" },
 ];
+
+/** View state only: old or unavailable location choices never assign storage to food. */
+export function normalizePantryLocation(value: unknown, pantry: readonly Pick<PantryStock, "location">[]): PantryLocationFilter {
+  if (value === "unsorted") return pantry.some(stock => stock.location === undefined) ? "unsorted" : "all";
+  return value === "all" || PANTRY_LOCATIONS.some(location => location.value === value) ? value as PantryLocationFilter : "all";
+}
 
 export const SPICE_RACK_ITEMS: string[] = [
   "salt", "black pepper", "paprika", "ground cumin", "ground cinnamon",
