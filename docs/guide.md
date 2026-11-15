@@ -30,6 +30,8 @@ tonight** saves the dinner and shows that panel without visiting Plan or a date
 picker. Recipes uses the same selection action. **Dinner day and portions** is
 shared across Chef and Recipes; choose another day before selecting when needed.
 Source quantities are the default, and unknown yields use recipe batches.
+If a dinner choice cannot be applied, its options or replacement review stay open
+with an error. The app only reports the dinner saved after accepting the change.
 
 In **Recipe details → Personal amounts**, save measured quantities for the
 source's serving yield, or one recipe batch when yield is unknown. For example,
@@ -37,6 +39,8 @@ source's serving yield, or one recipe batch when yield is unknown. For example,
 Blank fields inherit the source amount. **Cancel** discards drafts and **Reset
 to source amounts** clears the defaults. Invalid or unmeasurable entries stay
 in the editor until corrected.
+An unsuccessful save or reset also keeps the draft editable. Re-saving unchanged
+personal amounts does not create another kitchen change.
 
 Personal amounts apply to new selections, **Cook again**, automatic planning,
 and pantry-readiness previews. Existing dinners and explicit dinner copies keep
@@ -150,15 +154,31 @@ needs and returns to its dinner panel, where **Undo cooked** remains available.
 The session is retained until the completion is recoverable in browser storage
 or saved to this Mac. If both fail, keep the review open and use **Retry save**.
 Changed dinner snapshots cannot be completed from an old cooking session.
+If completion cannot be applied, the review keeps its choices and the cooking
+step so you can go back or try again; it does not deduct stock or mark the meal cooked.
 Reloading during the review resumes the last source step. Unplanned cooking can
 finish without adding a meal or changing the pantry. Replacing another saved
 cooking session still requires confirmation.
 
 ### Populate a fresh installation
 
-Use **Load starter recipes** on Chef or Recipes to add three original MIT-licensed
-recipes without a model, account, or external download. Retrying is safe and does
+Use **Load starter recipes** on Chef or Recipes to add eleven original MIT-licensed
+recipes (the original three starters plus eight everyday dinners) without a model, account, or external download. Retrying is safe and does
 not add duplicate recipes. The action changes only the catalog.
+
+For an existing collection, choose **Recipes → Everyday dinners → Add everyday dinners**.
+This adds the bundled collection without removing imported recipes or changing your
+pantry, saved dinners or favorites. The everyday tab keeps these eight familiar meals
+together; saved exclusions, search and time filters still apply. Recipes are original
+and have not been kitchen-tested, and no verified total cooking time is claimed.
+
+Recipe collection cards show **Have**, **Missing**, and **Also check**. Pantry
+dinner options distinguish **Uses your picks** from **Also have**. **Also check**
+keeps missing salt, black pepper, water and common oils visible. No ingredient is
+assumed to be in your pantry. Amounts still need checking.
+Pantry suggestions rank mains first, honor ingredient dislikes, then favor recipes
+with food ingredients already available and fewer missing food ingredients; duplicate ingredient lines cannot inflate the match.
+[Collection contents and cooking feedback](everyday-dinners.md).
 
 
 Collected recipes are local database content, **not a checked-in seed dataset**.
@@ -260,8 +280,107 @@ In **Settings**, cooking preferences come first. Enter allergies and dislikes as
 comma, or leaving the field saves an ingredient. Select a chip to edit it, or
 use its × button to remove it.
 
-In **Pantry**, **All items** starts with compact ingredient groups using the
-existing canonical identity. Each summary shows the batch count and physical
+In **Pantry**, start with a simple saved list organized by **All**, **Fridge**,
+**Freezer**, **Cupboard**, and **Spice rack**. **All** opens first in a new app session. **Unsorted**
+appears when saved batches have no location, including older pantry entries.
+Opening a tab never assigns or moves stock. Locations describe where you keep
+food; they do not establish its condition, temperature, or readiness to cook.
+Your chosen location is remembered while the app stays open, including a return
+from dinner ideas. Back and Forward restore the location belonging to that
+navigation entry. This view choice is not saved in your kitchen or backup and
+does not become a persistent preference after reload.
+
+Enter names separated by commas or new lines, such as `rice, tomatoes, garlic`.
+On a populated pantry, open **Add ingredients** when you need it. It opens
+automatically for an empty pantry, an unfinished addition draft, or an addition
+error. Closing and reopening it keeps the draft and its location choices.
+Chef's quick-add uses the same draft and preserves separate ingredient lines.
+Adding or reordering other ingredients keeps the locations you explicitly chose.
+**Add another batch** appends to an unfinished draft instead of replacing it.
+Review each draft's location before choosing **Add to pantry**. The open location
+tab supplies an explicit destination; in All, familiar names may receive an
+editable suggestion. Unknown names can stay Unsorted. Amounts and dates remain
+optional. A plain name already available in the chosen location is kept once,
+without changing its amount or date. Adding the same ingredient to another
+location creates a separate batch, with an explanation in the draft. Measured
+or ambiguous entries still open a review preview, as do names
+that match only finished or past-date batches. Existing batches remain separate;
+adding an ingredient does not move, merge, or replenish them.
+
+Use a batch's location control to move the **whole batch**, preserving its ID,
+name, amount, and entered date. To keep part of an ingredient in another place,
+record separate batches explicitly. **Spice rack** also offers a starter checklist
+under **Stock your spice rack**, collapsed when you already have saved pantry items:
+select what you have, then choose **Add selected spices**. Saved spices with a
+nonzero or unknown amount in any location are marked as owned and cannot be added
+again from the checklist, including batches past their entered date. They show
+their locations, any past-date reminder, and a move action. Unchecking a checklist entry does not
+remove saved stock; no spice is assumed to be available until you add it.
+
+Location buttons on desktop and the **Location** selector on mobile show the
+number of available ingredients, excluding finished and past-date batches. The
+ingredient heading uses the selected location; search shows the matching count
+out of that location’s available ingredients. A separate note links to saved
+finished or past-date batches. **Dates in …** offers **Use soon** and **Past entered
+date** shortcuts for the chosen location. Their counts are saved batches across
+that location, independent of search; they open the matching filter in **Manage
+amounts, dates and batches**. They do not change stock or select ingredients.
+
+Each everyday row has ingredient selection and **Details**. Details opens a
+compact dialog containing every saved batch of that ingredient, across all
+locations, in saved order. Each card shows its location, physical amount and
+entered date, including finished or past-date status. **Move**, **Use some**,
+**Mark finished**, and **Edit details** open the existing confirmation flows for
+that particular batch. Use some requires a known positive amount; use Edit
+details to enter an amount when it is unknown. Mark finished keeps the batch
+with zero stock. A confirmed change or Cancel returns to Details, with the batch
+in focus; the latest guarded batch-edit Undo is available there. Opening Details
+or confirming unchanged values never writes stock. **Manage batches** opens the
+full batch tools for the ingredient; those tools also retain removal and
+reservation details. **Close** returns to ingredient picking.
+
+If a change cannot be applied, its inputs stay editable so you can resolve the
+pending kitchen changes and try again. An unsuccessful removal or Undo keeps its
+original recovery action.
+
+Pick foods you would like to use, then choose **Find dinners**. The mobile
+action stays compact above navigation. **Clear selection** sits beside your picks.
+Each dinner option uses at least one picked food; the picks can lead to different
+meals, so chicken breast, potatoes, pasta, and mushrooms can offer a chicken tray bake
+and mushroom pasta. A recipe does not need every pick. Salt, black pepper, water,
+and basic cooking oils alone do not count as a picked food match. Saved exclusions
+still apply, and the shortlist works without an AI model.
+
+Recipes show **Uses your picks**, **Also have**, **Missing**, and **Also saved in freezer**
+where applicable. Other saved ingredients support a recipe but do not pull in
+unrelated options. Mains and ingredient dislikes are considered first, then fewer
+missing foods and more of your picked foods. Three cards appear initially;
+**Show more dinners** reveals more options. Name matches do not establish enough
+quantity; check dinner amounts and shopping needs before cooking.
+
+Your picks appear as removable chips above the pantry list and on the results
+screen. Picks survive location changes and search, and each chip removes only that
+pick. Removing a result chip updates options in place; removing the last returns
+to Pantry. An unavailable pick is identified and can be removed while remaining
+valid picks continue to work. If no option uses a picked food, choose other
+ingredients or browse recipes without changing saved pantry stock. Back and
+Forward restore the picks for the corresponding search. Picks last while the app
+is open; the pantry itself persists after reload. Finished and past-date batches
+remain saved but are not offered for tonight's ingredient selection. Freezer
+ingredients stay visible for deliberate selection. Frozen batches count in this
+deterministic dinner shortlist and its name-fit ranking only when that ingredient
+is selected; the results identify selected freezer ingredients so you can plan
+their preparation. This opt-in follows the ingredient identity, including matching
+batches in other locations. Clearing the selection removes the opt-in.
+
+Location controls and the freezer discovery rule do not reduce physical on-hand totals,
+shopping coverage, reservations, or cooking deductions. Those retain the full
+pantry and their existing quantity/date checks. Chef's AI pantry context and
+behavior also retain the existing rules.
+
+Open **Manage amounts, dates and batches** for stocktake, reservations, filters
+and individual batch edits. Here **All items** starts with compact ingredient
+groups using the existing canonical identity. Each summary shows the batch count and physical
 **On hand** totals in compatible units, plus a separate count of batches with
 unknown amounts. Past-dated stock still counts as physically on hand; unknown
 amounts are neither zero nor unlimited. Grouping never merges batch IDs, names,
@@ -305,9 +424,8 @@ stocktake or automatically delete anything; removal remains an explicit action.
 
 In Pantry's **Keep your pantry accurate** summary, **Review pantry** starts a
 guided stocktake of the **full pantry**, including batches hidden by search or
-filters. Its count is batches, not reasons. A batch can need review for:
+filters. Its count is batches, not reasons. This pass includes:
 
-- An unknown amount, regardless of date.
 - An entered planning date before today, unless the amount is known zero.
 - Incompatible units affecting an actually uncovered, quantified requirement
   for a saved, uncooked dinner in the selected week, including locked dinners.
@@ -317,9 +435,16 @@ filters. Its count is batches, not reasons. A batch can need review for:
   a unit mismatch. The reason names the dinner, date, and required unit without
   inventing a package-content or mass/volume conversion.
 
+Unknown amounts alone do not appear as accuracy chores. Use the optional
+**Add amounts for better shopping estimates** action to work through those
+batches. A batch with both unknown amount and a past-date or unit issue stays in
+**Review pantry**; after its attention issue is corrected, it can move to the
+optional amount category. Quantities remain optional, and unknown amounts never
+claim measured shopping coverage.
+
 A missing date alone is not an issue, and known-zero batches are excluded from
-this pass. Unknown and past-date reasons remain even if dinners are fully
-covered. This is a stock-record review, not a food-safety assessment.
+these passes. Past-date reasons remain even if dinners are fully covered. This
+is a stock-record review, not a food-safety assessment.
 
 The pass opens one batch at a time in the existing guarded editor: **Correct
 batch**, **Record usage**, or **Mark finished**. **Skip batch** discards the
@@ -331,22 +456,26 @@ applied; follow the kitchen save indicator for persistence/sync status.
 The pass keeps its starting batch IDs and order, while reasons stay current.
 Advancing skips future tasks that have resolved or been removed, does not
 revisit skipped batches, and does not append newly problematic batches. Finishing
-reports the current full-pantry count still needing review, including skipped,
-unresolved, or newly arising issues—not a claim that every batch is fixed. Start
+reports the current full-pantry count for the chosen pass category, including
+skipped, unresolved, or newly arising issues. Focus returns to the action that
+started the pass if it remains available, or to the pantry heading. Start
 another pass for those. The pass is in memory only; leaving Pantry or reloading
 loses its progress, not already applied stock changes.
 
 Paste ingredients separated by new lines, commas, or semicolons. Amounts are
-optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported. Only a bare,
-new ingredient can skip review. Multiple rows, measured or ambiguous entries,
-and names already present under the same canonical identity open an editable
-preview with optional per-batch dates. Ambiguous text, such as `1–2 cups rice`
+optional: `rice: 300 g`, `300 g rice`, and `rice 300 g` are supported. Plain-name
+lists save directly and keep already available ingredients once. Measured or
+ambiguous entries, explicit additional batches, and names that match only
+finished or past-date batches open an editable preview with optional per-batch
+dates. Ambiguous text, such as `1–2 cups rice`
 or `1 (400 g) can tomatoes`, is kept for review rather than assigned a guessed
 amount. Recognized comma preparation descriptions stay with their ingredient.
 
 The preview identifies repeated ingredients and matching existing batches.
 **Confirm new batch** / **Confirm new batches** keeps every row separate; it
-never overwrites existing stock or combines dates. **Correct existing batch**
+never overwrites existing stock or combines dates or locations. Each preview row
+has an editable location; existing matches show their saved locations. Changing
+or canceling a preview does not change saved pantry stock. **Correct existing batch**
 closes the preview and focuses that saved batch in Pantry without adding stock
 or applying the preview's values. **Add another batch** starts a new entry.
 Each explicit **View added batches** action clears search, selects All items,
@@ -385,7 +514,7 @@ in the editor; a removed batch is not recreated.
 
 After an applied correction, usage subtraction, or Mark finished, **Undo last
 batch edit** restores just that batch's exact previous name, amount text, and
-date, retaining its ID. This includes edits confirmed during **Review pantry**;
+date and location, retaining its ID. This includes edits confirmed during **Review pantry**;
 there is no undo for an entire pass. Only the latest applied batch-editor change
 is kept; another replaces it, but unchanged corrections do not. The undo record
 is in memory only, until you leave Pantry (including
@@ -395,9 +524,11 @@ exactly matches the after-change snapshot—even equivalent amount text such as
 `400 g` versus `0.4 kg` does not match. Meals, cooking deductions, purchase
 receipts, shopping checks/cycles, and other batches stay untouched. Edits and
 successful undo follow the normal kitchen save indicator; only the undo record
-is transient, not the stock change. Undo or dismissal returns keyboard focus to
-that batch's **Edit batch** button, or **Your pantry** if the batch is hidden or
-removed.
+is transient, not the stock change. In the full Manage view, Undo or dismissal
+returns keyboard focus to that batch's **Edit batch** button, or **Your pantry**
+if the batch is hidden or removed. In compact Details, focus returns to the
+selected batch's heading, or the ingredient heading if that batch is no longer
+shown.
 
 **Remove** has a separate **Undo** recovery bar above the page content. Removing
 unlocked dinners (including **Clear unlocked**) uses that same bar, available
@@ -409,8 +540,8 @@ See [Pantry semantics](pantry-semantics.md) for the stages 1–3 baseline from
 merged PR12 (`54ee59f`) and the first compact-browser and guided-stocktake
 milestone. Its behavioral acceptance criteria and test map complement the
 execution results recorded in PR checks and test artifacts.
-This milestone adds no pantry metadata, package-content model, or history/schema
-changes. Richer package metadata, barcodes, storage locations, and a full
+The fixed location field adds no package-content model or inventory journal.
+Richer package metadata, barcodes, custom locations, and a full
 inventory journal remain deferred to later stages; the single in-memory edit
 undo is not that journal.
 
@@ -472,14 +603,18 @@ Shopping flags a preparation mismatch for review instead of subtracting the
 wrong stock. Enter leftovers as `cooked rice: 300 g`, for example.
 
 Checked items move into **Bought** without changing pantry stock. Use **Add bought
-items to pantry** to review actual purchased amounts and optional per-batch
-**Use by** dates, then **Confirm pantry additions**. Leave unknown dates blank;
+items to pantry** to review actual purchased amounts, editable suggested locations,
+and optional per-batch **Use by** dates, then **Confirm pantry additions**. Location
+changes remain drafts until confirmation; Cancel and Skip item do not add stock.
+If confirmation cannot be applied, the review stays open with its amounts, dates,
+locations, skipped items and batch identities intact for another attempt.
+Leave unknown dates blank;
 dates are not copied from existing stock. Invalid dates or amounts block
 confirmation; zero is not a purchased amount, while blank or note-only amounts
 remain unknown. A valid past date is accepted with a warning and excludes the
 new batch from availability. Each purchase adds separate batches, preserving
 existing quantities, dates, and cooked/uncooked identities. Its receipt retains
-the purchased batch snapshot, including any entered date.
+the purchased batch snapshot, including any entered date and location.
 
 For a bought item still on the shopping list whose current cycle was already
 added to Pantry, **Need to buy again** returns it to To buy, while **Record another
@@ -492,9 +627,9 @@ same cycle twice.
 
 **Pantry additions** shows the selected week's purchase receipts and offers
 **Undo pantry additions** only when all of a receipt's batches still match.
-Matching requires the same batch ID, exact name and date, and either the same
+Matching requires the same batch ID, exact name, date and location, and either the same
 amount text or an equivalent parsed quantity, such as `1 kg` and `1000 g`.
-Unknown notes must match exactly. Actual quantity, name, or date changes, removal,
+Unknown notes must match exactly. Actual quantity, name, date or location changes, removal,
 and outstanding consumption block the whole receipt's undo. Cooking followed by
 **Undo cooked** can restore an equivalent quantity and make purchase undo
 available again. This is guarded purchase history, not a full inventory journal.
@@ -803,14 +938,21 @@ when live pantry rows are identical. Restoring replaces shopping checks and
 purchase history as well as amounts; it does not replay purchases. These records
 control repeat-purchase detection and guarded purchase undo.
 
-The pantry stages 1–3 baseline and first compact-browser/stocktake milestone
-keep kitchen `schemaVersion: 2` and the existing backup format. No new database
-migration is required. Batches still store `id`, `name`, `measure`, and optional
-`useBy`; grouping, amount states, reservations, and stocktake reasons are derived,
-not new stored fields. Group disclosure, review-pass progress, and the single
-batch-editor undo record are in memory only and are not exported in backups.
-There are no new pantry metadata, package-content, or history fields. Existing
-backups without optional purchase history remain supported.
+Kitchen `schemaVersion: 2` and the existing backup format are retained; no new
+database migration is required. Batches store `id`, `name`, `measure`, optional
+`useBy`, and optional `location` (`fridge`, `freezer`, `cupboard`, or `spice-rack`).
+Missing location means Unsorted and is preserved when loading older kitchens or
+backups. Nothing assigns locations to old data automatically. Current exports,
+restore, and recovery preserve location, including purchase snapshots; a location
+move appears as a pantry change in review summaries.
+
+Older app builds that reject unknown pantry fields cannot read kitchens or backups
+containing `location`; use a current build for those records. Existing backups
+without location or optional purchase history remain supported by the current app.
+Grouping, amount states, reservations, and stocktake reasons stay derived. Group
+disclosure, selected ingredients, review-pass progress, and the single batch-editor
+undo record stay in memory and are not exported in backups. No package-content
+model or inventory journal is added.
 See [compatibility and historical PR7 overlap](pantry-semantics.md#compatibility-and-historical-pr7-overlap)
 for earlier integration notes, not a current PR-status or compatibility report.
 

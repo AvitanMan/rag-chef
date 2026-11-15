@@ -37,11 +37,11 @@ test("starter execution uses injected ports and can safely repeat without recipe
   const h = fixture(), progress = [];
   const executor = createCatalogJobExecutor({ catalog: h.catalog, providers: h.providers, hosted: () => false });
   const first = await executor.execute({ kind: "demo" }, { checkpoint: async value => { if (value) progress.push(value); } });
-  assert.deepEqual(first, { ok: true, count: 3 }); assert.equal(h.recipes.size, 3);
+  assert.deepEqual(first, { ok: true, count: 11 }); assert.equal(h.recipes.size, 11);
   const before = structuredClone([...h.recipes.values()]);
   assert.deepEqual(await executor.execute({ kind: "demo" }), first);
   assert.deepEqual([...h.recipes.values()], before);
-  assert.ok(progress.some(value => value.phase === "saving" && value.completed === 3 && value.total === 3));
+  assert.ok(progress.some(value => value.phase === "saving" && value.completed === 11 && value.total === 11));
 });
 
 test("source permission revocation stops a running starter job before its next recipe", async () => {

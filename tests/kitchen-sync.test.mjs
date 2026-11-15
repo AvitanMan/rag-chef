@@ -39,6 +39,7 @@ const { scopedStorage, accountStoragePrefix } = await sources.import("app/lib/pr
 const localSessionContext = AppSessionContext.value;
 const { KITCHEN_CACHE_KEY } = await sources.import("app/lib/kitchen-state.ts");
 const { applyKitchenCommand } = await sources.import("app/lib/kitchen-commands.ts");
+const { MAX_PENDING_KITCHEN_WRITES } = await sources.import("app/lib/kitchen-write-queue.ts");
 const old = { fetch: globalThis.fetch, window: globalThis.window, localStorage: globalThis.localStorage, sessionStorage: globalThis.sessionStorage, document: globalThis.document };
 after(async () => { runtime.reset(); Object.assign(globalThis, old); await sources.dispose(); });
 
@@ -83,6 +84,114 @@ async function setup({ cached, blocked = false, fetch, existingLocal, existingSe
   await pump();
   return { get result() { return runtime.result; }, pump, tick, poll, calls, local, session, prefix, privateLocal: AppSessionContext.value.local, dispatch: event => events.dispatchEvent(event), respond: (fn) => { handler = fn; } };
 }
+
+function cachedCommands(count) {
+  return { revision: 1, dirty: true, state: { ...state(), favoriteRecipeIds: count % 2 ? ["queued-recipe"] : [] },
+    writeQueue: { version: 1, writes: Array.from({ length: count }, (_, index) => ({ kind: "command", attempted: false,
+      command: { type: "SetFavorite", commandId: `queued-${index}`, expectedRevision: 1, recipeId: "queued-recipe", favorite: index % 2 === 0 } })) } };
+}
+
+function queuedCommands(h) {
+  const key = h.session.getItem(`${h.prefix}${KITCHEN_CACHE_KEY}:tab-draft`);
+  return JSON.parse(h.privateLocal.getItem(key)).writeQueue.writes;
+}
+
+test("command acceptance waits for initialization without replacing the loading kitchen", async () => {
+  let load;
+  const h = await setup({ fetch: () => new Promise(resolve => { load = resolve; }) });
+  const before = h.result.state;
+  const input = { type: "AddPantryBatches", batches: [{ id: "beans", name: "beans", measure: "1 kg" }] };
+  assert.equal(h.result.ready, false);
+  assert.equal(h.result.command(input), false);
+  assert.equal(h.result.dispatch({ ...input, commandId: "before-load", expectedRevision: 0 }), false);
+  await h.pump();
+  assert.strictEqual(h.result.state, before);
+  assert.equal(h.result.saveState, "loading");
+  assert.ok(h.calls.every(({ options }) => !options.method));
+  load(Response.json(document())); await h.pump();
+  assert.equal(h.result.ready, true);
+  assert.deepEqual(h.result.state, state());
+  assert.equal(h.result.command(input), true);
+  await h.pump();
+  assert.equal(h.result.state.pantry.at(-1).id, "beans");
+});
+
+test("command acceptance distinguishes queued changes from no-ops, stale revisions and duplicate IDs", async () => {
+  const h = await setup();
+  const snapshot = h.result.state.pantry[0], initialStatus = h.result.status;
+  assert.equal(h.result.command({ type: "ReplacePantryBatch", snapshot, replacement: snapshot }), false);
+  assert.equal(h.result.command({ type: "RemovePantryBatch", snapshot: { ...snapshot, measure: "500 g" } }), false);
+  assert.equal(h.result.dispatch({ type: "RemovePantryBatch", snapshot, commandId: "stale-revision", expectedRevision: 0 }), false);
+  await h.pump();
+  assert.deepEqual(h.result.state, state());
+  assert.equal(h.result.status, initialStatus);
+  assert.equal(h.result.saveState, "saved");
+  assert.equal(h.session.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`) && h.local.getItem(h.session.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`)), null);
+
+  assert.equal(h.result.dispatch({ type: "ReplacePantryBatch", snapshot, replacement: { ...snapshot, measure: "900 g" }, commandId: "accepted-change", expectedRevision: 1 }), true);
+  await h.pump();
+  const queue = queuedCommands(h), changed = h.result.state.pantry[0];
+  assert.equal(h.result.dispatch({ type: "ReplacePantryBatch", snapshot: changed, replacement: { ...changed, measure: "800 g" }, commandId: "accepted-change", expectedRevision: 1 }), false);
+  assert.equal(h.result.command({ type: "ReplacePantryBatch", snapshot: changed, replacement: changed }), false);
+  await h.pump();
+  assert.equal(h.result.state.pantry[0].measure, "900 g");
+  assert.deepEqual(queuedCommands(h), queue);
+  assert.equal(h.result.saveState, "pending");
+  assert.ok(h.calls.every(({ options }) => !options.method));
+});
+
+test("the last available command slot accepts one change and refuses the next without advancing local state", async () => {
+  const cached = cachedCommands(MAX_PENDING_KITCHEN_WRITES - 1);
+  const h = await setup({ cached });
+  assert.equal(h.result.command({ type: "AddPantryBatches", batches: [{ id: "accepted-beans", name: "beans", measure: "1 kg" }] }), true);
+  assert.equal(h.result.command({ type: "AddPantryBatches", batches: [{ id: "rejected-onion", name: "onion", measure: "2" }] }), false);
+  await h.pump();
+  assert.deepEqual(h.result.state.pantry, [...cached.state.pantry, { id: "accepted-beans", name: "beans", measure: "1 kg" }]);
+  const queue = queuedCommands(h);
+  assert.equal(queue.length, MAX_PENDING_KITCHEN_WRITES);
+  assert.deepEqual(queue.slice(0, -1), cached.writeQueue.writes);
+  assert.equal(queue.at(-1).command.batches[0].id, "accepted-beans");
+  assert.match(h.result.status, /too many unsaved changes/);
+  assert.ok(h.calls.every(({ options }) => !options.method));
+});
+
+test("a recovered full command queue refuses Pantry mutations while preserving every existing intent", async () => {
+  const cached = cachedCommands(MAX_PENDING_KITCHEN_WRITES);
+  const h = await setup({ cached });
+  const snapshot = h.result.state.pantry[0];
+  for (const input of [
+    { type: "AddPantryBatches", batches: [{ id: "new-beans", name: "beans", measure: "1 kg" }] },
+    { type: "ReplacePantryBatch", snapshot, replacement: { ...snapshot, location: "fridge" } },
+    { type: "RemovePantryBatch", snapshot },
+    { type: "UndoPantryBatch", change: { before: { ...snapshot, measure: "2 kg" }, after: snapshot } },
+  ]) {
+    assert.equal(h.result.command(input), false, input.type);
+    await h.pump();
+    assert.deepEqual(h.result.state, cached.state);
+    assert.deepEqual(queuedCommands(h), cached.writeQueue.writes);
+  }
+  assert.equal(h.result.saveState, "error");
+  assert.match(h.result.status, /too many unsaved changes/);
+  assert.ok(h.calls.every(({ options }) => !options.method));
+});
+
+test("a conflict still accepts local commands without attempting to write them", async () => {
+  const h = await setup({ hosted: true });
+  const snapshot = h.result.state.pantry[0];
+  assert.equal(h.result.command({ type: "ReplacePantryBatch", snapshot, replacement: { ...snapshot, measure: "900 g" } }), true);
+  await h.pump();
+  const remote = document(2, { ...state(), pantry: [{ ...snapshot, measure: "300 g" }] });
+  h.respond(() => Response.json(remote)); await h.poll();
+  assert.equal(h.result.saveState, "conflict");
+  const current = h.result.state.pantry[0];
+  assert.equal(h.result.command({ type: "ReplacePantryBatch", snapshot: current, replacement: { ...current, measure: "800 g" } }), true);
+  await h.pump(); await h.tick();
+  assert.equal(h.result.saveState, "conflict");
+  assert.deepEqual(h.result.conflict, remote);
+  assert.equal(h.result.state.pantry[0].measure, "800 g");
+  assert.equal(queuedCommands(h).length, 2);
+  assert.ok(h.calls.every(({ options }) => !options.method));
+});
 
 test("hosted polling refreshes clean snapshots but retains a pending stocktake as an explicit conflict", async () => {
   const h = await setup({ hosted: true });
@@ -144,7 +253,7 @@ test("a lost command response survives reload and replays once before loading la
     receipt = { commandId: command.commandId, applied: true, replayed: false, document: current };
     throw new TypeError("Failed to fetch"); // D1 committed, but the response was lost.
   } });
-  first.result.command({ type: "ReplacePantryBatch", snapshot: first.result.state.pantry[0], replacement: { ...first.result.state.pantry[0], measure: "900 g" } });
+  assert.equal(first.result.command({ type: "ReplacePantryBatch", snapshot: first.result.state.pantry[0], replacement: { ...first.result.state.pantry[0], measure: "900 g" } }), true);
   await first.pump(); await first.tick();
   assert.equal(first.result.saveState, "offline"); assert.equal(current.revision, 2);
   const draft = JSON.parse(first.local.getItem(first.session.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`)));
@@ -310,7 +419,7 @@ test("a command can save to the database when browser backup storage is unavaila
     return Response.json({ commandId: command.commandId, applied: true, replayed: false,
       document: document(2, applyKitchenCommand(state(), command, { revision: 1 })) });
   });
-  h.result.command({ type: "ReplacePantryBatch", snapshot: h.result.state.pantry[0], replacement: { ...h.result.state.pantry[0], measure: "600 g" } });
+  assert.equal(h.result.command({ type: "ReplacePantryBatch", snapshot: h.result.state.pantry[0], replacement: { ...h.result.state.pantry[0], measure: "600 g" } }), true);
   await h.pump();
   const warn = new Event("beforeunload", { cancelable: true }); h.dispatch(warn);
   assert.equal(warn.defaultPrevented, true);

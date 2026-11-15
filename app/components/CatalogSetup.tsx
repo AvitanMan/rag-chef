@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { catalogJobStatusPath, CatalogJobFailedError, waitForCatalogJob, type CatalogJobResponse } from "../lib/catalog-job-client";
+import { DEMO_RECIPES } from "../lib/demo-recipes";
 import { useAppSession } from "../lib/app-session";
 
-export function CatalogSetup({ loaded }: { loaded: () => Promise<void> }) {
+export function CatalogSetup({ loaded, expand = false }: { loaded: () => Promise<void>; expand?: boolean }) {
   const { session, tab, fetch: kitchenFetch } = useAppSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -48,13 +49,15 @@ export function CatalogSetup({ loaded }: { loaded: () => Promise<void> }) {
       setError(cause instanceof Error && cause.name !== "TimeoutError" ? cause.message : "Recipes are still being prepared. Retry to check their progress.");
     } finally { active.current = null; if (!controller.signal.aborted) setBusy(false); }
   }
+  if (session.mode === "hosted" && !session.platformAdmin && expand) return <p className="quantity-note">Ask the administrator to add the everyday dinner collection, then refresh recipes.</p>;
   if (session.mode === "hosted" && !session.platformAdmin) return <section className="panel catalog-setup" aria-label="Set up your recipe collection"><h2>The shared recipe collection is empty</h2><p>Ask the administrator to add approved recipes. You can still manage pantry stock and saved dinners.</p><button className="secondary-button" onClick={() => void loaded()}>Refresh recipes</button></section>;
-  return <section className="panel catalog-setup" aria-label="Set up your recipe collection" aria-busy={busy}>
-    <span className="eyebrow">Your first dinner</span>
-    <h2>Start with three pantry-friendly recipes</h2>
-    <p>Add original RAG Chef starter recipes, then choose dinner, see what to buy, and follow the cooking steps.</p>
+  return <section className="panel catalog-setup" aria-label={expand ? "Add everyday dinners" : "Set up your recipe collection"} aria-busy={busy}>
+    <span className="eyebrow">Everyday cooking</span>
+    <h2>{expand ? "Add eight everyday dinners" : `Start with ${DEMO_RECIPES.length} dinner ideas`}</h2>
+    <p>Garlic tomato pasta, chicken and potatoes, egg fried rice, and more familiar meals with complete preparation steps.</p>
+    <p>Eight new original dinners alongside the three starters. These recipes have not been kitchen-tested; total times are unmeasured.</p>
     <p>{session.mode === "hosted" ? "Add these recipes to the shared catalog. No AI model or recipe download is needed." : "No AI model, account, or recipe download is needed."} Your pantry and saved dinners stay as they are.</p>
-    <button className="primary-button" disabled={busy} onClick={() => void load()}>{busy ? "Adding starter recipes…" : error ? "Retry starter recipes" : "Load starter recipes"}</button>
+    <button className="primary-button" disabled={busy} onClick={() => void load()}>{busy ? "Adding recipes…" : error ? expand ? "Retry everyday dinners" : "Retry starter recipes" : expand ? "Add everyday dinners" : "Load starter recipes"}</button>
     {busy && <p role="status">Saving your recipe collection {session.mode === "hosted" ? "to the shared catalog" : "on this Mac"}…</p>}
     {error && <p role="alert">{error}</p>}
     <p className="quantity-note">Original recipes shared under MIT. Review ingredients and your cooking preferences before choosing a dinner.</p>

@@ -65,3 +65,5 @@ __pycache__/
 *.key
 rag-chef-kitchen-backup*.json
 /links.txt
+/.zed/
+/security_best_practices_report.md

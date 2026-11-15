@@ -1,3 +1,4 @@
+import { createEverydayRecipes } from "./everyday-recipes";
 import type { Recipe } from "./recipe-types";
 import type { ApprovedRecipeSourceInput } from "./recipe-store";
 
@@ -34,4 +35,8 @@ export const DEMO_RECIPES: Recipe[] = [
     ingredients: [{ name: "pasta", measure: "200 g" }, { name: "canned chopped tomatoes", measure: "400 g" }, { name: "spinach", measure: "100 g" }, { name: "olive oil", measure: "1 tbsp" }, { name: "garlic", measure: "2 cloves" }, { name: "water", measure: "2 l" }],
     instructions: ["Peel and finely chop the garlic. Wash the spinach.", "Bring the water to a boil in a saucepan on the stovetop. Add the pasta and cook according to its package directions. Before draining, reserve a small cup of the cooking water.", "While the pasta cooks, warm the olive oil in a frying pan over medium-low heat. Stir in the garlic and cook until fragrant, without browning it.", "Add the tomatoes and simmer until the sauce thickens. Stir in the spinach until wilted.", "Add the drained pasta and toss with the sauce. If needed, add a little reserved cooking water to loosen it. Divide between two bowls and serve."],
   },
+  ...createEverydayRecipes({
+    source: { ...common.source, url: sourceUrl.replace("demo-recipes.ts", "everyday-recipes.ts") },
+    sourceUrl: sourceUrl.replace("demo-recipes.ts", "everyday-recipes.ts"),
+  }),
 ];

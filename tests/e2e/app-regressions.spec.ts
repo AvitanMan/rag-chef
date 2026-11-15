@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import type { KitchenState } from "../../app/lib/kitchen-types";
+import { openPantryAdd } from "./pantry-helpers";
 
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
 async function navigate(page: Page, name: string) {
@@ -79,6 +80,7 @@ test("Back and Forward close pantry import and purchase previews", async ({ page
   await request.put("/api/kitchen", { data: { revision: current.revision, state } });
   await page.clock.install({ time: new Date("2026-11-01T12:00:00+02:00") });
   await page.goto("/"); await navigate(page, "Recipes"); await navigate(page, "Pantry");
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("rice: 300 g\nbeans: 400 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Review pantry ingredients", exact: true })).toBeVisible();
