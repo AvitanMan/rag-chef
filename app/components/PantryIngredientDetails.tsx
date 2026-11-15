@@ -22,8 +22,13 @@ export function PantryIngredientDetails({ name, stocks, today, notice, undo, clo
   const heading = useRef<HTMLHeadingElement>(null);
   const batchHeadings = useRef(new Map<string, HTMLHeadingElement>());
   useEffect(() => {
+    const initialFocus = !focusStockId && focusRequest === 0;
+    const activeWhenScheduled = document.activeElement;
     // Wait until Modal has opened the native dialog before placing focus.
     const frame = requestAnimationFrame(() => {
+      // Native dialog focus can already let someone Tab before this frame runs.
+      // Preserve that navigation; explicit return-to-batch requests still win.
+      if (initialFocus && document.activeElement !== activeWhenScheduled) return;
       const target = focusStockId ? batchHeadings.current.get(focusStockId) ?? heading.current : heading.current;
       target?.focus({ preventScroll: true });
       if (focusStockId && target !== heading.current) target?.scrollIntoView({ block: "nearest" });

@@ -9,11 +9,12 @@ const { normalizeConstraints } = await loader.import("app/lib/recipe-constraints
 const { DEMO_SOURCE } = await loader.import("app/lib/demo-recipes.ts");
 const { EVERYDAY_RECIPES } = await loader.import("app/lib/everyday-collection.ts");
 const TODAY = "2026-11-14";
-const stock = (id, name, measure = "", useBy) => ({ id, name, measure, ...(useBy ? { useBy } : {}) });
+// Ranking fixtures use measured stock; unknown amounts are exercised explicitly below.
+const stock = (id, name, measure = "1 kg", useBy) => ({ id, name, measure, ...(useBy ? { useBy } : {}) });
 const recipe = (id, names, title = id) => ({
   id, title, image: null, category: "Dinner", cuisine: "", source: { name: "Original test recipes", url: "https://example.test" },
   sourceUrl: "https://example.test/recipes", instructions: ["Follow the original directions."], tags: [],
-  ingredients: names.map(name => ({ name, measure: "" })),
+  ingredients: names.map(name => ({ name, measure: /^\d/.test(name) ? "" : "100 g" })),
 });
 const metadata = (dinnerRole = "main", extra = {}) => ({
   revision: 1, sourceContentHash: "a".repeat(64), coreDinner: dinnerRole === "main", dinnerRole,
@@ -23,7 +24,7 @@ const metadata = (dinnerRole = "main", extra = {}) => ({
 const ids = result => result.matches.map(item => item.recipe.id);
 
 test("available ingredients retain unknown amounts and undated batches, deduplicate aliases, and exclude empty or past stock", () => {
-  const pantry = [stock("past", "Rice", "1 kg", "2026-11-13"), stock("unknown", "raw rice"),
+  const pantry = [stock("past", "Rice", "1 kg", "2026-11-13"), stock("unknown", "raw rice", ""),
     stock("duplicate", "uncooked rice", "some"), stock("today", "tomatoes", "2", TODAY),
     stock("tomato-empty", "tomato", "0"), stock("empty", "onion", "0 g"), stock("notes", "garlic", "a little")];
   assert.deepEqual(availableTonightIngredients(pantry, TODAY), [
@@ -76,7 +77,7 @@ test("unselected freezer support cannot improve dinner order, and selected freez
 
 test("one unavailable pick stays visible and does not block recipes using other available selected food", () => {
   const recipes = [recipe("both", ["rice", "tomato"]), recipe("rice-only", ["rice"])];
-  const pantry = [stock("rice", "rice"), stock("tomato", "tomato", "1", TODAY)];
+  const pantry = [stock("rice", "rice"), stock("tomato", "tomato", "100 g", TODAY)];
   assert.deepEqual(ids(findPantryDinners(recipes, [], pantry, TODAY)), []);
   assert.deepEqual(ids(findPantryDinners(recipes, ["rice", "missing"], pantry, TODAY)), ["both", "rice-only"]);
   assert.deepEqual(ids(findPantryDinners(recipes, ["rice", "tomato"], pantry.slice(0, 1), TODAY)), ["rice-only", "both"]);

@@ -143,3 +143,68 @@ test("native Pantry Details keeps keyboard boundaries and returns from confirmed
   await expect(trigger).toBeFocused();
   expect(writes).toHaveLength(2);
 });
+
+test("native dinner preview keeps picks across date and portion edits and saves only the chosen dinner", async ({ page, request }, testInfo) => {
+  const current = await (await request.get("/api/kitchen")).json();
+  const state: KitchenState = { ...current.state, meals: {}, pantry: [
+    { id: "candidate-rice", name: "rice", measure: "250 g", location: "cupboard" },
+    { id: "candidate-tomato", name: "tomato", measure: "4", location: "fridge" },
+  ] };
+  expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+  await page.goto("/");
+  await navigate(page, "Pantry");
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  const before = await (await request.get("/api/kitchen")).json();
+  const writes: string[] = [], chefCalls: string[] = [];
+  page.on("request", outgoing => {
+    if (isKitchenWrite(outgoing)) writes.push(outgoing.url());
+    if (new URL(outgoing.url()).pathname === "/api/chef") chefCalls.push(outgoing.url());
+  });
+  await page.getByRole("button", { name: "Use rice tonight", exact: true }).click();
+  await page.getByRole("button", { name: "Find dinners", exact: true }).click();
+  const results = page.locator(".pantry-dinner-results");
+  const card = results.locator(".recipe-card").filter({ has: page.getByRole("button", { name: "Tomato Rice", exact: true }) });
+  await expect(card.locator(".recipe-readiness")).toContainText("2 covered · 0 partial · 0 missing · 0 need review");
+  const controls = page.locator("details.dinner-context");
+  if (await controls.getAttribute("open") === null) await controls.locator("summary").click();
+  await controls.getByRole("spinbutton", { name: "Chef portions", exact: true }).fill("4");
+  await controls.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
+  await expect(controls.getByRole("spinbutton", { name: "Chef portions", exact: true })).toHaveValue("4");
+  await expect(results.getByRole("button", { name: "Remove rice from picks", exact: true })).toBeVisible();
+  await expect(results.getByRole("heading", { level: 2 })).not.toHaveText("Dinner ideas for tonight");
+  await expect(card.locator(".recipe-readiness")).toContainText("1 covered · 1 partial · 0 missing · 0 need review");
+  const shopping = card.locator(".recipe-readiness details");
+  await shopping.locator("summary").focus();
+  await shopping.locator("summary").press("Enter");
+  await expect(shopping).toContainText("rice: 150 g");
+  await page.clock.runFor(700);
+  expect(writes).toEqual([]);
+  expect(chefCalls).toEqual([]);
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
+  await page.screenshot({ path: testInfo.outputPath("native-dinner-preview.png"), animations: "disabled" });
+  await card.getByRole("button", { name: /^Choose for .*: Tomato Rice$/ }).click();
+  await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals["2026-10-23"]?.servings).toBe(4);
+  expect((await (await request.get("/api/kitchen")).json()).state.pantry).toEqual(before.state.pantry);
+  expect(writes).toHaveLength(1);
+  expect(chefCalls).toEqual([]);
+});
+
+test("opening Pantry Details does not steal focus after keyboard navigation before its next frame", async ({ page, request }) => {
+  const current = await (await request.get("/api/kitchen")).json();
+  const state = { ...current.state, pantry: [{ id: "focus-rice", name: "rice", measure: "500 g" }] };
+  expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+  await page.goto("/");
+  await navigate(page, "Pantry");
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  await page.clock.pauseAt(new Date(`${TODAY}T12:01:00+03:00`));
+  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Details for rice", exact: true });
+  await expect(panel.getByRole("heading", { name: "rice", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(panel.getByRole("button", { name: "Manage batches", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  const move = panel.getByRole("button", { name: "Move", exact: true });
+  await expect(move).toBeFocused();
+  await page.clock.runFor(32);
+  await expect(move).toBeFocused();
+});

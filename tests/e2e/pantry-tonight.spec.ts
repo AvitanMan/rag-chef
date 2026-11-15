@@ -131,7 +131,8 @@ test("Back and Forward restore the ingredient combination belonging to each dinn
   const before = await saved(request);
   await findDinner(page, ["rice", "tomato"]);
   await expect(results(page).locator(".recipe-card")).toHaveCount(3);
-  await expect(results(page).locator(".recipe-card").first()).toContainText("Tomato Rice");
+  const firstSearchOrder = await results(page).locator(".recipe-title-button").allTextContents();
+  expect(firstSearchOrder).toContain("Tomato Rice");
   await results(page).getByRole("button", { name: "Change ingredients", exact: true }).click();
   await page.getByRole("button", { name: "Clear selection", exact: true }).click();
   await findDinner(page, ["beans", "garlic"]);
@@ -144,7 +145,7 @@ test("Back and Forward restore the ingredient combination belonging to each dinn
   await expect(results(page).getByRole("button", { name: "Remove rice from picks", exact: true })).toBeVisible();
   await expect(results(page).getByRole("button", { name: "Remove tomato from picks", exact: true })).toBeVisible();
   await expect(results(page).locator(".recipe-card")).toHaveCount(3);
-  await expect(results(page).locator(".recipe-card").first()).toContainText("Tomato Rice");
+  await expect(results(page).locator(".recipe-title-button")).toHaveText(firstSearchOrder);
   await page.goForward();
   await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeVisible();
   await page.goForward();

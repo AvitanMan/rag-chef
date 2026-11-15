@@ -93,14 +93,14 @@ test("real bundled foods offer chicken tray bake and mushroom pasta from differe
   await capture(page, info, "compact-pantry-picks");
   await page.getByRole("button", { name: "Find dinners", exact: true }).click();
   await expect(results(page).locator(".recipe-card")).toHaveCount(3);
+  await expect(results(page).getByRole("button", { name: "Show more dinners", exact: true })).toBeVisible();
+  await results(page).getByRole("button", { name: "Show more dinners", exact: true }).click();
+  expect(await results(page).locator(".recipe-card").count()).toBeGreaterThan(3);
   await expect(card(page, "Paprika Chicken & Potato Tray Bake")).toBeVisible();
   await expect(card(page, "Creamy Garlic Mushroom Pasta")).toBeVisible();
   await expect(card(page, "Paprika Chicken & Potato Tray Bake")).toContainText(/Uses your picks:.*chicken breast.*potatoes/i);
   await expect(card(page, "Creamy Garlic Mushroom Pasta")).toContainText(/Uses your picks:.*pasta.*mushrooms/i);
   await capture(page, info, "bundled-dinner-options", true);
-  await expect(results(page).getByRole("button", { name: "Show more dinners", exact: true })).toBeVisible();
-  await results(page).getByRole("button", { name: "Show more dinners", exact: true }).click();
-  expect(await results(page).locator(".recipe-card").count()).toBeGreaterThan(3);
   await expect(results(page).getByRole("button", { name: "Tomato Skillet Eggs with Toast", exact: true })).toHaveCount(0);
   await unchanged(page, request, before, activity);
 });
@@ -219,6 +219,10 @@ test("a long pantry keeps picks accessible, keeps addition drafts through disclo
   await capture(page, info, "long-pantry-action");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: "Find dinners", exact: true }).click();
+  await expect(results(page).locator(".recipe-card")).toHaveCount(3);
+  await expect(results(page).getByRole("button", { name: "Show more dinners", exact: true })).toBeVisible();
+  await results(page).getByRole("button", { name: "Show more dinners", exact: true }).click();
+  expect(await results(page).locator(".recipe-card").count()).toBeGreaterThan(3);
   await expect(card(page, "Egg & Pea Fried Rice")).toBeVisible();
   await unchanged(page, request, before, activity);
 });
