@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
 import { isKitchenWrite } from "./kitchen-requests";
-import { choosePantryLocation, openPantryAdd, openSpiceChecklist } from "./pantry-helpers";
+import { openPantryIngredientManagement, choosePantryLocation, openPantryAdd, openSpiceChecklist } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -203,7 +203,7 @@ test("adding another batch appends to the pending ingredient draft and keeps its
   await draft.fill("milk, garlic");
   await placement(page, 1).selectOption("freezer");
   await page.locator(".pantry-add-disclosure > summary").click();
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   await page.getByRole("button", { name: "Add another batch of rice", exact: true }).click();
   await expect(draft).toBeFocused();
   await expect(draft).toHaveValue("milk, garlic\nrice: ");

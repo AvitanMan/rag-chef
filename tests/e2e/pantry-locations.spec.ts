@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext, type Page, type TestInfo } from "
 import type { KitchenDocument, KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
 import { isKitchenWrite } from "./kitchen-requests";
-import { choosePantryLocation, expectPantryLocation, openPantryAdd, openSpiceChecklist } from "./pantry-helpers";
+import { openPantryIngredientManagement, choosePantryLocation, expectPantryLocation, openPantryAdd, openSpiceChecklist } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -212,7 +212,7 @@ test("ingredient details move one chosen batch and exact undo restores its locat
   await openPantry(page);
   const before = await document(request), writes = watchWrites(page);
   await expect(page.locator(".pantry-tonight-item").getByRole("button", { name: "Move rice", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   await page.locator(`#pantry-row-${second.id}`).getByRole("button", { name: "Move batch rice", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Move rice", exact: true });
   await expect(dialog.getByRole("button", { name: "Move entry", exact: true })).toBeDisabled();
@@ -235,7 +235,7 @@ test("an externally changed move is blocked until current stock is loaded and ca
   const rice = { id: "rice", name: "rice", measure: "100 g", location: "cupboard" as const };
   await save(request, { ...empty(), pantry: [rice] });
   await openPantry(page);
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   await page.locator("#pantry-row-rice").getByRole("button", { name: "Move batch rice", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Move rice", exact: true });
   await dialog.getByRole("combobox", { name: "Move to", exact: true }).selectOption("freezer");
@@ -266,7 +266,7 @@ test("an applied move can recover when another tab restores its exact original b
   const original = { ...empty(), pantry: [rice] };
   await save(request, original);
   await openPantry(page);
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   await page.locator("#pantry-row-rice").getByRole("button", { name: "Move batch rice", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Move rice", exact: true });
   await dialog.getByRole("combobox", { name: "Move to", exact: true }).selectOption("freezer");

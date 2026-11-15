@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext, type Locator, type Page } from "@
 import type { KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
 import type { KitchenCommand } from "../../app/lib/kitchen-commands";
 import { MAX_PENDING_KITCHEN_WRITES } from "../../app/lib/kitchen-write-queue";
-import { openPantryAdd } from "./pantry-helpers";
+import { openPantryIngredientManagement, openPantryAdd } from "./pantry-helpers";
 import { draft, navigate, openPendingKitchenOutbox, saved } from "./pending-kitchen-outbox";
 
 const TODAY = "2026-10-22";
@@ -24,7 +24,7 @@ async function unchanged(page: Page, request: APIRequestContext, before: Kitchen
 }
 
 async function details(page: Page) {
-  await page.getByRole("button", { name: "Details for rice", exact: true }).click();
+  await openPantryIngredientManagement(page, "rice");
   const row = page.locator(`#pantry-row-${stock.id}`);
   await expect(row).toBeVisible();
   return row;

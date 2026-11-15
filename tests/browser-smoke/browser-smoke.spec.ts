@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { DEFAULT_COOKING_PROFILE, type KitchenState, type PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { isKitchenWrite } from "../e2e/kitchen-requests";
 
 const TODAY = "2026-10-22";
 
@@ -95,4 +96,50 @@ test("shopping copy fallback and print layout work without changing kitchen data
   await page.emulateMedia({ media: "screen" });
   await expect(printable).toBeHidden();
   expect((await (await request.get("/api/kitchen")).json()).state).toEqual(before.state);
+});
+
+
+test("native Pantry Details keeps keyboard boundaries and returns from confirmed usage and Undo", async ({ page, request }, testInfo) => {
+  const current = await (await request.get("/api/kitchen")).json();
+  const rice = { id: "smoke-pantry-rice", name: "rice", measure: "500 g", useBy: "2026-10-24", location: "cupboard" };
+  const state = { ...current.state, pantry: [rice] };
+  expect((await request.put("/api/kitchen", { data: { revision: current.revision, state } })).ok()).toBeTruthy();
+  await page.goto("/");
+  await navigate(page, "Pantry");
+  await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  const before = await (await request.get("/api/kitchen")).json();
+  const writes: string[] = [];
+  page.on("request", outgoing => { if (isKitchenWrite(outgoing)) writes.push(outgoing.postData() ?? outgoing.url()); });
+  const trigger = page.getByRole("button", { name: "Details for rice", exact: true });
+  await trigger.click();
+  const panel = page.getByRole("dialog", { name: "Details for rice", exact: true });
+  const batch = panel.getByRole("region", { name: "Batch 1: rice", exact: true });
+  await expect(panel.getByRole("heading", { name: "rice", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(panel.getByRole("button", { name: "Manage batches", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(batch.getByRole("button", { name: "Move", exact: true })).toBeFocused();
+  await batch.getByRole("button", { name: "Use some", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Edit batch rice", exact: true });
+  await editor.getByLabel("Amount used from this batch", { exact: true }).fill("100 g");
+  await expect(editor.locator(".pantry-batch-preview")).toContainText("Amount on hand: 400 g");
+  await page.clock.runFor(700);
+  expect(writes).toEqual([]);
+  expect(await (await request.get("/api/kitchen")).json()).toEqual(before);
+  await editor.getByRole("button", { name: "Subtract usage", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(panel).toBeVisible();
+  await expect(batch.getByRole("heading", { name: "Batch 1: rice", exact: true })).toBeFocused();
+  await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.pantry).toEqual([{ ...rice, measure: "400 g" }]);
+  const undo = panel.getByRole("button", { name: "Undo last batch edit", exact: true });
+  await undo.focus();
+  await undo.press("Enter");
+  await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state).toEqual(before.state);
+  await expect(batch.getByRole("heading", { name: "Batch 1: rice", exact: true })).toBeFocused();
+  await expect(undo).toHaveCount(0);
+  await expect(batch).toContainText("500 g");
+  await page.screenshot({ path: testInfo.outputPath("native-pantry-details.png") });
+  await panel.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(trigger).toBeFocused();
+  expect(writes).toHaveLength(2);
 });

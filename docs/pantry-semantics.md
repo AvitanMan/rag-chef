@@ -53,13 +53,26 @@ A name match is not evidence of enough quantity.
 
 The default Pantry view is a saved ingredient list with **All**, **Fridge**,
 **Freezer**, **Cupboard**, and **Spice rack** locations. Desktop uses buttons;
-mobile uses one **Location** selector. All opens first; **Unsorted** appears when
+mobile uses one **Location** selector. All opens first in a new app session; **Unsorted** appears when
 at least one saved batch lacks location. Location counts use available ingredient
 identities, excluding finished and past-date batches. The ingredient heading uses
 the selected location and shows matching versus total ingredients while searching.
 A separate note explains excluded saved batches in that location. Changing location
 never writes stock. Quantity and planning dates remain optional, with detailed
 editing under **Manage amounts, dates and batches**.
+
+The current location is view state retained while the app stays open, including
+Pantry → dinner ideas → Change ingredients. Navigation history restores the
+location for its entry. It is not a persisted kitchen field, backup value, or
+saved preference across reload. Missing Unsorted stock falls back to All. These
+view changes do not reclassify any batches.
+
+The **Pantry date reminders** controls show **Dates in …**, **Use soon**, and
+**Past entered date** for the current location. Counts are real batches in that
+location before text search, using existing date-group eligibility. A shortcut
+clears search and opens its date filter in Manage; it does not change the
+everyday ingredient list into a separate inventory or automatically pick food.
+Dates remain inclusive planning reminders with no food-safety inference.
 
 **Add ingredients** is collapsed for a populated pantry and opens for an empty
 pantry, an existing draft, or an addition error. Its content stays mounted, so
@@ -81,10 +94,31 @@ draft values, never a rewrite of existing records, a shelf-life estimate, or a
 claim about refrigeration requirements. The final draft location is preserved
 through any import preview and is saved only on confirmation.
 
-Everyday ingredient rows contain selection and **Details**. Details opens the
-matching ingredient’s saved batches; **Move**, correction, usage, finishing, and
-removal remain with the batch controls. On mobile, the compact **Find dinners**
-action stays above navigation; **Clear selection** sits beside the picked ingredients.
+Everyday ingredient rows contain selection and **Details**. Details opens a
+native modal with all saved batches of that canonical ingredient in original
+pantry order, across locations regardless of the selected view. Finished and
+past-date batches remain visible. Each **Batch N: NAME** card shows its original
+name, location, physical amount, entered date and applicable status. Unknown
+amount notes stay literal; physical amounts do not subtract reservations.
+
+Per-batch **Move**, **Use some**, **Mark finished**, and **Edit details** delegate
+to the existing guarded action flows. Use some is enabled only for known
+positive stock; unknown amounts explain how to enter a known amount first.
+Mark finished accepts nonempty stock, including unknown amounts, and retains a
+zero batch. No new stock-writing command or quantity inference is introduced.
+Opening Details, Cancel, and unchanged confirmations do not write stock. After
+a quick confirmation or Cancel, Details returns with the selected batch in
+focus and the existing guarded latest-edit Undo available. Changed or removed
+stock keeps the existing conflict and exact-snapshot Undo safeguards. A fully
+removed ingredient has an empty state rather than being recreated.
+
+**Manage batches** leaves the compact dialog for the full ingredient batch
+tools, including removal, stocktake and reservation detail. **Close** returns to
+ingredient picking. The native modal has one scrolling content area and keeps
+the background inert. On mobile, the compact **Find dinners** action stays above
+navigation; **Clear selection** sits beside the picked ingredients. Details,
+date shortcuts and remembered location are derived UI state; kitchen schema,
+backup format, allocation and dinner selection semantics are unchanged.
 
 Plain quick additions deduplicate by canonical ingredient **and location** when
 there is already an available batch there, without changing its amount or date.
@@ -440,8 +474,10 @@ dinner**), reloading, dismissing it with **Dismiss edit undo**, or using it.
 It is not saved in the kitchen or backups and does not cover inline amount/date
 edits. Undo replaces only the matching batch; it does not change meals, completion
 deductions, purchase receipts, shopping checks/cycles, or unrelated batches.
-After undo or dismissal, keyboard focus returns to the batch's **Edit batch**
-button, or the **Your pantry** heading if that batch is no longer visible.
+In the full Manage view, undo or dismissal returns keyboard focus to the batch's
+**Edit batch** button if it is still visible, or to **Your pantry** otherwise.
+In compact Details, focus returns to the selected batch's heading, or the
+ingredient heading if that batch is no longer shown.
 
 **Remove** is separate and still uses the existing session recovery-bar Undo.
 Neither undo mechanism is a persistent inventory journal. Edits and successful

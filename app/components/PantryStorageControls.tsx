@@ -4,13 +4,13 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PantryLocation, PantryStock } from "../lib/kitchen-types";
 import type { KitchenCommandSender } from "../lib/kitchen-commands";
 import { pantryDraftRows, type PantryInputRow } from "../lib/pantry-input";
-import { pantryLocationLabel, SPICE_RACK_ITEMS, suggestPantryLocation, withPantryLocation } from "../lib/pantry-location";
+import { pantryLocationLabel, SPICE_RACK_ITEMS, suggestPantryLocation, withPantryLocation, type PantryLocationFilter } from "../lib/pantry-location";
 import { canonicalIngredient, pantryAmountDetails } from "../lib/quantities";
 import { samePantryBatch, type PantryBatchChange } from "../lib/pantry-browser";
 import { PantryLocationSelect } from "./PantryLocationSelect";
 import { Modal } from "./Modal";
 
-export type PantryLocationFilter = "all" | "unsorted" | PantryLocation;
+export type { PantryLocationFilter } from "../lib/pantry-location";
 export type PantryDraftLocations = Record<string, PantryLocation | "">;
 
 export function PantryAddForm({ draft, setDraft, draftLocations, setDraftLocation, inputRef, location, pantry, add, error }: {
@@ -80,9 +80,10 @@ export function SpiceRackChecklist({ pantry, today, add, move }: {
   </details>;
 }
 
-export function PantryMoveDialog({ snapshots, pantry, command, recordChange, close, done }: {
+export function PantryMoveDialog({ snapshots, pantry, command, recordChange, close, done, onApplied }: {
   snapshots: PantryStock[]; pantry: PantryStock[]; command: KitchenCommandSender;
   recordChange: (change: PantryBatchChange) => void; close: () => void; done: (stock: PantryStock) => void;
+  onApplied?: (stock: PantryStock) => void;
 }) {
   const [snapshot, setSnapshot] = useState<PantryStock | null>(snapshots.length === 1 ? snapshots[0] : null);
   const [location, setLocation] = useState<PantryLocation | undefined>(snapshot?.location);
@@ -99,7 +100,8 @@ export function PantryMoveDialog({ snapshots, pantry, command, recordChange, clo
     if (!applied || !snapshot || !requested || recorded.current) return;
     recorded.current = true;
     recordChange({ before: snapshot, after: requested });
-  }, [applied, snapshot, requested, recordChange]);
+    onApplied?.(requested);
+  }, [applied, snapshot, requested, recordChange, onApplied]);
   return <Modal label={`Move ${snapshots[0]?.name ?? "ingredient"}`} className="kitchen-modal-backdrop pantry-batch-backdrop" close={close}>
     <form className="panel kitchen-modal pantry-move-dialog" onSubmit={event => {
       event.preventDefault();
