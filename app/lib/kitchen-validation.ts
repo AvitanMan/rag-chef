@@ -1,4 +1,4 @@
-import { COOKING_PROFILE_LIMITS, DEFAULT_COOKING_PROFILE, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
+import { COOKING_PROFILE_LIMITS, DEFAULT_COOKING_PROFILE, PANTRY_LOCATION_VALUES, type CookingProfile, type KitchenState, type PlannedMeal } from "./kitchen-types";
 import type { Recipe } from "./recipe-types";
 import { personalAmountInputProblem } from "./quantities";
 
@@ -69,6 +69,15 @@ function string(
 
 function boolean(value: unknown, path: string): void {
   if (typeof value !== "boolean") invalid(path, "must be a boolean");
+}
+
+export function pantryLocationInputProblem(value: unknown): string {
+  return value === undefined || PANTRY_LOCATION_VALUES.some(location => location === value)
+    ? "" : "Choose Fridge, Freezer, Cupboard, Spice rack, or Unsorted.";
+}
+
+function location(value: unknown, path: string): void {
+  if (value === undefined || pantryLocationInputProblem(value)) invalid(path, "must be a supported storage location");
 }
 
 function positiveNumber(value: unknown, path: string, maximum: number): void {
@@ -272,10 +281,11 @@ function meal(value: unknown, path: string, day: string): asserts value is Plann
       .forEach((deduction, index) => {
         const deductionPath = `${path}.completion.deductions[${index}]`;
         const entry = record(deduction, deductionPath);
-        fields(entry, ["pantryId", "before", "after"], ["name", "useBy"], deductionPath);
+        fields(entry, ["pantryId", "before", "after"], ["name", "useBy", "location"], deductionPath);
         string(entry.pantryId, `${deductionPath}.pantryId`, 200);
         if (Object.hasOwn(entry, "name")) string(entry.name, `${deductionPath}.name`, 200);
         if (Object.hasOwn(entry, "useBy")) date(entry.useBy, `${deductionPath}.useBy`);
+        if (Object.hasOwn(entry, "location")) location(entry.location, `${deductionPath}.location`);
         if (pantryIds.has(entry.pantryId)) invalid(deductionPath, "duplicates a pantry deduction");
         pantryIds.add(entry.pantryId);
         measure(entry.before, `${deductionPath}.before`);
@@ -348,13 +358,14 @@ export function validateKitchenState(value: unknown): asserts value is KitchenSt
   array(state.pantry, "state.pantry", MAX_PANTRY_ITEMS).forEach((stock, index) => {
     const path = `state.pantry[${index}]`;
     const item = record(stock, path);
-    fields(item, ["id", "name", "measure"], ["useBy"], path);
+    fields(item, ["id", "name", "measure"], ["useBy", "location"], path);
     string(item.id, `${path}.id`, 200);
     if (pantryIds.has(item.id)) invalid(path, "duplicates a pantry id");
     pantryIds.add(item.id);
     string(item.name, `${path}.name`, 200);
     measure(item.measure, `${path}.measure`);
     if (Object.hasOwn(item, "useBy")) date(item.useBy, `${path}.useBy`);
+    if (Object.hasOwn(item, "location")) location(item.location, `${path}.location`);
   });
   const meals = record(state.meals, "state.meals");
   if (Object.keys(meals).length > MAX_MEALS) invalid("state.meals", `accepts at most ${MAX_MEALS} meals`);
@@ -408,11 +419,12 @@ export function validateKitchenState(value: unknown): asserts value is KitchenSt
         if (!entry.key.startsWith(`${purchase.week}:`) || purchaseKeys.has(identity)) invalid(entryPath, "has an invalid or duplicate purchase cycle");
         purchaseKeys.add(identity);
         const stock = record(entry.pantry, `${entryPath}.pantry`);
-        fields(stock, ["id", "name", "measure"], ["useBy"], entryPath);
+        fields(stock, ["id", "name", "measure"], ["useBy", "location"], entryPath);
         string(stock.id, `${entryPath}.pantry.id`, 200);
         string(stock.name, `${entryPath}.pantry.name`, 200);
         measure(stock.measure, `${entryPath}.pantry.measure`);
         if (Object.hasOwn(stock, "useBy")) date(stock.useBy, `${entryPath}.pantry.useBy`);
+        if (Object.hasOwn(stock, "location")) location(stock.location, `${entryPath}.pantry.location`);
         if (stockIds.has(stock.id)) invalid(entryPath, "duplicates a purchased pantry id");
         stockIds.add(stock.id);
       });

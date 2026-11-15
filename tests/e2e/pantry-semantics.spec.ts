@@ -2,7 +2,7 @@ import { isKitchenWrite } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
-import { showPantryBatches } from "./pantry-helpers";
+import { openPantryAdd, showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const empty = (): KitchenState => ({ schemaVersion: 2, pantry: [], meals: {}, shoppingChecked: {}, migratedLegacy: true });
@@ -32,6 +32,7 @@ async function openPantry(page: Page) {
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
 }
 async function previewInput(page: Page, text: string) {
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill(text);
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Review pantry ingredients", exact: true });
@@ -131,7 +132,7 @@ test("duplicate ingredients require an explicit new-batch confirmation and never
   await openPantry(page);
   const before = await document(request);
   await page.getByRole("button", { name: "Add another batch of rice", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "New pantry ingredient", exact: true })).toHaveValue("rice");
+  await expect(page.getByRole("textbox", { name: "New pantry ingredient", exact: true })).toHaveValue("rice: ");
   await expect(page.getByRole("textbox", { name: "New pantry ingredient", exact: true })).toBeFocused();
   expect(await document(request)).toEqual(before);
 
@@ -176,7 +177,7 @@ test("entry dates distinguish past, use-soon and unknown dates without erasing p
   await expect.poll(async () => (await read(request)).pantry.length).toBe(3);
   const pantry = (await read(request)).pantry;
   expect(pantry.map(stock => stock.useBy)).toEqual(["2026-10-21", "2026-10-25", undefined]);
-  expect(pantry[2]).toEqual({ id: expect.any(String), name: "salt", measure: "" });
+  expect(pantry[2]).toEqual({ id: expect.any(String), name: "salt", measure: "", location: "spice-rack" });
   const rice = page.getByRole("region", { name: "rice", exact: true });
   await expect(total(rice, "Amount on hand")).toHaveText("100 g");
   await expect(total(rice, "Available today after reservations")).toHaveText("0 confirmed");
@@ -501,7 +502,7 @@ for (const action of ["Record another purchase", "Need to buy again"]) {
     await expect.poll(async () => (await read(request)).shoppingPurchases?.length).toBe(1);
     const first = await read(request);
     const originalBatch = first.pantry[0];
-    expect(originalBatch).toEqual({ id: expect.any(String), name: "rice", measure: "200 g", useBy: "2026-10-21" });
+    expect(originalBatch).toEqual({ id: expect.any(String), name: "rice", measure: "200 g", useBy: "2026-10-21", location: "cupboard" });
     await page.locator(".bought-items > summary").click();
     await page.getByRole("button", { name: `${action} rice`, exact: true }).click();
     if (action === "Need to buy again") {
@@ -520,7 +521,7 @@ for (const action of ["Record another purchase", "Need to buy again"]) {
     await preview.getByRole("button", { name: "Confirm pantry additions", exact: true }).click();
     await expect.poll(async () => (await read(request)).shoppingPurchases?.length).toBe(2);
     const after = await read(request);
-    expect(after.pantry).toEqual([originalBatch, { id: expect.any(String), name: "rice", measure: "300 g", useBy: "2026-10-25" }]);
+    expect(after.pantry).toEqual([originalBatch, { id: expect.any(String), name: "rice", measure: "300 g", useBy: "2026-10-25", location: "cupboard" }]);
     expect(after.pantry[1].id).not.toBe(originalBatch.id);
     expect(after.shoppingPurchases![0]).toEqual(first.shoppingPurchases![0]);
     expect(after.shoppingPurchases![1].items[0].pantry).toEqual(after.pantry[1]);

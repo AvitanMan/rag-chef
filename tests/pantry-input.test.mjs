@@ -31,8 +31,8 @@ export function useState(initial) {
 }
 `);
 for (const [folder, name, extension] of [
-  ...["pantry-input", "quantities", "kitchen-types", "kitchen-validation"].map((name) => ["lib", name, "ts"]),
-  ["components", "PantryImportPreview", "tsx"], ["components", "Modal", "tsx"],
+  ...["pantry-input", "pantry-location", "quantities", "kitchen-types", "kitchen-validation"].map((name) => ["lib", name, "ts"]),
+  ["components", "PantryImportPreview", "tsx"], ["components", "PantryLocationSelect", "tsx"], ["components", "Modal", "tsx"],
 ]) {
   const source = await readFile(new URL(`../app/${folder}/${name}.${extension}`, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
@@ -41,7 +41,7 @@ for (const [folder, name, extension] of [
   await writeFile(join(directory, `${name}.mjs`), compiled);
   if (name === "PantryImportPreview") await writeFile(join(directory, "interactive-preview.mjs"), compiled.replace(JSON.stringify(pathToFileURL(require.resolve("react")).href), '"./preview-hooks.mjs"'));
 }
-const { parsePantryInput, pantryInputProblem, pantryInputNeedsReview, pantryInputStock } = await import(pathToFileURL(join(directory, "pantry-input.mjs")));
+const { parsePantryInput, pantryDraftRows, reconcilePantryDraftLocations, pantryInputProblem, pantryInputNeedsReview, quickPantryAdditions, pantryInputStock } = await import(pathToFileURL(join(directory, "pantry-input.mjs")));
 const { PantryImportPreview } = await import(pathToFileURL(join(directory, "PantryImportPreview.mjs")));
 const { PantryImportPreview: InteractivePantryImportPreview } = await import(pathToFileURL(join(directory, "interactive-preview.mjs")));
 const { createRenderer } = await import(pathToFileURL(join(directory, "preview-hooks.mjs")));
@@ -61,6 +61,91 @@ test("pasted lists preserve every ingredient and split explicit or unambiguous a
     { name: "milk", measure: "500 ml" }, { name: "garlic", measure: "" },
   ]);
   assert.deepEqual(parsePantryInput("salt: to taste\nbeans\t2 cans"), [{ name: "salt", measure: "to taste" }, { name: "beans", measure: "2 cans" }]);
+});
+
+test("draft row keys follow unchanged ingredient names through insertion and reordering", () => {
+  const original = pantryDraftRows("rice: 300 g, milk");
+  const inserted = pantryDraftRows("garlic, rice: 300 g, milk");
+  const reordered = pantryDraftRows("milk, garlic, rice: 400 g");
+  assert.equal(inserted[1].key, original[0].key);
+  assert.equal(inserted[2].key, original[1].key);
+  assert.equal(reordered[0].key, original[1].key);
+  assert.equal(reordered[2].key, original[0].key);
+  assert.deepEqual(reordered.map(item => item.row), parsePantryInput("milk, garlic, rice: 400 g"));
+  assert.deepEqual(pantryDraftRows(""), []);
+});
+
+test("draft keys keep repeated names separate without applying pantry aliases", () => {
+  const rows = pantryDraftRows("rice: 100 g, milk, rice: 200 g; raw rice: 300 g");
+  assert.deepEqual(rows.map(item => item.key), [
+    JSON.stringify(["rice", 0]), JSON.stringify(["milk", 0]), JSON.stringify(["rice", 1]), JSON.stringify(["raw rice", 0]),
+  ]);
+  const inserted = pantryDraftRows("garlic, rice: 100 g, milk, rice: 200 g; raw rice: 300 g");
+  assert.deepEqual(inserted.slice(1), rows);
+});
+
+function draftLocations(text, values) {
+  return Object.fromEntries(pantryDraftRows(text).flatMap(({ key }, index) => values[index] === undefined ? [] : [[key, values[index]]]));
+}
+
+test("deleting a measured duplicate retains the surviving batch's own placement", () => {
+  const previous = "milk: 1 l\nmilk: 2 l\nmilk: 3 l";
+  const locations = draftLocations(previous, ["freezer", "cupboard", ""]);
+  for (const [next, expected] of [
+    ["milk: 2 l\nmilk: 3 l", ["cupboard", ""]],
+    ["milk: 1 l\nmilk: 3 l", ["freezer", ""]],
+    ["milk: 1 l\nmilk: 2 l", ["freezer", "cupboard"]],
+  ]) {
+    assert.deepEqual(reconcilePantryDraftLocations(previous, next, locations), draftLocations(next, expected));
+  }
+  assert.deepEqual(locations, draftLocations(previous, ["freezer", "cupboard", ""]), "reconciliation does not mutate the previous draft");
+});
+
+test("reordered duplicate batches keep explicit placements and inserted batches have no override", () => {
+  const previous = "milk: 1 l\nmilk: 2 l\nrice";
+  const next = "milk: 2 l\nmilk: 3 l\nrice\nmilk: 1 l";
+  assert.deepEqual(
+    reconcilePantryDraftLocations(previous, next, draftLocations(previous, ["freezer", "", "fridge"])),
+    draftLocations(next, ["", undefined, "fridge", "freezer"]),
+  );
+  assert.deepEqual(reconcilePantryDraftLocations("milk: 1 l", "milk: 2 l\nmilk: 3 l", draftLocations("milk: 1 l", ["freezer"])), {});
+});
+
+test("a single amount edit preserves placement after unchanged duplicate batches are matched", () => {
+  const previous = "milk: 1 l\nmilk: 2 l\nrice: 300 g";
+  const next = "rice: 400 g\nmilk: 3 l\nmilk: 1 l";
+  assert.deepEqual(
+    reconcilePantryDraftLocations(previous, next, draftLocations(previous, ["freezer", "", "fridge"])),
+    draftLocations(next, ["fridge", "", "freezer"]),
+  );
+  assert.deepEqual(reconcilePantryDraftLocations("rice", "rice: 300 g", draftLocations("rice", [""])), draftLocations("rice: 300 g", [""]));
+});
+
+test("ambiguous identical duplicate edits discard placements instead of assigning another batch's choice", () => {
+  const previous = "milk: 1 l\nmilk: 1 l";
+  const locations = draftLocations(previous, ["freezer", "cupboard"]);
+  for (const next of ["milk: 1 l", "milk: 2 l\nmilk: 1 l", "milk: 1 l\nmilk: 2 l", "milk: 1 l\nmilk: 1 l\nmilk: 1 l"]) {
+    assert.deepEqual(reconcilePantryDraftLocations(previous, next, locations), {}, next);
+  }
+  assert.deepEqual(reconcilePantryDraftLocations("milk: 1 l", previous, draftLocations("milk: 1 l", ["freezer"])), {});
+  const next = "rice\nmilk: 1 l\nmilk: 1 l";
+  assert.deepEqual(reconcilePantryDraftLocations(previous, next, locations), draftLocations(next, [undefined, "freezer", "cupboard"]));
+});
+
+test("multiple changed amounts and renamed ingredients do not guess draft placements", () => {
+  const previous = "milk: 1 l\nmilk: 2 l\nrice";
+  const next = "milk: 3 l\nmilk: 4 l\nraw rice";
+  assert.deepEqual(reconcilePantryDraftLocations(previous, next, draftLocations(previous, ["freezer", "cupboard", "fridge"])), {});
+});
+
+test("clearing and reintroducing draft rows cannot revive deleted placements", () => {
+  const previous = "milk: 1 l\nmilk: 2 l";
+  const retained = "milk: 2 l";
+  const locations = reconcilePantryDraftLocations(previous, retained, draftLocations(previous, ["freezer", ""]));
+  assert.deepEqual(reconcilePantryDraftLocations(retained, previous, locations), draftLocations(previous, [undefined, ""]));
+  const cleared = reconcilePantryDraftLocations(retained, "", locations);
+  assert.deepEqual(cleared, {});
+  assert.deepEqual(reconcilePantryDraftLocations("", previous, cleared), {});
 });
 
 test("ambiguous single inputs stay intact and require review instead of inventing quantities", () => {
@@ -169,6 +254,28 @@ test("only a bare new name can bypass review, with canonical existing matches in
   assert.equal(pantryInputNeedsReview([{ name: "rice", measure: "", reviewReasons: ["Check this ingredient."] }], []), true);
   assert.equal(pantryInputNeedsReview([{ name: "rice", measure: "", useBy: "2026-11-08" }], []), true);
   assert.equal(pantryInputNeedsReview([], []), false);
+});
+
+test("quick saved-list additions deduplicate names without changing existing amounts or dates", () => {
+  const pantry = [{ id: "rice", name: "raw rice", measure: "300 g", useBy: "2026-11-15" }];
+  const before = structuredClone(pantry);
+  assert.deepEqual(quickPantryAdditions(parsePantryInput("rice, tomatoes\ntomato; garlic"), pantry, "2026-11-14"), [
+    { name: "tomatoes", measure: "" }, { name: "garlic", measure: "" },
+  ]);
+  assert.deepEqual(quickPantryAdditions(parsePantryInput("rice"), pantry, "2026-11-14"), []);
+  assert.deepEqual(pantry, before);
+  assert.deepEqual(quickPantryAdditions(parsePantryInput("cooked rice"), pantry, "2026-11-14"), [{ name: "cooked rice", measure: "" }]);
+});
+
+test("measured, ambiguous and inactive-batch additions retain explicit review", () => {
+  for (const text of ["rice: 300 g", "rice: ", "some rice", "tomatoes, chopped", "2 eggs"]) {
+    assert.equal(quickPantryAdditions(parsePantryInput(text), [], "2026-11-14"), null, text);
+  }
+  for (const stock of [
+    { id: "rice", name: "rice", measure: "0 g" },
+    { id: "rice", name: "rice", measure: "", useBy: "2026-11-13" },
+  ]) assert.equal(quickPantryAdditions(parsePantryInput("rice"), [stock], "2026-11-14"), null);
+  assert.equal(quickPantryAdditions([], [], "2026-11-14"), null);
 });
 
 test("preview accepts optional dates and validates calendar dates at the persistence boundary", () => {

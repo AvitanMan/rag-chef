@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import type { RecipeMetadata } from "../../app/lib/recipe-types";
 
 test("reviewed metadata previews, applies idempotently and drives public constraints without rewriting recipes", async ({ page, request }) => {
@@ -7,6 +10,10 @@ test("reviewed metadata previews, applies idempotently and drives public constra
   const entry = snapshot.entries.find((row: { recipeId: string }) => row.recipeId === "fixture-eggplant");
   const kitchenBefore = await (await request.get("/api/kitchen")).json();
   const sourceBefore = entry.recipe;
+  const previousRevision = entry.metadata?.revision ?? 0;
+  const testState = process.env.RAG_CHEF_TEST_STATE_DIR;
+  if (!testState || realpathSync(testState) !== realpathSync(resolve(process.cwd(), "..", "d1-state"))) throw new Error("Metadata regressions require the isolated test harness.");
+  if (!Number.isInteger(previousRevision) || previousRevision < 0) throw new Error("Unexpected fixture metadata revision.");
   const fields = ["coreDinner", "dinnerRole", "diets.vegan", "diets.vegetarian", "diets.gluten_free", "diets.low_carb", "totalMinutes", "equipment", "servings", "ingredients"];
   const metadata: RecipeMetadata = {
     revision: 1,
@@ -21,49 +28,59 @@ test("reviewed metadata previews, applies idempotently and drives public constra
     reviewedAt: "2026-10-22T09:00:00.000Z",
   };
   const payload = { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata }] };
-  const preview = await request.post(endpoint, { data: { ...payload, preview: true } });
-  expect(preview.ok()).toBeTruthy();
-  expect(await (await request.get(endpoint)).json()).toEqual(snapshot);
-  const applied = await request.post(endpoint, { data: payload });
-  expect(applied.ok()).toBeTruthy();
-  const result = await applied.json();
-  const repeated = await (await request.post(endpoint, { data: payload })).json();
-  expect(repeated.results[0]).toMatchObject({ changed: false, revision: result.results[0].revision });
-  const after = await (await request.get(endpoint)).json();
-  const updated = after.entries.find((row: { recipeId: string }) => row.recipeId === entry.recipeId);
-  expect(updated.recipe).toEqual(sourceBefore);
-  expect(updated.metadata.totalMinutes).toBe(20);
-  expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
-  const estimated = await (await request.get("/api/recipes?q=Eggplant%20Stew&maxMinutes=25")).json();
-  expect(estimated.recipes).toEqual([]);
-  const sourceTimed = { ...metadata, provenance: { ...metadata.provenance, totalMinutes: { basis: "source", evidence: "Total time: 20 minutes." } } };
-  expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata: sourceTimed }] } })).ok()).toBeTruthy();
-  const allowed = await (await request.get("/api/recipes?q=Eggplant%20Stew&diet=vegan&maxMinutes=25&equipment=stovetop")).json();
-  expect(allowed.recipes.map((recipe: { id: string }) => recipe.id)).toContain(entry.recipeId);
-  const tooShort = await (await request.get("/api/recipes?q=Eggplant%20Stew&maxMinutes=10")).json();
-  expect(tooShort.recipes).toEqual([]);
-  const sideRanking = await (await request.get("/api/recipes?q=Dinner&pantry=rice")).json();
-  expect(sideRanking.recipes.at(-1).id).toBe(entry.recipeId);
-  const mainReview = { ...sourceTimed, dinnerRole: "main" };
-  expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata: mainReview }] } })).ok()).toBeTruthy();
-  const dinnerRanking = await (await request.get("/api/recipes?q=Dinner%20without%20cheese&pantry=rice")).json();
-  expect(dinnerRanking.recipes[0].id).toBe(entry.recipeId);
-  const chefDinner = await (await request.post("/api/chef", { data: { query: "Dinner without cheese", pantry: ["rice"], provider: "ollama" } })).json();
-  expect(chefDinner.recipes[0].id).toBe(entry.recipeId);
-  expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
-  await page.goto("/");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
-  await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
-  await page.getByRole("searchbox", { name: "Search recipes" }).fill("Eggplant Stew");
-  await expect(page.locator(".recipe-card")).toBeVisible();
-  await expect(page.locator(".recipe-card")).not.toContainText("Diet not verified");
-  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
-  await expect(page.locator(".recipe-card")).toHaveCount(0);
-  await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).uncheck();
-  await expect(page.locator(".recipe-card")).toHaveCount(1);
-  await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("15");
-  await expect(page.locator(".recipe-card")).toHaveCount(0);
-  await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("25");
-  await expect(page.locator(".recipe-card")).toHaveCount(1);
+  try {
+    const preview = await request.post(endpoint, { data: { ...payload, preview: true } });
+    expect(preview.ok()).toBeTruthy();
+    expect(await (await request.get(endpoint)).json()).toEqual(snapshot);
+    const applied = await request.post(endpoint, { data: payload });
+    expect(applied.ok()).toBeTruthy();
+    const result = await applied.json();
+    const repeated = await (await request.post(endpoint, { data: payload })).json();
+    expect(repeated.results[0]).toMatchObject({ changed: false, revision: result.results[0].revision });
+    const after = await (await request.get(endpoint)).json();
+    const updated = after.entries.find((row: { recipeId: string }) => row.recipeId === entry.recipeId);
+    expect(updated.recipe).toEqual(sourceBefore);
+    expect(updated.metadata.totalMinutes).toBe(20);
+    expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
+    const estimated = await (await request.get("/api/recipes?q=Eggplant%20Stew&maxMinutes=25")).json();
+    expect(estimated.recipes).toEqual([]);
+    const sourceTimed = { ...metadata, provenance: { ...metadata.provenance, totalMinutes: { basis: "source", evidence: "Total time: 20 minutes." } } };
+    expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata: sourceTimed }] } })).ok()).toBeTruthy();
+    const allowed = await (await request.get("/api/recipes?q=Eggplant%20Stew&diet=vegan&maxMinutes=25&equipment=stovetop")).json();
+    expect(allowed.recipes.map((recipe: { id: string }) => recipe.id)).toContain(entry.recipeId);
+    const tooShort = await (await request.get("/api/recipes?q=Eggplant%20Stew&maxMinutes=10")).json();
+    expect(tooShort.recipes).toEqual([]);
+    const sideRanking = await (await request.get("/api/recipes?q=Dinner&pantry=rice")).json();
+    expect(sideRanking.recipes.at(-1).id).toBe(entry.recipeId);
+    const mainReview = { ...sourceTimed, dinnerRole: "main" };
+    expect((await request.post(endpoint, { data: { entries: [{ recipeId: entry.recipeId, reviewed: true, metadata: mainReview }] } })).ok()).toBeTruthy();
+    const dinnerRanking = await (await request.get("/api/recipes?q=Dinner%20without%20cheese&pantry=rice")).json();
+    expect(dinnerRanking.recipes[0].id).toBe(entry.recipeId);
+    const chefDinner = await (await request.post("/api/chef", { data: { query: "Dinner without cheese", pantry: ["rice"], provider: "ollama" } })).json();
+    expect(chefDinner.recipes[0].id).toBe(entry.recipeId);
+    expect(await (await request.get("/api/kitchen")).json()).toEqual(kitchenBefore);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByLabel("Diet", { exact: false }).selectOption("Vegan");
+    await page.getByRole("button", { name: /Recipes/ }).filter({ visible: true }).first().click();
+    await page.getByRole("searchbox", { name: "Search recipes" }).fill("Eggplant Stew");
+    await expect(page.locator(".recipe-card")).toBeVisible();
+    await expect(page.locator(".recipe-card")).not.toContainText("Diet not verified");
+    await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).check();
+    await expect(page.locator(".recipe-card")).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Reviewed dinners", exact: true }).uncheck();
+    await expect(page.locator(".recipe-card")).toHaveCount(1);
+    await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("15");
+    await expect(page.locator(".recipe-card")).toHaveCount(0);
+    await page.getByRole("spinbutton", { name: "Maximum total minutes", exact: true }).fill("25");
+    await expect(page.locator(".recipe-card")).toHaveCount(1);
+  } finally {
+    // Restore only revisions written by this test, including an originally absent review.
+    // Keep the fixture's earlier reviews and source recipe intact for following suites.
+    execFileSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", testState,
+      "--command", `DELETE FROM recipe_metadata WHERE recipe_id = 'fixture-eggplant' AND revision > ${previousRevision};`], { timeout: 20000, stdio: "pipe" });
+    const restored = await request.get(endpoint);
+    expect(restored.ok()).toBeTruthy();
+    expect(await restored.json()).toEqual(snapshot);
+  }
 });

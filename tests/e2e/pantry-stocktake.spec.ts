@@ -2,6 +2,7 @@ import { isKitchenWrite } from "./kitchen-requests";
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState, PantryStock, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { openPantryAdd, openPantryManagement } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
 const PAST = "2026-10-21";
@@ -32,6 +33,7 @@ async function pantryReady(page: Page) {
   await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Search pantry", exact: true })).toBeEnabled();
   await expect(page.locator(".save-indicator")).toHaveText("Saved");
+  await openPantryManagement(page);
 }
 async function openPantry(page: Page) {
   await page.goto("/");
@@ -43,6 +45,7 @@ function row(page: Page, id: string) { return page.locator(`#pantry-row-${id}`);
 function group(page: Page, name: string) { return page.getByRole("region", { name, exact: true }); }
 function stocktake(page: Page) { return group(page, "Pantry stocktake"); }
 function reviewButton(page: Page) { return stocktake(page).getByRole("button", { name: "Review pantry", exact: true }); }
+function amountButton(page: Page) { return stocktake(page).getByRole("button", { name: "Add amounts for better shopping estimates", exact: true }); }
 function filter(page: Page, label: string) {
   return page.getByRole("group", { name: "Pantry review filters", exact: true })
     .getByRole("button", { name: new RegExp(`^${label} \\(\\d+\\)$`) });
@@ -239,7 +242,8 @@ test("Show all persists through search and filters; Hide all and finished review
   await expect(row(page, "zero-mass")).toBeVisible();
   await expect(row(page, "zero-count")).toBeVisible();
   await expect(page.locator(".pantry-batch-row")).toHaveCount(2);
-  await expect(stocktake(page)).toContainText("1 batch to review across your full pantry");
+  await expect(reviewButton(page)).toBeDisabled();
+  await expect(amountButton(page)).toBeEnabled();
   await expect(group(page, "Recently removed")).toHaveCount(0);
   await expectFitsViewport(page);
   await expectReadOnly(page, request, before, writes);
@@ -267,6 +271,7 @@ test("Chef deep-links auto-open and focus only the target group, and a new batch
   await expect(row(page, "first").getByRole("textbox", { name: "Available rice", exact: true })).toBeFocused();
   await expectReadOnly(page, request, before, writes);
 
+  await openPantryAdd(page);
   await page.getByRole("textbox", { name: "New pantry ingredient", exact: true }).fill("lentils: 300 g");
   await page.getByRole("button", { name: "Add to pantry", exact: true }).click();
   const preview = page.getByRole("dialog", { name: "Review pantry ingredients", exact: true });
@@ -371,7 +376,7 @@ for (const interaction of ["keyboard", "pointer"] as const) {
 
 test("the full-pantry queue ignores filtering and sorting; Skip, Cancel and Escape discard drafts without writes", async ({ page, request }) => {
   const state = await protectedKitchen(request, [
-    { id: "unknown", name: "zucchini", measure: "some", useBy: TODAY },
+    { id: "unknown", name: "zucchini", measure: "some", useBy: PAST },
     { id: "undated", name: "oats", measure: "200 g" },
     { id: "past", name: "rice", measure: "500 g", useBy: PAST },
     { id: "zero", name: "rice", measure: "0 cans", useBy: PAST },
@@ -386,7 +391,7 @@ test("the full-pantry queue ignores filtering and sorting; Skip, Cancel and Esca
   await expect(page.locator(".pantry-batch-row")).toHaveCount(0);
   await expect(stocktake(page)).toContainText("3 batches to review across your full pantry");
   await keyboard(reviewButton(page));
-  let editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON]);
+  let editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON, pastReason()]);
   const firstControl = editor.getByRole("button", { name: "Correct batch", exact: true });
   const saveCorrection = editor.getByRole("button", { name: "Save batch correction", exact: true });
   await firstControl.focus();
@@ -405,13 +410,13 @@ test("the full-pantry queue ignores filtering and sorting; Skip, Cancel and Esca
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(reviewButton(page)).toBeFocused();
   await keyboard(reviewButton(page));
-  editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON]);
+  editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON, pastReason()]);
   await expect(editor.getByLabel("Ingredient name / form", { exact: true })).toHaveValue("zucchini");
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("some");
   await page.keyboard.press("Escape");
   await expect(reviewButton(page)).toBeFocused();
   await keyboard(reviewButton(page));
-  for (const [index, name, reasons] of [[1, "zucchini", [UNKNOWN_REASON]], [2, "rice", [pastReason()]], [3, "beans", [UNKNOWN_REASON, pastReason()]]] as const) {
+  for (const [index, name, reasons] of [[1, "zucchini", [UNKNOWN_REASON, pastReason()]], [2, "rice", [pastReason()]], [3, "beans", [UNKNOWN_REASON, pastReason()]]] as const) {
     editor = await reviewBatch(page, name, index, 3, [...reasons]);
     await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
   }
@@ -424,9 +429,88 @@ test("the full-pantry queue ignores filtering and sorting; Skip, Cancel and Esca
   await expectReadOnly(page, request, before, writes);
 });
 
+test("unknown amounts stay optional and a corrected past date moves its batch into the optional pass", async ({ page, request }) => {
+  let state: KitchenState = { ...empty(), pantry: [
+    { id: "plain", name: "rice", measure: "" },
+    { id: "past", name: "beans", measure: "", useBy: PAST },
+    { id: "finished", name: "oats", measure: "0" },
+  ] };
+  await save(request, state);
+  await openPantry(page);
+  const before = await document(request), writes = watchWrites(page);
+  await expect(stocktake(page)).toContainText("1 batch to review across your full pantry");
+  await expect(stocktake(page)).toContainText("1 batch has an unknown amount. Adding amounts is optional");
+  await amountButton(page).click();
+  let editor = await reviewBatch(page, "rice", 1, 1, [UNKNOWN_REASON]);
+  await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
+  await expect(amountButton(page)).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "Amount pass finished." })).toContainText("1 batch still has an optional amount to add");
+  await expectReadOnly(page, request, before, writes);
+
+  await reviewButton(page).click();
+  editor = await reviewBatch(page, "beans", 1, 1, [UNKNOWN_REASON, pastReason()]);
+  await editor.getByLabel("Use by · entered planning date", { exact: true }).fill(TODAY);
+  await editor.getByRole("button", { name: "Save batch correction", exact: true }).click();
+  await expect(editor.getByRole("status")).toContainText("Batch correction applied for beans.");
+  state = replaceStock(state, { ...state.pantry[1], useBy: TODAY });
+  await expectSaved(page, request, state);
+  await editor.getByRole("button", { name: "Finish review", exact: true }).click();
+  await expect(reviewButton(page)).toBeDisabled();
+  await expect(stocktake(page)).toContainText("No batches currently need review");
+  await expect(stocktake(page)).toContainText("2 batches have an unknown amount. Adding amounts is optional");
+  await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeFocused();
+  await amountButton(page).click();
+  editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON]);
+  await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
+  await reviewBatch(page, "beans", 2, 2, [UNKNOWN_REASON]);
+  await page.keyboard.press("Escape");
+  await expect(amountButton(page)).toBeFocused();
+  await expectSaved(page, request, state);
+});
+
+for (const mode of ["amounts", "attention"] as const) {
+  test(`a queued ${mode} batch changing category externally is skipped and stays available in its new pass`, async ({ page, request }) => {
+    const state: KitchenState = { ...empty(), pantry: [
+      { id: "first", name: "rice", measure: "", ...(mode === "attention" ? { useBy: PAST } : {}) },
+      { id: "changing", name: "beans", measure: "", ...(mode === "attention" ? { useBy: PAST } : {}) },
+      { id: "last", name: "lentils", measure: "", ...(mode === "attention" ? { useBy: PAST } : {}) },
+    ] };
+    await save(request, state);
+    await openPantry(page);
+    const before = await document(request), writes = watchWrites(page);
+    const origin = mode === "amounts" ? amountButton(page) : reviewButton(page);
+    const destination = mode === "amounts" ? reviewButton(page) : amountButton(page);
+    const originalReasons = mode === "amounts" ? [UNKNOWN_REASON] : [UNKNOWN_REASON, pastReason()];
+    await keyboard(origin);
+    let editor = await reviewBatch(page, "rice", 1, 3, originalReasons);
+    await expectReadOnly(page, request, before, writes);
+
+    const external = replaceStock(state, { ...state.pantry[1], useBy: mode === "amounts" ? PAST : TODAY });
+    await save(request, external);
+    const externallySaved = await document(request);
+    await refreshSavedKitchen(page);
+    await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
+    editor = await reviewBatch(page, "lentils", 3, 3, originalReasons);
+    await expect(editor.getByLabel("Ingredient name / form", { exact: true })).toHaveValue("lentils");
+    await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(origin).toBeFocused();
+    await expect(page.getByRole("status").filter({ hasText: mode === "amounts" ? "Amount pass finished." : "Review pass finished." }))
+      .toContainText(mode === "amounts" ? "2 batches still have an optional amount to add" : "2 batches still need review");
+    await expect(destination).toBeEnabled();
+
+    await keyboard(destination);
+    editor = await reviewBatch(page, "beans", 1, 1, mode === "amounts" ? [UNKNOWN_REASON, pastReason()] : [UNKNOWN_REASON]);
+    await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveValue(mode === "amounts" ? PAST : TODAY);
+    await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(destination).toBeFocused();
+    await expectReadOnly(page, request, externallySaved, writes);
+  });
+}
+
 test("confirmed corrections advance unknown and past batches without changing IDs, receipts or neighboring stock", async ({ page, request }) => {
   let state = await protectedKitchen(request, [
-    { id: "unknown", name: "zucchini", measure: "some", useBy: TODAY },
+    { id: "unknown", name: "zucchini", measure: "some", useBy: PAST },
     { id: "past", name: "rice", measure: "500 g", useBy: PAST },
     { id: "both", name: "beans", measure: "a handful", useBy: PAST },
     { id: "undated", name: "oats", measure: "200 g" },
@@ -437,13 +521,14 @@ test("confirmed corrections advance unknown and past batches without changing ID
   await openPantry(page);
   const before = await document(request), writes = watchWrites(page);
   await reviewButton(page).click();
-  let editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON]);
+  let editor = await reviewBatch(page, "zucchini", 1, 3, [UNKNOWN_REASON, pastReason()]);
   await editor.getByLabel("Amount on hand", { exact: true }).fill("300 g");
+  await editor.getByLabel("Use by · entered planning date", { exact: true }).fill(TODAY);
   await expectReadOnly(page, request, before, writes);
   await editor.getByRole("button", { name: "Save batch correction", exact: true }).click();
   await expect(editor.getByRole("status")).toContainText("Batch correction applied for zucchini.");
   await expect(editor.getByRole("button", { name: "Skip batch", exact: true })).toHaveCount(0);
-  state = replaceStock(state, { ...state.pantry[0], measure: "300 g" });
+  state = replaceStock(state, { ...state.pantry[0], measure: "300 g", useBy: TODAY });
   await expectSaved(page, request, state);
   await editor.getByRole("button", { name: "Review next", exact: true }).click();
   editor = await reviewBatch(page, "rice", 2, 3, [pastReason()]);
@@ -465,7 +550,7 @@ test("confirmed corrections advance unknown and past batches without changing ID
   await expectFitsViewport(page, editor);
   await editor.getByRole("button", { name: "Finish review", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "Review pass finished." })).toContainText("No batches currently need amount, past-date, or selected-week unit review.");
+  await expect(page.getByRole("status").filter({ hasText: "Review pass finished." })).toContainText("No batches currently need past-date or selected-week unit review.");
   await expect(reviewButton(page)).toBeDisabled();
   await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeFocused();
   await expect(group(page, "Last pantry batch edit")).toContainText("Last batch edit: beans");
@@ -479,7 +564,7 @@ test("review usage rejects incompatible and excessive amounts; Done ends the pas
   let state = await protectedKitchen(request, [
     { id: "past", name: "rice", measure: "500 g", useBy: PAST },
     { id: "unknown", name: "beans", measure: "some", useBy: PAST },
-    { id: "later", name: "lentils", measure: "" },
+    { id: "later", name: "lentils", measure: "", useBy: PAST },
   ]);
   const originalBeans = state.pantry[1];
   await save(request, state);
@@ -527,16 +612,16 @@ test("review usage rejects incompatible and excessive amounts; Done ends the pas
 
 test("native invalid review dates block both submission paths and Skip drops the local date and amount draft", async ({ page, request, isMobile }) => {
   await save(request, { ...empty(), pantry: [
-    { id: "unknown", name: "rice", measure: "some", useBy: TODAY },
+    { id: "unknown", name: "rice", measure: "some", useBy: PAST },
     { id: "past", name: "beans", measure: "400 g", useBy: PAST },
   ] });
   await openPantry(page);
   const before = await document(request), writes = watchWrites(page);
   await reviewButton(page).click();
-  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON]);
+  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON, pastReason()]);
   await editor.getByLabel("Amount on hand", { exact: true }).fill("250 g");
   const date = editor.getByLabel("Use by · entered planning date", { exact: true });
-  await expect(date).toHaveValue(TODAY);
+  await expect(date).toHaveValue(PAST);
   // Use real Chromium native validity, not a mocked validity object or malformed text input.
   if (isMobile) {
     await expect(date).toHaveAttribute("max", "9999-12-31");
@@ -567,9 +652,9 @@ test("native invalid review dates block both submission paths and Skip drops the
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("400 g");
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await reviewButton(page).click();
-  editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON]);
+  editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON, pastReason()]);
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("some");
-  await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveValue(TODAY);
+  await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveValue(PAST);
   await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveAttribute("aria-invalid", "false");
   await page.keyboard.press("Escape");
   await expect(reviewButton(page)).toBeFocused();
@@ -635,7 +720,7 @@ test("Review next skips resolved or removed queued IDs, loads a live rename and 
   ]);
   await save(request, state);
   await openPantry(page);
-  await reviewButton(page).click();
+  await amountButton(page).click();
   let editor = await reviewBatch(page, "rice", 1, 4, [UNKNOWN_REASON]);
   await editor.getByLabel("Amount on hand", { exact: true }).fill("100 g");
   await editor.getByRole("button", { name: "Save batch correction", exact: true }).click();
@@ -648,15 +733,15 @@ test("Review next skips resolved or removed queued IDs, loads a live rename and 
   await save(request, external);
   const before = await document(request), writes = watchWrites(page);
   await refreshSavedKitchen(page);
-  await expect(page.getByRole("region", { name: "Pantry stocktake", exact: true, includeHidden: true })).toContainText("2 batches to review");
+  await expect(page.getByRole("region", { name: "Pantry stocktake", exact: true, includeHidden: true })).toContainText("2 batches have an unknown amount");
   await editor.getByRole("button", { name: "Review next", exact: true }).click();
   editor = await reviewBatch(page, "red lentils", 4, 4, [UNKNOWN_REASON]);
   await expect(editor.getByLabel("Ingredient name / form", { exact: true })).toHaveValue("red lentils");
   await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "Review pass finished." })).toContainText("2 batches still need review");
-  await expect(reviewButton(page)).toBeFocused();
-  await reviewButton(page).click();
+  await expect(page.getByRole("status").filter({ hasText: "Amount pass finished." })).toContainText("2 batches still have an optional amount to add");
+  await expect(amountButton(page)).toBeFocused();
+  await amountButton(page).click();
   editor = await reviewBatch(page, "red lentils", 1, 2, [UNKNOWN_REASON]);
   await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
   await reviewBatch(page, "flour", 2, 2, [UNKNOWN_REASON]);
@@ -666,15 +751,15 @@ test("Review next skips resolved or removed queued IDs, loads a live rename and 
 
 test("an externally renamed review batch blocks stale submission; Load current batch and page reload discard only local drafts", async ({ page, request }) => {
   const state = await protectedKitchen(request, [
-    { id: "first", name: "rice", measure: "some", useBy: TODAY },
+    { id: "first", name: "rice", measure: "some", useBy: PAST },
     { id: "second", name: "beans", measure: "some", useBy: PAST },
   ]);
   await save(request, state);
   await openPantry(page);
   await reviewButton(page).click();
-  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON]);
+  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON, pastReason()]);
   await editor.getByLabel("Amount on hand", { exact: true }).fill("250 g");
-  const external = replaceStock(state, { ...state.pantry[0], name: "raw rice", useBy: "2026-11-05" });
+  const external = replaceStock(state, { ...state.pantry[0], name: "raw rice", useBy: "2026-10-20" });
   await save(request, external);
   const before = await document(request), writes = watchWrites(page);
   await refreshSavedKitchen(page);
@@ -684,9 +769,9 @@ test("an externally renamed review batch blocks stale submission; Load current b
   await submitForm(editor);
   await expectReadOnly(page, request, before, writes);
   await editor.getByRole("button", { name: "Load current batch", exact: true }).click();
-  editor = await reviewBatch(page, "raw rice", 1, 2, [UNKNOWN_REASON]);
+  editor = await reviewBatch(page, "raw rice", 1, 2, [UNKNOWN_REASON, pastReason("2026-10-20")]);
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("some");
-  await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveValue("2026-11-05");
+  await expect(editor.getByLabel("Use by · entered planning date", { exact: true })).toHaveValue("2026-10-20");
   await expect(editor.getByRole("button", { name: "Save batch correction", exact: true })).toBeEnabled();
   await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
   editor = await reviewBatch(page, "beans", 2, 2, [UNKNOWN_REASON, pastReason()]);
@@ -698,7 +783,7 @@ test("an externally renamed review batch blocks stale submission; Load current b
   await expect(group(page, "Last pantry batch edit")).toHaveCount(0);
   await expect(page.locator(".pantry-group-body[hidden]")).toHaveCount(2);
   await reviewButton(page).click();
-  editor = await reviewBatch(page, "raw rice", 1, 2, [UNKNOWN_REASON]);
+  editor = await reviewBatch(page, "raw rice", 1, 2, [UNKNOWN_REASON, pastReason("2026-10-20")]);
   await editor.getByRole("button", { name: "Skip batch", exact: true }).click();
   editor = await reviewBatch(page, "beans", 2, 2, [UNKNOWN_REASON, pastReason()]);
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("some");
@@ -707,15 +792,49 @@ test("an externally renamed review batch blocks stale submission; Load current b
   await expectReadOnly(page, request, before, writes);
 });
 
+test("an applied correction can recover when another tab restores its exact original batch", async ({ page, request }) => {
+  const rice: PantryStock = { id: "rice", name: "rice", measure: "100 g", useBy: TODAY, location: "cupboard" };
+  const original: KitchenState = { ...empty(), pantry: [rice] };
+  await save(request, original);
+  await openPantry(page);
+  await group(page, "rice").getByRole("button", { name: "Show batches for rice", exact: true }).click();
+  await row(page, rice.id).getByRole("button", { name: "Edit batch rice", exact: true }).click();
+  let editor = page.getByRole("dialog", { name: "Edit batch rice", exact: true });
+  await editor.getByLabel("Amount on hand", { exact: true }).fill("80 g");
+  await editor.getByRole("button", { name: "Save batch correction", exact: true }).click();
+  await expect(editor.getByRole("status")).toContainText("Batch correction applied for rice.");
+  await expectSaved(page, request, replaceStock(original, { ...rice, measure: "80 g" }));
+
+  await save(request, original);
+  const restored = await document(request), writes = watchWrites(page);
+  await refreshSavedKitchen(page);
+  await expect(editor.getByRole("alert")).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Load current batch", exact: true })).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Save batch correction", exact: true })).toBeDisabled();
+  await submitForm(editor);
+  await expectReadOnly(page, request, restored, writes);
+
+  await editor.getByRole("button", { name: "Load current batch", exact: true }).click();
+  editor = page.getByRole("dialog", { name: "Edit batch rice", exact: true });
+  await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("100 g");
+  await expect(editor.getByLabel("Amount on hand", { exact: true })).toBeEnabled();
+  await editor.getByLabel("Amount on hand", { exact: true }).fill("60 g");
+  await editor.getByRole("button", { name: "Save batch correction", exact: true }).click();
+  await expect(editor.getByRole("status")).toContainText("Batch correction applied for rice.");
+  await expectSaved(page, request, replaceStock(original, { ...rice, measure: "60 g" }));
+  await editor.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("a removed current ID cannot be recreated or replaced by a same-name batch during the pass", async ({ page, request }) => {
   const state = await protectedKitchen(request, [
-    { id: "first", name: "rice", measure: "some", useBy: TODAY },
+    { id: "first", name: "rice", measure: "some", useBy: PAST },
     { id: "last", name: "beans", measure: "some", useBy: PAST },
   ]);
   await save(request, state);
   await openPantry(page);
   await reviewButton(page).click();
-  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON]);
+  let editor = await reviewBatch(page, "rice", 1, 2, [UNKNOWN_REASON, pastReason()]);
   await editor.getByLabel("Amount on hand", { exact: true }).fill("250 g");
   const external = { ...state, pantry: state.pantry.map(stock => stock.id === "first" ? { ...stock, id: "replacement" } : stock) };
   await save(request, external);
@@ -744,7 +863,7 @@ test("a removed current ID cannot be recreated or replaced by a same-name batch 
   await expect(row(page, "first")).toHaveCount(0);
   await expect(row(page, "replacement")).toHaveCount(1);
   await reviewButton(page).click();
-  editor = await reviewBatch(page, "rice", 1, 1, [UNKNOWN_REASON]);
+  editor = await reviewBatch(page, "rice", 1, 1, [UNKNOWN_REASON, pastReason()]);
   await expect(editor.getByLabel("Amount on hand", { exact: true })).toHaveValue("some");
   await editor.getByRole("button", { name: "Cancel", exact: true }).click();
   await expectSaved(page, request, finished);

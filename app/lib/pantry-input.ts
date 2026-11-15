@@ -1,9 +1,9 @@
-import { canonicalIngredient, normalizePlanningIngredient, parseMeasure } from "./quantities";
-import type { PantryStock } from "./kitchen-types";
+import { canonicalIngredient, normalizePlanningIngredient, pantryStockEligibility, parseMeasure } from "./quantities";
+import type { PantryLocation, PantryStock } from "./kitchen-types";
 import { EMPTY_KITCHEN } from "./kitchen-types";
 import { validateKitchenWrite } from "./kitchen-validation";
 
-export type PantryInputRow = Pick<PantryStock, "name" | "measure" | "useBy"> & {
+export type PantryInputRow = Pick<PantryStock, "name" | "measure" | "useBy" | "location"> & {
   originalText?: string;
   reviewReasons?: string[];
 };
@@ -64,17 +64,96 @@ export function parsePantryInput(text: string): PantryInputRow[] {
   });
 }
 
+/** Keys identify rows within one parsed draft; reconcile placements when the text changes. */
+export function pantryDraftRows(text: string): Array<{ key: string; row: PantryInputRow }> {
+  const occurrences = new Map<string, number>();
+  return parsePantryInput(text).map(row => {
+    const occurrence = occurrences.get(row.name) ?? 0;
+    occurrences.set(row.name, occurrence + 1);
+    return { key: JSON.stringify([row.name, occurrence]), row };
+  });
+}
+
+type PantryDraftRow = ReturnType<typeof pantryDraftRows>[number];
+
+function groupDraftRows(rows: PantryDraftRow[], identify: (row: PantryInputRow) => string): Map<string, PantryDraftRow[]> {
+  const groups = new Map<string, PantryDraftRow[]>();
+  for (const entry of rows) {
+    const identity = identify(entry.row);
+    const group = groups.get(identity) ?? [];
+    group.push(entry);
+    groups.set(identity, group);
+  }
+  return groups;
+}
+
+/** Keep placements with retained batches, and forget choices whose row is ambiguous or removed. */
+export function reconcilePantryDraftLocations(
+  previousText: string, nextText: string, locations: Record<string, PantryLocation | "">,
+): Record<string, PantryLocation | ""> {
+  const previous = groupDraftRows(pantryDraftRows(previousText), row => row.name);
+  const next = groupDraftRows(pantryDraftRows(nextText), row => row.name);
+  const result: Record<string, PantryLocation | ""> = {};
+  const batchIdentity = (row: PantryInputRow) => JSON.stringify([row.name, row.measure, row.useBy]);
+  const copyLocation = (from: PantryDraftRow, to: PantryDraftRow) => {
+    if (Object.hasOwn(locations, from.key)) result[to.key] = locations[from.key];
+  };
+  for (const [name, nextRows] of next) {
+    const previousRows = previous.get(name) ?? [];
+    const previousBatches = groupDraftRows(previousRows, batchIdentity);
+    const nextBatches = groupDraftRows(nextRows, batchIdentity);
+    const matchedPrevious = new Set<string>(), matchedNext = new Set<string>();
+    for (const [identity, nextBatch] of nextBatches) {
+      const previousBatch = previousBatches.get(identity) ?? [];
+      // A changed number of identical batches cannot identify which copy was edited or deleted.
+      if (previousBatch.length !== nextBatch.length) continue;
+      nextBatch.forEach((entry, index) => {
+        copyLocation(previousBatch[index], entry);
+        matchedPrevious.add(previousBatch[index].key);
+        matchedNext.add(entry.key);
+      });
+    }
+    const removed = previousRows.filter(entry => !matchedPrevious.has(entry.key));
+    const added = nextRows.filter(entry => !matchedNext.has(entry.key));
+    // One remaining pair with an unchanged row count is an unambiguous amount edit.
+    if (previousRows.length === nextRows.length && removed.length === 1 && added.length === 1) {
+      copyLocation(removed[0], added[0]);
+    }
+  }
+  return result;
+}
+
 /** Only a bare, new ingredient can skip the preview; existing batches are never merged. */
 export function pantryInputNeedsReview(rows: PantryInputRow[], pantry: PantryStock[]): boolean {
-  const existing = new Set(pantry.map((stock) => canonicalIngredient(stock.name)));
+  const existing = new Set(pantry.map(pantryEntryKey));
   return rows.length > 1 || rows.some((row) => Boolean(row.measure.trim() || row.useBy?.trim() || row.reviewReasons?.length)
-    || NUMBER.test(row.name) || UNCERTAIN_WORDING.test(row.name) || row.name.includes(",") || existing.has(canonicalIngredient(row.name)));
+    || NUMBER.test(row.name) || UNCERTAIN_WORDING.test(row.name) || row.name.includes(",") || existing.has(pantryEntryKey(row)));
+}
+
+function pantryEntryKey(row: Pick<PantryStock, "name" | "location">): string {
+  return JSON.stringify([canonicalIngredient(row.name), row.location ?? null]);
+}
+
+/** A simple saved list records presence once; measured or ambiguous additions still need review. */
+export function quickPantryAdditions(rows: PantryInputRow[], pantry: PantryStock[], today: string): PantryInputRow[] | null {
+  if (!rows.length || rows.some(row => pantryInputNeedsReview([row], []))) return null;
+  const existing = new Set(pantry.map(pantryEntryKey));
+  const available = new Set(pantry.filter(stock => pantryStockEligibility(stock, today).eligible).map(pantryEntryKey));
+  const additions: PantryInputRow[] = [];
+  for (const row of rows) {
+    const key = pantryEntryKey(row);
+    // An old or finished batch needs an explicit decision, rather than silently reviving it.
+    if (existing.has(key) && !available.has(key)) return null;
+    if (!available.has(key)) { additions.push(row); available.add(key); }
+  }
+  return additions;
 }
 
 /** Project a validated draft onto persistent fields, without leaking preview metadata. */
 export function pantryInputStock(row: PantryInputRow, id: string): PantryStock {
   const useBy = row.useBy?.trim();
-  return { id, name: row.name.trim().toLowerCase(), measure: row.measure.trim(), ...(useBy ? { useBy } : {}) };
+  return { id, name: row.name.trim().toLowerCase(), measure: row.measure.trim(), ...(useBy ? { useBy } : {}),
+    ...(row.location !== undefined ? { location: row.location } : {}) };
 }
 
 export function pantryInputProblem(rows: PantryInputRow[], pantry: PantryStock[]): string {
@@ -84,7 +163,7 @@ export function pantryInputProblem(rows: PantryInputRow[], pantry: PantryStock[]
     validateKitchenWrite({ revision: 0, state: { ...EMPTY_KITCHEN, pantry: rows.map((row, index) => pantryInputStock(row, `preview-${index}`)) } });
   } catch (error) {
     return error instanceof Error
-      ? error.message.replace(/state\.pantry\[(\d+)\]\.(name|measure|useBy)/g, (_, index, field) => `Ingredient ${Number(index) + 1} ${field === "measure" ? "amount" : field === "useBy" ? "use-by date" : "name"}`)
+      ? error.message.replace(/state\.pantry\[(\d+)\]\.(name|measure|useBy|location)/g, (_, index, field) => `Ingredient ${Number(index) + 1} ${field === "measure" ? "amount" : field === "useBy" ? "use-by date" : field === "location" ? "storage location" : "name"}`)
       : "Check ingredient names, amounts and use-by dates.";
   }
   return "";

@@ -30,7 +30,8 @@ export type KitchenCommandInput =
   | { type: "UncheckShoppingWeek"; week: string };
 
 export type KitchenCommand = KitchenCommandInput & { commandId: string; expectedRevision: number };
-export type KitchenCommandSender = (command: KitchenCommandInput) => void;
+/** True only when the command advances the local kitchen and enters its save queue. */
+export type KitchenCommandSender = (command: KitchenCommandInput) => boolean;
 
 const amountKeys = new Set(["baseServings", "servings", "batches", "ingredientOverrides"]);
 const validId = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim()) && value.length <= 200;

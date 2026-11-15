@@ -168,7 +168,7 @@ test("purchase dates are optional, validated calendar dates and retained separat
   const { checked, drafts } = preview(original);
   for (const useBy of [undefined, "", "2026-10-28", "2026-10-26", "2028-02-29", "0001-01-01", "9999-12-31"]) {
     const draft = { ...drafts[0], useBy };
-    assert.deepEqual(purchaseDraftProblems(draft), { measure: "", useBy: "" });
+    assert.deepEqual(purchaseDraftProblems(draft), { measure: "", useBy: "", location: "" });
     const added = applyBoughtItems(checked, week, today, [draft], "dated-purchase", at);
     assert.notEqual(added, checked);
     assert.deepEqual(added.pantry.slice(0, 2), original.pantry);

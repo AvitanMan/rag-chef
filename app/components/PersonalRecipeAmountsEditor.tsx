@@ -9,15 +9,23 @@ function referenceLabel(servings: number | null) {
   return servings ? `${servings} source servings` : "one recipe batch (source yield unknown)";
 }
 
+function sameAmounts(left: PersonalRecipeAmounts | undefined, right: PersonalRecipeAmounts | undefined) {
+  if (!left || !right) return left === right;
+  return left.contentHash === right.contentHash && left.referenceServings === right.referenceServings
+    && left.amounts.length === right.amounts.length && left.amounts.every(item => right.amounts.some(other =>
+      item.ingredientIndex === other.ingredientIndex && item.originalName === other.originalName && item.measure === other.measure));
+}
+
 /** Drafts live only in this editor until the complete set passes validation. */
 export function PersonalRecipeAmountsEditor({ recipe, contentHash, saved, disabled, save }: {
   recipe: Recipe; contentHash?: string; saved?: PersonalRecipeAmounts; disabled: boolean;
-  save: (amounts: PersonalRecipeAmounts | undefined) => void;
+  save: (amounts: PersonalRecipeAmounts | undefined) => boolean;
 }) {
   const matches = personalAmountsMatch(recipe, saved, contentHash);
   const baseline = recipe.ingredients.map((_, index) => matches ? saved!.amounts.find(item => item.ingredientIndex === index)?.measure ?? "" : "");
   const [drafts, setDrafts] = useState(baseline);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
   const id = useId();
   const problems = drafts.map(personalAmountInputProblem);
   const unavailable = disabled || !contentHash;
@@ -37,22 +45,34 @@ export function PersonalRecipeAmountsEditor({ recipe, contentHash, saved, disabl
       event.preventDefault();
       if (unavailable || problems.some(Boolean)) return;
       const amounts = drafts.flatMap((measure, ingredientIndex) => measure.trim() ? [{ ingredientIndex, originalName: recipe.ingredients[ingredientIndex].name, measure: measure.trim() }] : []);
-      save(amounts.length ? { contentHash: contentHash!, referenceServings: recipe.servings ?? null, amounts } : undefined);
+      const next = amounts.length ? { contentHash: contentHash!, referenceServings: recipe.servings ?? null, amounts } : undefined;
+      if (!sameAmounts(saved, next) && !save(next)) {
+        setNotice(""); setError("Personal amounts were not saved. Your draft is kept. Resolve pending kitchen changes and try again.");
+        return;
+      }
+      setError("");
       setNotice("Personal amounts saved. Future dinners use these amounts.");
     }}>
       {recipe.ingredients.map((ingredient, index) => <div className="personal-amount-row" key={index}>
         <div><strong>{ingredient.name}</strong><small>Source: {ingredient.measure || "Amount not stated"}</small></div>
         <label>Personal amount<input aria-label={`Personal amount for ${ingredient.name}`} maxLength={160} value={drafts[index]} disabled={unavailable}
           placeholder={ingredient.measure || "e.g. 300 g"} aria-invalid={Boolean(problems[index])} aria-describedby={problems[index] ? `${id}-${index}` : undefined}
-          onChange={event => { setDrafts(current => current.map((value, row) => row === index ? event.target.value : value)); setNotice(""); }} />
+          onChange={event => { setDrafts(current => current.map((value, row) => row === index ? event.target.value : value)); setNotice(""); setError(""); }} />
           {problems[index] && <small className="field-error" id={`${id}-${index}`} role="alert">{problems[index]}</small>}
         </label>
       </div>)}
       <div className="modal-actions">
         <button className="primary-button" disabled={unavailable || problems.some(Boolean)}>Save personal amounts</button>
-        <button className="secondary-button" type="button" onClick={() => { setDrafts(baseline); setNotice("Draft cancelled."); }}>Cancel</button>
-        <button className="text-button" type="button" disabled={disabled || !saved} onClick={() => { save(undefined); setDrafts(recipe.ingredients.map(() => "")); setNotice("Future dinners use source amounts."); }}>Reset to source amounts</button>
+        <button className="secondary-button" type="button" onClick={() => { setDrafts(baseline); setNotice("Draft cancelled."); setError(""); }}>Cancel</button>
+        <button className="text-button" type="button" disabled={disabled || !saved} onClick={() => {
+          if (!sameAmounts(saved, undefined) && !save(undefined)) {
+            setNotice(""); setError("Personal amounts were not saved. Your draft is kept. Resolve pending kitchen changes and try again.");
+            return;
+          }
+          setDrafts(recipe.ingredients.map(() => "")); setError(""); setNotice("Future dinners use source amounts.");
+        }}>Reset to source amounts</button>
       </div>
+      {error && <p className="field-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
     </form>
   </section>;
