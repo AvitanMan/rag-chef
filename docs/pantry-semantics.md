@@ -18,8 +18,9 @@ are recorded separately in PR checks and test artifacts.
 
 The simple saved-list view adds optional fixed storage locations, reviewed
 location drafts, and a spice checklist. Deterministic dinner discovery has an
-explicit per-ingredient freezer opt-in. These additions do not introduce a
-package-content model or inventory journal. Richer persisted fields and later
+explicit per-ingredient freezer opt-in. Pantry results and Everyday dinners share
+reservation-aware quantity previews and deterministic dinner ranking. These
+additions do not introduce a package-content model or inventory journal. Richer persisted fields and later
 stocktake stages remain deferred. The PR7 comparison below is historical
 integration guidance, not a current PR-status report.
 
@@ -145,12 +146,30 @@ and ranking but cannot introduce a recipe unrelated to the picks. Identity stays
 exact; no substitution is inferred.
 
 Saved constraints apply before ranking. Dinner role and ingredient dislikes
-come first, then fewer missing food identities, then more matched picked food
-identities, followed by pantry fit and stable title/ID ordering. Duplicate
-ingredient lines cannot inflate matches. An unavailable pick is identified while
-remaining valid picks continue to produce options; if no valid picked food has
+come first, then confirmed use of food due today through three days ahead, fewer
+unresolved food identities, fewer uncertain food amounts, more matched picked food
+identities, measured coverage, and stable title/ID ordering. Use-soon credit
+requires actual compatible measured allocation and excludes basic seasonings;
+the window is relative to today, even when the selected dinner day is later.
+Unresolved food identities include partial and review-needed shopping entries,
+so unknown amounts cannot appear cheaper merely by lacking a measured shortage.
+Duplicate ingredient lines cannot inflate matches. An unavailable pick is
+identified while remaining valid picks continue to produce options; if no valid picked food has
 a match, results offer changing picks and browsing recipes. Opening suggestions,
-changing picks, and browsing do not write kitchen state or call Chef AI.
+changing picks, changing day/portions, and browsing do not write kitchen state or
+call Chef AI.
+
+The shared candidate preview builds a meal with the selected day, source yield,
+portions, and personal amounts applicable to the current source content hash.
+Unknown source yields retain one recipe batch. It reserves the full pantry for
+other saved dinners in the target week, excluding the dinner being replaced.
+Each card separates ingredient-name fit from measured coverage, amount review,
+and expandable shopping needs. Pantry picks survive day and portion changes.
+Pantry, plan, date, portions, personal amounts, and catalog changes recalculate
+previews. The selected dinner uses its preview quantities; replacement
+confirmation refreshes when relevant inputs change. Existing protected-date and
+rejected-command handling remain in effect. These derived previews add no stored
+fields, database migrations, or HTTP API changes.
 
 Removable **Remove NAME from picks** chips expose the shared picks across
 storage changes, search, and results. Removing a result chip refreshes the options
@@ -160,16 +179,21 @@ picks. Each card identifies **Uses your picks** separately from the full pantry
 fit; **Show more dinners** expands the initial three options.
 
 Eligible freezer batches remain visible to select, but
-the deterministic shortlist and its pantry-fit ranking count them only when
+the deterministic shortlist and its ranking count them only when
 their ingredient identity is selected. That opt-in is by ingredient key, not
 one batch: selecting a key also includes its eligible freezer batches when
 there is matching stock elsewhere. Results identify the selected freezer
 ingredients; clearing selection removes the opt-in. This is discovery context,
-not an assertion that frozen food is ready to cook.
+not an assertion that frozen food is ready to cook. Full-pantry reservations are
+calculated first, then unselected freezer batches are excluded from the remaining
+stock used for discovery ranking. The Everyday dinners collection has no picked
+ingredients and therefore excludes all freezer batches from ranking.
 
 Storage filtering and this discovery opt-in do not change full-pantry physical
 totals, quantity coverage, shopping, reservations, or cooking deductions. Their
-existing date, amount, and compatibility rules remain in effect. Chef's AI
+existing date, amount, and compatibility rules remain in effect. Card shopping
+readiness uses the full remaining pantry and identifies measured frozen coverage
+with a preparation reminder; the ranking score is not a grocery quantity. Chef's AI
 context and behavior retain their existing pantry semantics. Location is not a
 new ingredient identity or an automatic preparation/substitution rule.
 

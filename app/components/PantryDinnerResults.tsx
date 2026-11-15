@@ -5,7 +5,7 @@ import type { PantryDinnerMatch, PantryPick } from "../lib/pantry-dinner";
 import { isBasicSeasoning } from "../lib/pantry-recipe-fit";
 import { PantrySelectionChips } from "./PantrySelectionChips";
 
-export function PantryDinnerResults({ picks, matches, removePick, catalogState, setup, change, browse, retry, renderCard }: {
+export function PantryDinnerResults({ picks, matches, removePick, catalogState, setup, change, browse, retry, renderCard, context, title = "Dinner ideas for tonight" }: {
   picks: PantryPick[];
   matches: PantryDinnerMatch[];
   removePick: (key: string) => void;
@@ -15,6 +15,8 @@ export function PantryDinnerResults({ picks, matches, removePick, catalogState, 
   browse: () => void;
   retry: () => void;
   renderCard: (match: PantryDinnerMatch) => ReactNode;
+  context?: ReactNode;
+  title?: string;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const selection = JSON.stringify(picks.map(pick => pick.key));
@@ -23,9 +25,10 @@ export function PantryDinnerResults({ picks, matches, removePick, catalogState, 
   const hasFood = picks.some(pick => pick.available && !isBasicSeasoning(pick.key));
   const unavailable = picks.some(pick => !pick.available);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); heading.current?.scrollIntoView({ block: "start" }); }, []);
-  return <section className="recipe-section pantry-dinner-results" aria-label="Dinner ideas for tonight">
+  return <section className="recipe-section pantry-dinner-results" aria-label={title}>
+    {context}
     <div className="panel pantry-dinner-header">
-      <h2 ref={heading} tabIndex={-1}>Dinner ideas for tonight</h2>
+      <h2 ref={heading} tabIndex={-1}>{title}</h2>
       <p>Meals can use some of your picks. Choose what sounds good.</p>
       <PantrySelectionChips picks={picks} remove={removePick} />
       {unavailable && <p role="status">Some picks are no longer available. Suggestions use your remaining available food.</p>}
@@ -37,7 +40,7 @@ export function PantryDinnerResults({ picks, matches, removePick, catalogState, 
         : catalogState === "loading" ? <p role="status">Looking through your recipes…</p>
         : catalogState === "error" ? <p role="alert">Recipes could not load. <button className="text-button" onClick={retry}>Retry recipes</button></p>
         : setup ? null
-        : matches.length ? <p className="quantity-note">Dinner choices using your picks. Check extra ingredients and amounts before cooking.</p>
+        : matches.length ? <p className="quantity-note">Uses food due soon first, then fewer extra ingredients. Unknown amounts stay marked for review.</p>
         : <div className="empty-state"><strong>No dinners use these picks with your saved requirements.</strong><p>Choose other ingredients or browse your dinners.</p></div>}
     </div>
     {catalogState === "ready" && setup}

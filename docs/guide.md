@@ -28,7 +28,8 @@ shows portions, measured pantry coverage, missing ingredients, and **Cook dinner
 Otherwise, choose an instant suggestion or ask Chef for ideas. **Choose for
 tonight** saves the dinner and shows that panel without visiting Plan or a date
 picker. Recipes uses the same selection action. **Dinner day and portions** is
-shared across Chef and Recipes; choose another day before selecting when needed.
+shared across Chef, Pantry dinner results, and Recipes; choose another day before
+selecting when needed. Pantry picks stay selected when the day changes.
 Source quantities are the default, and unknown yields use recipe batches.
 If a dinner choice cannot be applied, its options or replacement review stay open
 with an error. The app only reports the dinner saved after accepting the change.
@@ -175,9 +176,14 @@ and have not been kitchen-tested, and no verified total cooking time is claimed.
 Recipe collection cards show **Have**, **Missing**, and **Also check**. Pantry
 dinner options distinguish **Uses your picks** from **Also have**. **Also check**
 keeps missing salt, black pepper, water and common oils visible. No ingredient is
-assumed to be in your pantry. Amounts still need checking.
-Pantry suggestions rank mains first, honor ingredient dislikes, then favor recipes
-with food ingredients already available and fewer missing food ingredients; duplicate ingredient lines cannot inflate the match.
+assumed to be in your pantry. Pantry results and the Everyday dinners collection
+also show measured coverage and expandable **Shopping needs** for the selected
+day and portions. These estimates reserve stock for other saved dinners first;
+unknown amounts stay marked for review. Comparing choices does not save a dinner.
+After dinner role and dislikes, these two views favor confirmed use of food due
+within three days, fewer unresolved food ingredients, fewer uncertain food amounts,
+more picked foods, and measured coverage. Exact-title search still comes first
+in Everyday dinners. Duplicate ingredient lines cannot inflate the match.
 [Collection contents and cooking feedback](everyday-dinners.md).
 
 
@@ -353,10 +359,27 @@ still apply, and the shortlist works without an AI model.
 
 Recipes show **Uses your picks**, **Also have**, **Missing**, and **Also saved in freezer**
 where applicable. Other saved ingredients support a recipe but do not pull in
-unrelated options. Mains and ingredient dislikes are considered first, then fewer
-missing foods and more of your picked foods. Three cards appear initially;
-**Show more dinners** reveals more options. Name matches do not establish enough
-quantity; check dinner amounts and shopping needs before cooking.
+unrelated options. These labels describe ingredient names, separately from the
+measured coverage summary and expandable **Shopping needs**. Choose the dinner
+day and portions above the cards; the estimates update without losing your picks.
+Source quantities are the default. A recipe with unknown yield stays at one
+recipe batch rather than inventing a serving conversion.
+
+Mains and ingredient dislikes are considered first. Next come confirmed use of
+food whose entered date is today through three days ahead, fewer unresolved food
+ingredients, fewer uncertain food amounts, more picked foods, and measured coverage.
+Partial, unknown, and incompatible amounts count as unresolved rather than free
+ingredients. Unknown amounts still allow name matches but earn no confirmed
+coverage or use-soon credit. A supported reason explains useful matches, such as
+using mushrooms due tomorrow. Three cards appear initially; **Show more dinners**
+reveals more options.
+
+Estimates reserve stock for other saved dinners in the selected week and leave
+out the dinner being replaced. Choosing a dinner saves the quantities shown in
+its preview, including applicable personal amounts. If relevant inputs change
+while replacement confirmation is open, the preview refreshes before acceptance.
+Comparing cards, changing the day or portions, and opening shopping details do not
+write kitchen state or call an AI model.
 
 Your picks appear as removable chips above the pantry list and on the results
 screen. Picks survive location changes and search, and each chip removes only that
@@ -368,15 +391,18 @@ Forward restore the picks for the corresponding search. Picks last while the app
 is open; the pantry itself persists after reload. Finished and past-date batches
 remain saved but are not offered for tonight's ingredient selection. Freezer
 ingredients stay visible for deliberate selection. Frozen batches count in this
-deterministic dinner shortlist and its name-fit ranking only when that ingredient
+deterministic dinner shortlist and its ranking only when that ingredient
 is selected; the results identify selected freezer ingredients so you can plan
 their preparation. This opt-in follows the ingredient identity, including matching
 batches in other locations. Clearing the selection removes the opt-in.
 
 Location controls and the freezer discovery rule do not reduce physical on-hand totals,
 shopping coverage, reservations, or cooking deductions. Those retain the full
-pantry and their existing quantity/date checks. Chef's AI pantry context and
-behavior also retain the existing rules.
+pantry and their existing quantity/date checks. Other saved dinners reserve from
+the full pantry before unselected freezer stock is excluded from ranking. Card
+shopping estimates use the full remaining pantry, with frozen coverage identified
+so you can check preparation. A low shopping estimate does not mean frozen food
+is ready to cook. Chef's AI pantry context and behavior retain the existing rules.
 
 Open **Manage amounts, dates and batches** for stocktake, reservations, filters
 and individual batch edits. Here **All items** starts with compact ingredient

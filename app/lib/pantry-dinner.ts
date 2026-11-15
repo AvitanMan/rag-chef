@@ -1,8 +1,8 @@
-import type { PantryStock } from "./kitchen-types";
-import { isEverydayRecipe } from "./everyday-collection";
+import type { KitchenState, PantryStock } from "./kitchen-types";
+import { evaluateDinnerCandidates, type DinnerCandidate } from "./dinner-candidates";
 import { canonicalIngredient, normalizePlanningIngredient, pantryStockEligibility } from "./quantities";
-import { isBasicSeasoning, pantryRecipeFit } from "./pantry-recipe-fit";
-import { evaluateRecipeConstraints, normalizeConstraints } from "./recipe-constraints";
+import { isBasicSeasoning } from "./pantry-recipe-fit";
+import { normalizeConstraints } from "./recipe-constraints";
 import type { Recipe, RecipeConstraints, RecipeMetadataMap } from "./recipe-types";
 
 export interface PantryDinnerIngredient {
@@ -14,8 +14,7 @@ export interface PantryPick extends PantryDinnerIngredient {
   available: boolean;
 }
 
-export interface PantryDinnerMatch {
-  recipe: Recipe;
+export interface PantryDinnerMatch extends DinnerCandidate {
   usesPicks: PantryDinnerIngredient[];
   frozenPicks: PantryDinnerIngredient[];
 }
@@ -23,6 +22,14 @@ export interface PantryDinnerMatch {
 export interface PantryDinnerResults {
   picks: PantryPick[];
   matches: PantryDinnerMatch[];
+}
+
+export interface PantryDinnerOptions {
+  date?: string;
+  portions?: number | null;
+  meals?: KitchenState["meals"];
+  personalRecipeAmounts?: KitchenState["personalRecipeAmounts"];
+  contentHashesByRecipeId?: Record<string, string>;
 }
 
 /** Discovery only: frozen entries count tonight when that ingredient was explicitly selected. */
@@ -63,37 +70,26 @@ export function findPantryDinners(
   today: string,
   metadata: RecipeMetadataMap = {},
   constraints: RecipeConstraints = normalizeConstraints(),
+  options: PantryDinnerOptions = {},
 ): PantryDinnerResults {
-  const picks = pantryDinnerPicks(pantry, today, selectedKeys);
+  const date = options.date ?? today;
+  const stockDate = date > today ? date : today;
+  const picks = pantryDinnerPicks(pantry, stockDate, selectedKeys);
   const availablePicks = picks.filter(pick => pick.available);
   const foodPicks = availablePicks.filter(pick => !isBasicSeasoning(pick.key));
   if (!foodPicks.length) return { picks, matches: [] };
 
-  const pantryNames = availableTonightIngredients(tonightSuggestionPantry(pantry, today, availablePicks.map(pick => pick.key)), today).map(ingredient => ingredient.name);
-  const frozenByKey = new Map(availableTonightIngredients(pantry.filter(stock => stock.location === "freezer"), today)
+  const frozenByKey = new Map(availableTonightIngredients(pantry.filter(stock => stock.location === "freezer"), stockDate)
     .map(ingredient => [ingredient.key, ingredient]));
-  const dinnerPriority = (recipe: Recipe) => {
-    const role = metadata[recipe.id]?.dinnerRole ?? (isEverydayRecipe(recipe) ? "main" : "unknown");
-    return role === "main" ? 0 : !role || role === "unknown" ? 1 : 2;
-  };
-  const matches = recipes.flatMap(recipe => {
-    const eligibility = evaluateRecipeConstraints(recipe, metadata[recipe.id], constraints);
-    if (!eligibility.eligible) return [];
+  const kitchen: KitchenState = { schemaVersion: 2, pantry: [...pantry], meals: options.meals ?? {},
+    shoppingChecked: {}, migratedLegacy: true, personalRecipeAmounts: options.personalRecipeAmounts };
+  const matches = evaluateDinnerCandidates({ recipes, kitchen, today, date, portions: options.portions ?? null, metadata, constraints,
+    selectedKeys, contentHashesByRecipeId: options.contentHashesByRecipeId }).map(candidate => {
+    const { recipe } = candidate;
     const ingredients = new Set(recipe.ingredients.map(ingredient => canonicalIngredient(normalizePlanningIngredient(ingredient).name)));
-    const selectedFoodOverlap = foodPicks.filter(pick => ingredients.has(pick.key)).length;
-    if (!selectedFoodOverlap) return [];
     const usesPicks = availablePicks.filter(pick => ingredients.has(pick.key)).map(({ key, name }) => ({ key, name }));
     const frozenPicks = usesPicks.flatMap(pick => frozenByKey.has(pick.key) ? [frozenByKey.get(pick.key)!] : []);
-    return [{ recipe, usesPicks, frozenPicks, selectedFoodOverlap,
-      dislikes: eligibility.dislikedIngredients.length, fit: pantryRecipeFit(recipe, pantryNames) }];
+    return { ...candidate, usesPicks, frozenPicks };
   });
-  matches.sort((a, b) => dinnerPriority(a.recipe) - dinnerPriority(b.recipe)
-    || a.dislikes - b.dislikes
-    || a.fit.missingFood.length - b.fit.missingFood.length
-    || b.selectedFoodOverlap - a.selectedFoodOverlap
-    || b.fit.foodCoverage - a.fit.foodCoverage
-    || b.fit.coverage - a.fit.coverage
-    || a.recipe.title.localeCompare(b.recipe.title, "en", { sensitivity: "base" })
-    || a.recipe.id.localeCompare(b.recipe.id));
-  return { picks, matches: matches.map(({ recipe, usesPicks, frozenPicks }) => ({ recipe, usesPicks, frozenPicks })) };
+  return { picks, matches };
 }

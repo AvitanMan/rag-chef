@@ -102,6 +102,22 @@ export function canonicalIngredient(name: string): string {
   return ingredientIdentity(name).key;
 }
 
+/** Index one inventory for repeated previews, retaining preparation warnings and original row order. */
+export function createPantryIngredientSelector(pantry: readonly PantryStock[]): (names: readonly string[]) => PantryStock[] {
+  const byBase = new Map<string, Array<{ stock: PantryStock; index: number }>>();
+  pantry.forEach((stock, index) => {
+    const base = ingredientIdentity(stock.name).base;
+    const entries = byBase.get(base) ?? [];
+    entries.push({ stock, index });
+    byBase.set(base, entries);
+  });
+  return names => {
+    const bases = new Set(names.map(name => ingredientIdentity(name).base));
+    return [...bases].flatMap(base => byBase.get(base) ?? [])
+      .sort((a, b) => a.index - b.index).map(entry => entry.stock);
+  };
+}
+
 function preparationNotes(name: string, pantry: PantryStock[], date: string): string[] {
   const required = ingredientIdentity(name);
   const different = pantry.filter((stock) => {

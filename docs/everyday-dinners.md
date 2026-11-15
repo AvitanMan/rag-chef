@@ -27,11 +27,21 @@ Fresh installations use **Load starter recipes**. Both use the existing durable,
 idempotent starter job and original-content source policy. Existing imported recipes,
 pantry, plans and favorites are retained. The evaluation corpus is not imported.
 
-Cards explain the dish and show pantry matches and missing ingredients. Each
-pantry dinner option uses at least one picked food and honors saved exclusions;
+Cards explain the dish and distinguish pantry name matches from measured coverage
+and expandable **Shopping needs**. Change the dinner day and portions to compare
+estimates before choosing; source quantities are the default. Other saved dinners
+in the selected week reserve stock first, excluding the dinner being replaced.
+Applicable personal amounts carry into both the preview and the saved dinner.
+Comparing choices does not write kitchen state or call an AI model.
+
+Each pantry dinner option uses at least one picked food and honors saved exclusions;
 it can use a different subset of your picks than another option. Other pantry
-food supports the recipe but does not introduce unrelated meals. Ranking favors
-fewer missing foods, then more picked foods, after dinner role and dislikes.
+food supports the recipe but does not introduce unrelated meals. After dinner
+role and dislikes, Pantry and Everyday ranking favors confirmed use of food due
+today through three days ahead, fewer unresolved food identities, fewer uncertain
+food amounts, more picked foods, then measured coverage and stable title/ID ordering.
+Everyday search retains exact-title priority. Partial and review-needed amounts
+count as unresolved; unknown amounts earn no confirmed coverage or use-soon credit.
 Salt, black pepper, water and a small explicit set of cooking oils are supporting
 ingredients; overlap in these alone does not produce a dinner option, and the
 app never assumes they are available.
@@ -40,6 +50,10 @@ or dietary certification is inferred. Existing explicit metadata reviews take pr
 Ingredient identity stays conservative: cooked rice is distinct from uncooked rice,
 and chicken breast is not silently replaced by another cut. Unknown amounts do not
 prevent a name match, but a match does not prove there is enough to cook.
+Unselected freezer food does not improve discovery ranking. Shopping estimates
+still account for the full remaining pantry and identify frozen coverage so its
+preparation can be checked. The ranking describes readily usable food rather
+than an exact number of groceries to buy.
 
 The older Basic Lasagna is retained in the wider catalog. Its source review does
 not establish cooking quality: it depends on separately prepared sauce and noodles
