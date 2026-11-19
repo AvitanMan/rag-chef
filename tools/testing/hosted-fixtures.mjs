@@ -1,6 +1,6 @@
 // Synthetic identities are inserted only into the isolated runner's disposable DB.
 export const HOSTED_TEST_SECRET = "isolated-hosted-auth-4f4767bd39574da689355db0";
-export const HOSTED_SCENARIOS = ["sharing", "stocktake", "revocation", "switching", "timezone"];
+export const HOSTED_SCENARIOS = ["sharing", "stocktake", "combine", "revocation", "switching", "timezone"];
 const identities = ["desktop", "mobile"].flatMap(device => HOSTED_SCENARIOS.flatMap(scenario =>
   ["owner", "member", "other", "admin"].map(role => ({ id: `${role}-${scenario}-${device}`, role }))));
 export const HOSTED_OWNER_EMAILS = identities.filter(({ role }) => ["owner", "other"].includes(role)).map(({ id }) => `${id}@example.test`).join(",");
