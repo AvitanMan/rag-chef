@@ -157,7 +157,7 @@ try {
   const inspectorPort = await freePort([port]);
   env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
   const previewArgs = devRuntime
-    ? ["node_modules/vinext/dist/cli.js", "dev", "--hostname", "127.0.0.1", "--port", String(port)]
+    ? ["node_modules/vite/bin/vite.js", "dev", "--host", "127.0.0.1", "--port", String(port)]
     : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--config", "dist/catalog/wrangler.json", "--config", "dist/chef/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort)];
   const preview = await launch("preview", previewArgs, { wait: false });
   await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
