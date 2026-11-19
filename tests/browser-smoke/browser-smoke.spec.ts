@@ -171,7 +171,7 @@ test("native dinner preview keeps picks across date and portion edits and saves 
   await controls.getByLabel("Dinner day", { exact: true }).fill("2026-10-23");
   await expect(controls.getByRole("spinbutton", { name: "Chef portions", exact: true })).toHaveValue("4");
   await expect(results.getByRole("button", { name: "Remove rice from picks", exact: true })).toBeVisible();
-  await expect(results.getByRole("heading", { level: 2 })).not.toHaveText("Dinner ideas for tonight");
+  await expect(page.getByRole("heading", { level: 1, name: "Dinner ideas for Friday", exact: true })).toBeVisible();
   await expect(card.locator(".recipe-readiness")).toContainText("1 covered · 1 partial · 0 missing · 0 need review");
   const shopping = card.locator(".recipe-readiness details");
   await shopping.locator("summary").focus();

@@ -25,6 +25,7 @@ export default defineConfig(async () => {
     // Disposable development checks share dependencies, not optimizer caches.
     cacheDir: process.env.RAG_CHEF_TEST_VITE_CACHE_DIR,
     server: {
+      port: 3000,
       // Vite 8's agent-default console forwarding can recursively reject when
       // its HMR socket is unavailable. Keep errors in the browser console and
       // Vinext overlay instead of forwarding them through that socket.

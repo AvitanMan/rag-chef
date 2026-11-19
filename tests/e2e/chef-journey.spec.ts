@@ -289,7 +289,7 @@ test("Chef home keeps date, source discussion and portions through planning and 
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Choose for Friday", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Dinner saved for" })).toBeVisible();
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals["2026-10-23"]?.servings).toBe(4);
-  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await page.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeVisible();
   await page.reload(); await expect(page.getByRole("heading", { name: "Ask Chef", exact: true })).toBeVisible();
   await expect(page.getByText("Questions about Tomato Rice", { exact: true })).toHaveCount(0);
@@ -500,7 +500,7 @@ test("saved-dinner estimates use new portions and agree with the resulting shopp
   await page.getByRole("dialog", { name: "Tomato Rice", exact: true }).getByRole("button", { name: "Choose for tonight", exact: true }).click();
   await page.getByRole("dialog", { name: "Replace dinner", exact: true }).getByRole("button", { name: "Replace dinner", exact: true }).click();
   await expect.poll(async () => (await (await request.get("/api/kitchen")).json()).state.meals[TODAY]?.servings).toBe(4);
-  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await page.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Bought tomato 2", exact: true })).toBeVisible();
 });
@@ -647,7 +647,7 @@ test("described pantry ingredients cover Chef suggestions and deduct consistentl
   const result = await submit(page, "Cheese Pasta");
   expect(result.readinessByRecipeId["fixture-cheese-pasta"].coveredCount).toBe(2);
   await page.getByRole("button", { name: "Choose for tonight: Cheese Pasta", exact: true }).click();
-  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await page.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: /^Bought / })).toHaveCount(0);
   await navigate(page, "Plan");
   await page.getByRole("button", { name: /Cook (?:this )?dinner/, exact: true }).click();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PantryDinnerMatch, PantryPick } from "../lib/pantry-dinner";
 import { isBasicSeasoning } from "../lib/pantry-recipe-fit";
 import { PantrySelectionChips } from "./PantrySelectionChips";
@@ -18,18 +18,14 @@ export function PantryDinnerResults({ picks, matches, removePick, catalogState, 
   context?: ReactNode;
   title?: string;
 }) {
-  const heading = useRef<HTMLHeadingElement>(null);
   const selection = JSON.stringify(picks.map(pick => pick.key));
   const [page, setPage] = useState({ selection, limit: 3 });
   const limit = page.selection === selection ? page.limit : 3;
   const hasFood = picks.some(pick => pick.available && !isBasicSeasoning(pick.key));
   const unavailable = picks.some(pick => !pick.available);
-  useEffect(() => { heading.current?.focus({ preventScroll: true }); heading.current?.scrollIntoView({ block: "start" }); }, []);
   return <section className="recipe-section pantry-dinner-results" aria-label={title}>
-    {context}
-    <div className="panel pantry-dinner-header">
-      <h2 ref={heading} tabIndex={-1}>{title}</h2>
-      <p>Meals can use some of your picks. Choose what sounds good.</p>
+    <div className="pantry-dinner-header">
+      {context}
       <PantrySelectionChips picks={picks} remove={removePick} />
       {unavailable && <p role="status">Some picks are no longer available. Suggestions use your remaining available food.</p>}
       <div className="pantry-dinner-actions">
@@ -40,7 +36,7 @@ export function PantryDinnerResults({ picks, matches, removePick, catalogState, 
         : catalogState === "loading" ? <p role="status">Looking through your recipes…</p>
         : catalogState === "error" ? <p role="alert">Recipes could not load. <button className="text-button" onClick={retry}>Retry recipes</button></p>
         : setup ? null
-        : matches.length ? <p className="quantity-note">Uses food due soon first, then fewer extra ingredients. Unknown amounts stay marked for review.</p>
+        : matches.length ? null
         : <div className="empty-state"><strong>No dinners use these picks with your saved requirements.</strong><p>Choose other ingredients or browse your dinners.</p></div>}
     </div>
     {catalogState === "ready" && setup}

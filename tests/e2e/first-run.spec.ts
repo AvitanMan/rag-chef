@@ -54,9 +54,9 @@ test("fresh installation recovers from setup failure and reaches dinner without 
   await page.getByRole("button", { name: "Choose for tonight: Tomato Chickpea Pan", exact: true }).click();
   await expect(page.getByRole("region", { name: "Chosen dinner" })).toContainText("Tomato Chickpea Pan");
   await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/first-dinner-${test.info().project.name}.png` });
-  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await page.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Dinner shopping context" }).getByRole("heading", { name: "Tomato Chickpea Pan" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Copy shopping list", exact: true })).toBeVisible();
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => { window.scrollTo(0, 0); resolve(); }))));
   await expect(page.getByRole("heading", { name: "Shopping", exact: true })).toBeInViewport();
   await page.screenshot({ path: `${process.env.RAG_CHEF_TEST_ARTIFACTS}/first-shopping-${test.info().project.name}.png` });
   await page.getByRole("button", { name: "Back to dinner", exact: true }).click();

@@ -59,12 +59,23 @@ Locked and cooked dinners stay protected. **Adjust amounts** changes your saved
 dinner, while **Recipe details** provides original directions, sources, and
 **Ask Chef about this recipe**. Recipe cards keep one primary selection action.
 
-The dinner panel’s missing amounts reserve stock for other saved dinners in the
-same week. Unknown amounts remain marked for review; missing ingredients do not
-block cooking. **Weekly shopping** opens the existing shared weekly list, with
-**Back to dinner** returning to the selected meal. Purchase review still asks what
-you actually bought before adding pantry batches. Plan remains available for
-weekly filling, copying, locking, and manual completion.
+The dinner panel shows what the selected meal still needs after reserving stock
+for other saved dinners that week. Unclear amounts stay marked for review. You
+can start cooking with ingredients still on the list.
+
+Choose **Shop for this dinner** beside a saved dinner’s shortages. Shopping
+opens with the meal title focused and **For this dinner** selected. A cooked
+dinner offers **Weekly shopping**. The list includes weekly shopping rows for ingredients
+that dinner uses. Each row shows the whole week's shortage. For example, if two
+dinners together need another 300 g of rice, the rice row shows 300 g in either
+view. Checking it marks that weekly row bought. Use **Whole week** to see the
+rest of the list. Opening Shopping from Plan or the main navigation starts with
+the whole week.
+
+From either view, **Back to dinner** returns to the meal that opened Shopping.
+After you confirm a pantry purchase, the dinner panel uses the new stock to
+update its missing amounts. If the meal was replaced, removed, or cooked while
+Shopping was open, the list returns to the whole week.
 
 Recipe search, filters, and list position stay intact during the current session.
 Return links preserve the originating plan or recipe browser, and browser Back
@@ -177,9 +188,10 @@ Recipe collection cards show **Have**, **Missing**, and **Also check**. Pantry
 dinner options distinguish **Uses your picks** from **Also have**. **Also check**
 keeps missing salt, black pepper, water and common oils visible. No ingredient is
 assumed to be in your pantry. Pantry results and the Everyday dinners collection
-also show measured coverage and expandable **Shopping needs** for the selected
-day and portions. These estimates reserve stock for other saved dinners first;
-unknown amounts stay marked for review. Comparing choices does not save a dinner.
+lead with the measured shortage or coverage for the selected day and portions.
+Unknown amounts and relevant frozen-stock preparation stay visible beside the
+choice. Expand **Shopping needs** for the ingredient breakdown and reservations
+for other dinners that week. Comparing choices does not save a dinner.
 After dinner role and dislikes, these two views favor confirmed use of food due
 within three days, fewer unresolved food ingredients, fewer uncertain food amounts,
 more picked foods, and measured coverage. Exact-title search still comes first
@@ -641,6 +653,12 @@ remain unknown. A valid past date is accepted with a warning and excludes the
 new batch from availability. Each purchase adds separate batches, preserving
 existing quantities, dates, and cooked/uncooked identities. Its receipt retains
 the purchased batch snapshot, including any entered date and location.
+
+In **For this dinner**, Copy and Print include the unchecked rows in that view.
+**Add bought items to pantry** opens a review of the visible bought rows eligible
+for addition. Enter what you actually purchased, including a smaller amount if
+needed. Switch to **Whole week** to review purchases across all dinners, uncheck
+all items, or undo a pantry addition from its receipt.
 
 For a bought item still on the shopping list whose current cycle was already
 added to Pantry, **Need to buy again** returns it to To buy, while **Record another

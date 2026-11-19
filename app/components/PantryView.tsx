@@ -591,21 +591,27 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
 
   return <div className="pantry-page pantry-batch-browser">
     <section className="panel large-panel">
-      <div className="section-heading"><div><h2 ref={heading} tabIndex={-1}>Your pantry</h2><p>Pick ingredients you feel like using. We’ll find meals using some of your picks.</p></div></div>
-      <div className="pantry-storage-tabs" role="group" aria-label="Pantry locations">
-        {storageOptions.map(area => <button key={area.value} type="button" className="secondary-button" aria-pressed={storage === area.value}
-          onClick={() => { setStorage(area.value); setSearch(""); }}>{area.label} ({area.count})</button>)}
+      <h2 className="pantry-inventory-heading" ref={heading} tabIndex={-1}>Your pantry</h2>
+      <div className="pantry-inventory-tools">
+        <div className="pantry-storage-tabs" role="group" aria-label="Pantry locations">
+          {storageOptions.map(area => <button key={area.value} type="button" className="secondary-button" aria-pressed={storage === area.value}
+            onClick={() => { setStorage(area.value); setSearch(""); }}>{area.label} ({area.count})</button>)}
+        </div>
+        <label className="pantry-storage-mobile">Location<select value={storage} onChange={event => { setStorage(event.target.value as PantryLocationFilter); setSearch(""); }}>
+          {storageOptions.map(area => <option key={area.value} value={area.value}>{area.label} ({area.count})</option>)}
+        </select></label>
+        <PantryAddForm draft={draft} setDraft={setDraft} draftLocations={draftLocations} setDraftLocation={setDraftLocation} inputRef={addInput} location={storage} pantry={pantry} error={error}
+          add={rows => {
+            setLocalNotice("");
+            const accepted = add(rows);
+            if (accepted && storage !== "all" && rows.some(row => (row.location ?? "unsorted") !== storage)) setStorage("all");
+            return accepted;
+          }} />
+        <div className="pantry-quick-search">
+          <label>Search pantry<input type="search" placeholder="Ingredient name…" value={search} onChange={event => setSearch(event.target.value)} /></label>
+          {search && <button className="text-button" type="button" onClick={() => setSearch("")}>Clear pantry search</button>}
+        </div>
       </div>
-      <label className="pantry-storage-mobile">Location<select value={storage} onChange={event => { setStorage(event.target.value as PantryLocationFilter); setSearch(""); }}>
-        {storageOptions.map(area => <option key={area.value} value={area.value}>{area.label} ({area.count})</option>)}
-      </select></label>
-      <PantryAddForm draft={draft} setDraft={setDraft} draftLocations={draftLocations} setDraftLocation={setDraftLocation} inputRef={addInput} location={storage} pantry={pantry} error={error}
-        add={rows => {
-          setLocalNotice("");
-          const accepted = add(rows);
-          if (accepted && storage !== "all" && rows.some(row => (row.location ?? "unsorted") !== storage)) setStorage("all");
-          return accepted;
-        }} />
       {storage === "spice-rack" && <SpiceRackChecklist pantry={pantry} today={today} add={add} move={startMove} />}
       {error && <p role="alert" className="field-error">{error}</p>}
       {notice && <p role="status">{notice}</p>}
@@ -623,10 +629,6 @@ export function PantryView({ today, filter, setFilter, focusId, focusRequest = 0
           }} /></div>}
         {unavailableSelections.length > 0 && <p className="pantry-selection-changed" role="status">Some picks are unavailable. We’ll use your remaining available ingredients.</p>}
         {picks.length > 0 && !hasFoodPick && <p className="quantity-note" role="status">Pick an available food ingredient as well as seasonings to find dinner.</p>}
-        <div className="pantry-quick-search">
-          <label>Search pantry<input type="search" placeholder="Ingredient name…" value={search} onChange={event => setSearch(event.target.value)} /></label>
-          {search && <button className="text-button" type="button" onClick={() => setSearch("")}>Clear pantry search</button>}
-        </div>
         <div className="pantry-tonight-list">
           {tonightGroups.map(group => {
             const selected = selectedIngredients.includes(group.key);

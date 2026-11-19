@@ -73,7 +73,7 @@ test("personal editor keeps drafts local and saved dinner, shopping, cooking and
   expect((await ask("How much rice do I need?")).planningFacts[0]).toMatchObject({ measure: "150 g", basis: "personal_scaled" });
   const original = await ask("How much rice does the original recipe use?");
   expect(original.answer).toContain("200 g"); expect(original.planningFacts).toBeUndefined();
-  await dinner.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await dinner.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
   await expect(page.locator(".shopping-item").filter({ has: page.getByText("rice", { exact: true }) })).toContainText("150 g");
   await navigate(page, "Chef");
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();

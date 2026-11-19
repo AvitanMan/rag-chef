@@ -172,7 +172,7 @@ test.describe("instant dinner picks", () => {
 test("Chef evidence quotes approved source records and keeps ingredient quantities intact", async ({ page, request }, testInfo) => {
   const before = await (await request.get("/api/recipes/catalog")).json() as { recipes: Recipe[] };
   await page.goto("/");
-  await page.getByRole("button", { name: "✦ Chef", exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole("button", { name: "Chef", exact: true }).filter({ visible: true }).first().click();
   const answer = await submitChef(page, "Tomato Rice");
   expect(answer.generation).toBe("ai");
   expect(answer.sourceFacts).toHaveLength(1);
@@ -398,7 +398,7 @@ test.describe("planning directly from Chef", () => {
   }
   async function openSelection(page: Page, change = false) {
     await page.goto("/");
-    await page.getByRole("button", { name: /▦ Plan/, exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole("button", { name: "Plan", exact: true }).filter({ visible: true }).first().click();
     await page.getByRole("button", { name: `${change ? "Change" : "Choose"} dinner Fri, Oct 23`, exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: change ? "Choosing a replacement for Fri, Oct 23" : "Choosing dinner for Friday, October 23." })).toBeVisible();
   }
@@ -451,7 +451,7 @@ test.describe("planning directly from Chef", () => {
       expect(saved.pantry).toEqual([]);
       expect(saved.shoppingChecked).toEqual({});
       await page.reload();
-      await page.getByRole("button", { name: "▦ Plan", exact: true }).filter({ visible: true }).first().click();
+      await page.getByRole("button", { name: "Plan", exact: true }).filter({ visible: true }).first().click();
       await expect(page.locator(".day-card.filled")).toHaveCount(1);
       await expect(page.locator(".day-card.filled")).toContainText("Tomato Rice");
     });

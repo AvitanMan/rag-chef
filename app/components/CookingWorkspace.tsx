@@ -165,7 +165,14 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
     } catch (error) { setTimerError(error instanceof Error ? error.message : "Choose a valid duration."); }
   };
   return <Modal className="cooking-mode" label={`Cooking ${session.recipe.title}`} close={close}>
-    <header><button onClick={close}>← Exit cooking</button><div><span>Cooking now{session.method && session.method !== "Main method" ? ` · ${session.method}` : ""}</span><strong>{session.recipe.title}</strong></div><div className="cook-header-actions"><span>{session.step + 1} / {session.instructions.length}</span><ThemeToggle /></div></header>
+    <header>
+      <button onClick={close}>← Exit cooking</button>
+      <div className="cook-recipe-title">
+        {session.method && session.method !== "Main method" && <span>{session.method}</span>}
+        <strong>{session.recipe.title}</strong>
+      </div>
+      <div className="cook-header-actions"><span>{session.step + 1} / {session.instructions.length}</span><ThemeToggle /></div>
+    </header>
     <div className="cook-progress"><span style={{ width: `${((session.step + 1) / session.instructions.length) * 100}%` }} /></div>
     <section className="cook-timer-summary" aria-label="Cooking timer">
       <span>{session.timerLabel ?? "Main timer"}</span>

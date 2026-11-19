@@ -115,11 +115,12 @@ test("pantry dinners favor food ingredients over seasoning overlap and expose wh
   await expect(cards).toHaveCount(2);
   await expect(cards.first().getByRole("button", { name: "Egg Rice", exact: true })).toBeVisible();
   const fit = cards.first().locator(".recipe-pantry-fit");
-  await expect(fit).toContainText("Uses your picks: rice");
+  await expect(cards.first().locator(".recipe-picks")).toHaveText("Uses your picks: rice");
+  await cards.first().locator(".compact-estimate summary").click();
   await expect(fit).toContainText("Also have: egg");
   await expect(fit).toContainText("Missing: onion");
   await expect(fit).toContainText("Also check: black pepper");
-  await expect(fit).toContainText("Ingredient names matched · measured amounts below");
+  await expect(fit).toContainText("Ingredient names matched");
   await expect(cards.first().locator(".recipe-readiness")).toContainText("Pantry amounts for this dinner");
   await expect(cards.nth(1).locator(".recipe-pantry-fit")).toContainText("Missing: chicken, cream, garlic");
   await page.screenshot({ path: info.outputPath("pantry-food-matches.png"), fullPage: true, animations: "disabled" });

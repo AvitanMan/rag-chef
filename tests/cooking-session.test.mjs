@@ -8,7 +8,7 @@ import ts from "typescript";
 
 const dir = await mkdtemp(join(tmpdir(), "jff-cooking-session-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["cooking-session", "kitchen-validation", "kitchen-types", "quantities"]) {
+for (const name of ["cooking-session", "chef-grounding", "kitchen-validation", "kitchen-types", "quantities"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, `${name}.mjs`), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
@@ -155,6 +155,18 @@ test("source timer shortcuts accept a single point duration and reject ranges, f
   for (const [text, seconds] of [["Simmer for about 10 minutes.", 600], ["Rest 30 seconds.", 30], ["Bake 1 hour at 180 C.", 3600], ["Heat for 24 hours.", 86400]]) assert.equal(stepTimerSeconds(text), seconds, text);
   for (const text of ["Cook until tender.", "Cook 5–10 minutes.", "Cook 5-10 minutes.", "Cook 5 to 10 minutes.", "Cook 5 or 10 minutes.", "Cook 1.5 minutes.", "Cook 1/2 hour.", "Cook 1½ hours.", "Cook 1 hour 30 minutes.", "Simmer 5 minutes, then rest 10 minutes.", "Wait 0 seconds.", "Cook 25 hours."]) assert.equal(stepTimerSeconds(text), null, text);
   for (const text of ["Simmer between 5 and 10 minutes.", "Rest between 20 and 30 seconds.", "Bake between 1 and 2 hours.", "Simmer BETWEEN 5 AND 10 minutes.", "Rest between 5\nand\n10 minutes."]) assert.equal(stepTimerSeconds(text), null, text);
+});
+
+test("step timers distinguish a labeled recipe total from the duration of an action", () => {
+  assert.equal(stepTimerSeconds("Total time: 20 minutes. Dice the eggplant."), null);
+  assert.equal(stepTimerSeconds("Dice the eggplant. Overall recipe duration: about 20 minutes."), null);
+  assert.equal(stepTimerSeconds("Dice the eggplant (total cooking time is approximately 20 minutes)."), null);
+  assert.equal(stepTimerSeconds("This recipe takes approx. 20 minutes. Dice the eggplant."), null);
+  assert.equal(stepTimerSeconds("Chop the vegetables. The dish will be ready in 20 minutes."), null);
+  assert.equal(stepTimerSeconds("Total time: 20 minutes. Simmer for 15 minutes."), null);
+  assert.equal(stepTimerSeconds("Simmer with tomato for 15 minutes."), 900);
+  assert.equal(stepTimerSeconds("Bake for a total of 15 minutes."), 900);
+  assert.equal(stepTimerSeconds("Total time varies. Simmer for 15 minutes."), 900);
 });
 
 

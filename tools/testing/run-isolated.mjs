@@ -146,43 +146,41 @@ try {
     config.vars = { ...config.vars, ...modelVars, ...hostedVars };
     await writeFile(path, JSON.stringify(config));
   }
+  const wrangler = "node_modules/wrangler/bin/wrangler.js";
+  await launch("migrations", [wrangler, "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state]);
+  if (mode !== "setup" && journeyOptions?.catalog !== "local") {
+    const seedFile = join(directory, "fixtures.sql");
+    await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: mode === "journeys" }) + (hostedRun ? "\n" + hostedFixtureSql() : ""));
+    await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
+  }
+  const port = hostedPort ?? await freePort();
+  const inspectorPort = await freePort([port]);
+  env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
+  const previewArgs = devRuntime
+    ? ["node_modules/vite/bin/vite.js", "dev", "--host", "127.0.0.1", "--port", String(port)]
+    : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--config", "dist/catalog/wrangler.json", "--config", "dist/chef/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort)];
+  const preview = await launch("preview", previewArgs, { wait: false });
+  await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
   if (mode === "integration") {
     await launch("rendered-html", ["--test", "tests/rendered-html.test.mjs"]);
     console.log("Isolated built-worker checks passed.");
-  } else {
-    const wrangler = "node_modules/wrangler/bin/wrangler.js";
-    await launch("migrations", [wrangler, "d1", "migrations", "apply", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state]);
-    if (mode !== "setup" && journeyOptions?.catalog !== "local") {
-      const seedFile = join(directory, "fixtures.sql");
-      await writeFile(seedFile, fixtureSql({ grounding: mode === "chef", journeys: mode === "journeys" }) + (hostedRun ? "\n" + hostedFixtureSql() : ""));
-      await launch("seed", [wrangler, "d1", "execute", "DB", "--local", "--config", "wrangler.jsonc", "--persist-to", state, "--file", seedFile]);
-    }
-    const port = hostedPort ?? await freePort();
-    const inspectorPort = await freePort([port]);
-    env.RAG_CHEF_TEST_BASE_URL = `http://127.0.0.1:${port}`;
-    const previewArgs = devRuntime
-      ? ["node_modules/vinext/dist/cli.js", "dev", "--hostname", "127.0.0.1", "--port", String(port)]
-      : [wrangler, "dev", "--local", "--config", "dist/server/wrangler.json", "--config", "dist/catalog/wrangler.json", "--config", "dist/chef/wrangler.json", "--persist-to", state, "--ip", "127.0.0.1", "--port", String(port), "--inspector-port", String(inspectorPort)];
-    const preview = await launch("preview", previewArgs, { wait: false });
-    await waitForServer(env.RAG_CHEF_TEST_BASE_URL, preview);
-    if (["chef", "journeys"].includes(mode)) {
-      const signal = AbortSignal.timeout(15 * 60_000);
-      const indexed = await submitCatalogOperation(`${env.RAG_CHEF_TEST_BASE_URL}/api/admin/catalog`, { embeddingsOnly: true }, { signal });
-      if (!(await catalogOperationResult(indexed, { base: env.RAG_CHEF_TEST_BASE_URL, signal })).ok) throw new Error("Disposable fixture embedding refresh failed.");
-      if (mode === "journeys") {
-        await launch("journeys", ["tools/recipes/evaluate-journeys.mjs", ...process.argv.slice(3)]);
-        console.log("Isolated real-model journey checks passed.");
-      } else {
-        await launch("grounding", ["tools/recipes/evaluate-grounding.mjs", ...process.argv.slice(3)]);
-        console.log("Isolated real-model grounding checks passed.");
-      }
+  } else if (["chef", "journeys"].includes(mode)) {
+    const signal = AbortSignal.timeout(15 * 60_000);
+    const indexed = await submitCatalogOperation(`${env.RAG_CHEF_TEST_BASE_URL}/api/admin/catalog`, { embeddingsOnly: true }, { signal });
+    if (!(await catalogOperationResult(indexed, { base: env.RAG_CHEF_TEST_BASE_URL, signal })).ok) throw new Error("Disposable fixture embedding refresh failed.");
+    if (mode === "journeys") {
+      await launch("journeys", ["tools/recipes/evaluate-journeys.mjs", ...process.argv.slice(3)]);
+      console.log("Isolated real-model journey checks passed.");
     } else {
-      console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
-      if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
-      const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
-      await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...process.argv.slice(3)]);
-      console.log("Isolated browser checks passed.");
+      await launch("grounding", ["tools/recipes/evaluate-grounding.mjs", ...process.argv.slice(3)]);
+      console.log("Isolated real-model grounding checks passed.");
     }
+  } else {
+    console.log(`Disposable D1 preview ready at ${env.RAG_CHEF_TEST_BASE_URL}; running browser checks.`);
+    if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const browserConfig = mode === "smoke" ? "playwright.smoke.config.ts" : mode === "dev" ? "playwright.dev.config.ts" : undefined;
+    await launch("browser", ["node_modules/@playwright/test/cli.js", "test", ...(browserConfig ? ["--config", browserConfig] : []), ...process.argv.slice(3)]);
+    console.log("Isolated browser checks passed.");
   }
 } catch (error) {
   console.error(error.message);
