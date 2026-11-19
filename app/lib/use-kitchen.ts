@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSession } from "./app-session";
+import { combineKitchenEdits } from "./kitchen-merge";
 import { applyKitchenCommand, type KitchenCommand, type KitchenCommandInput } from "./kitchen-commands";
 import { parseKitchenCommand } from "./kitchen-command-validation";
 import type { KitchenCommandResult } from "./kitchen-command-types";
@@ -10,10 +11,29 @@ import type { KitchenDocument, KitchenState } from "./kitchen-types";
 import { DEFAULT_COOKING_PROFILE, EMPTY_KITCHEN } from "./kitchen-types";
 import { KITCHEN_CACHE_KEY, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, migrateLegacyKitchen } from "./kitchen-state";
 import type { Recipe } from "./recipe-types";
-import { parseCachedKitchen, readRecoveryDrafts, type DraftReason, type RecoveryCandidate, type RecoveryEntry } from "./kitchen-recovery";
+import { parseCachedKitchen, readRecoveryDrafts, writeCachedKitchen, type CachedKitchen, type DraftReason, type KitchenMergeBase, type RecoveryCandidate, type RecoveryEntry } from "./kitchen-recovery";
 import { parseLegacyCookingProfile, validateKitchenWrite } from "./kitchen-validation";
 
 export type KitchenSaveState = "loading" | "pending" | "saving" | "saved" | "offline" | "error" | "conflict";
+
+function checkedDocument(document: KitchenDocument): KitchenDocument {
+  if (!document || document.state === null && document.revision !== 0) throw new Error("The saved kitchen is invalid.");
+  validateKitchenWrite({ revision: document.revision, state: document.state === null ? EMPTY_KITCHEN : document.state });
+  return document;
+}
+
+function confirmedBase(document: KitchenDocument): KitchenMergeBase {
+  return { revision: document.revision, state: structuredClone(document.state ?? EMPTY_KITCHEN) };
+}
+
+type ConflictReview = { document: KitchenDocument; base: KitchenMergeBase | null; revisionConflict: boolean };
+
+function evaluateCombination(review: ConflictReview | null, draft: KitchenState, canEditProfile: boolean): ReturnType<typeof combineKitchenEdits> {
+  if (!review) return { reason: "" };
+  if (!review.revisionConflict) return { reason: "The server rejected this change. Choose a version to keep." };
+  if (!review.base || review.document.revision <= review.base.revision) return { reason: "The original saved version for this draft is unavailable." };
+  return combineKitchenEdits(review.base.state, draft, review.document.state ?? EMPTY_KITCHEN, canEditProfile, review.document.revision);
+}
 
 export function useKitchen(fallbackRecipes: Recipe[]) {
   const { local: privateStorage, tab: privateTabStorage, storageKey, session, fetch: kitchenFetch } = useAppSession();
@@ -28,7 +48,8 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const [backupAvailable, setBackupAvailable] = useState(true);
   const [savedSnapshot, setSavedSnapshot] = useState("");
   const [browserSnapshot, setBrowserSnapshot] = useState("");
-  const [conflict, setConflict] = useState<KitchenDocument | null>(null);
+  const [review, setReview] = useState<ConflictReview | null>(null);
+  const conflict = review?.document ?? null;
   const [retry, setRetry] = useState(0);
   const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([]);
   const latest = useRef(state);
@@ -43,6 +64,17 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   const connected = useRef(false);
   const recoveryEntries = useRef(new Map<string, RecoveryEntry>());
   const serverDocument = useRef<KitchenDocument | null>(null);
+  // Keep the ancestor of this tab's pending edits separate from newer documents observed during a conflict.
+  const mergeBase = useRef<KitchenMergeBase | null>(null);
+  const rejectedWrite = useRef(false);
+
+  const pauseForConflict = useCallback((document: KitchenDocument, revisionConflict: boolean) => {
+    const base = mergeBase.current;
+    paused.current = true;
+    serverDocument.current = document;
+    setReview({ document, base: base?.revision === revision.current ? base : null, revisionConflict: revisionConflict && !rejectedWrite.current });
+    setSavePhase("conflict");
+  }, []);
 
   const refreshRecovery = useCallback(() => {
     try {
@@ -52,16 +84,22 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     } catch { /* Storage failure is reported by the draft writer. */ }
   }, [privateStorage]);
 
+  const cacheRecord = useCallback((value: KitchenState, dirty: boolean): CachedKitchen => ({
+    revision: revision.current, state: value, dirty, updatedAt: new Date().toISOString(),
+    ...(writes.current.length ? { writeQueue: { version: 1, writes: writes.current } } : {}),
+    ...(dirty && rejectedWrite.current ? { rejectedWrite: true } : {}),
+  }), []);
+
   const cache = useCallback((value: KitchenState, dirty: boolean) => {
     try {
       dirty = dirty || writes.current.length > 0;
-      const serialized = JSON.stringify({ revision: revision.current, state: value, dirty, ...(writes.current.length ? { writeQueue: { version: 1, writes: writes.current } } : {}), updatedAt: new Date().toISOString() });
+      const record = cacheRecord(value, dirty);
       if (dirty) {
         if (!draftKey.current || privateTabStorage.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`) !== draftKey.current) throw new Error("No recoverable tab draft");
-        privateStorage.setItem(draftKey.current, serialized);
+        writeCachedKitchen(privateStorage, draftKey.current, record, mergeBase.current);
       }
       if (!dirty) {
-        privateStorage.setItem(KITCHEN_CACHE_KEY, serialized);
+        privateStorage.setItem(KITCHEN_CACHE_KEY, JSON.stringify(record));
         if (draftKey.current) privateStorage.removeItem(draftKey.current);
       }
       setBrowserSnapshot(JSON.stringify(value));
@@ -75,7 +113,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       setStatus(`Browser backup is full or unavailable. Keep this tab open until saved to ${savedLocation}.`);
       return false;
     }
-  }, [refreshRecovery, privateStorage, privateTabStorage, savedLocation]);
+  }, [cacheRecord, refreshRecovery, privateStorage, privateTabStorage, savedLocation]);
 
   const preserveCurrent = useCallback((reason: DraftReason) => {
     try { validateKitchenWrite({ revision: revision.current, state: latest.current }); }
@@ -85,14 +123,14 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     }
     try {
       const id = `${KITCHEN_CACHE_KEY}:draft:${crypto.randomUUID()}`;
-      privateStorage.setItem(id, JSON.stringify({ revision: revision.current, state: latest.current, dirty: true, ...(writes.current.length ? { writeQueue: { version: 1, writes: writes.current } } : {}), reason, updatedAt: new Date().toISOString() }));
+      writeCachedKitchen(privateStorage, id, { ...cacheRecord(latest.current, true), reason }, mergeBase.current);
       return true;
     } catch {
       setStatus("Could not preserve your current kitchen. Free browser storage or export it before replacing it.");
       setBackupAvailable(false);
       return false;
     }
-  }, [privateStorage]);
+  }, [cacheRecord, privateStorage]);
 
   useEffect(() => {
     let alive = true;
@@ -124,20 +162,27 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       try {
         const response = await kitchenFetch("/api/kitchen", { signal: AbortSignal.timeout(5_000) });
         if (!response.ok) throw new Error();
-        document = await response.json();
+        document = checkedDocument(await response.json());
       } catch { /* The browser cache supports temporary offline use. */ }
       if (!alive) return;
 
+      if (hosted) {
+        if (document && (!cached?.dirty || document.revision === cached.revision)) {
+          mergeBase.current = confirmedBase(document);
+        } else if (cached) {
+          mergeBase.current = cached.dirty ? cached.mergeBase ?? null : { revision: cached.revision, state: structuredClone(cached.state) };
+        }
+      }
       let chosen: KitchenState;
       if (cached?.dirty) {
         chosen = cached.state;
         revision.current = cached.revision;
         writes.current = structuredClone(cached.writeQueue?.writes ?? []);
+        rejectedWrite.current = hosted && cached.rejectedWrite === true;
         // A lost command response can advance the server. Recover that exact
         // receipt before deciding whether later household edits conflict.
-        if (document && document.revision !== cached.revision && !hasAttemptedKitchenCommand(writes.current)) {
-          paused.current = true;
-          setConflict(document);
+        if (document && (rejectedWrite.current || document.revision !== cached.revision && !hasAttemptedKitchenCommand(writes.current))) {
+          pauseForConflict(document, true);
         }
         savedJson.current = "";
       } else if (document?.state) {
@@ -188,17 +233,21 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     if (!writes.current.length && savedJson.current !== JSON.stringify(latest.current)) writes.current = appendKitchenSnapshot([], latest.current);
     if (!writes.current.length) {
       if (!connected.current) {
+        const startingRevision = revision.current;
         try {
           const response = await kitchenFetch("/api/kitchen", { signal: AbortSignal.timeout(5_000) });
           if (!response.ok) throw new Error();
-          const current = await response.json() as KitchenDocument;
+          const current = checkedDocument(await response.json());
+          if (saving.current || paused.current || revision.current !== startingRevision || hasAttemptedKitchenCommand(writes.current)) return;
           serverDocument.current = current;
           if (current.revision !== revision.current) {
-            paused.current = true; setConflict(current); setSavePhase("conflict");
+            pauseForConflict(current, true);
             setStatus("The saved kitchen changed while offline. Choose which version to keep.");
             return;
           }
+          if (hosted) mergeBase.current = confirmedBase(current);
           connected.current = true;
+          if (writes.current.length) return;
         } catch {
           setSavePhase("offline"); setStatus("Offline — using the browser backup. Reconnect and retry."); return;
         }
@@ -211,6 +260,15 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     setStatus("Saving your kitchen…"); setSavePhase("saving");
     let success = false;
     try {
+      if (rejectedWrite.current) {
+        // A definitive rejection remains attached to its outbox across reloads.
+        // Fetch a document for the explicit recovery choices without replaying the rejected command.
+        const response = await kitchenFetch("/api/kitchen", { signal: AbortSignal.timeout(5_000) });
+        if (!response.ok) throw new Error("Reconnect to review the rejected change.");
+        pauseForConflict(checkedDocument(await response.json()), false);
+        setStatus("The server rejected a change in this draft. Choose a version to keep.");
+        return;
+      }
       const head = prepareKitchenWrite(writes.current[0], revision.current);
       writes.current = [head, ...writes.current.slice(1)];
       // Persist the exact attempt before sending when browser storage is usable.
@@ -222,31 +280,43 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
         body: JSON.stringify(head.kind === "command" ? head.command : { revision: head.expectedRevision, state: head.state }),
         signal: AbortSignal.timeout(10_000),
       });
-      const result = await response.json() as KitchenCommandResult & KitchenDocument & { current?: KitchenDocument; error?: { code?: string; message?: string } };
+      const result = await response.json().catch((error: unknown) => {
+        if (response.ok) throw error;
+        return {};
+      }) as KitchenCommandResult & KitchenDocument & { current?: KitchenDocument; error?: { code?: string; message?: string } };
       if (!response.ok) {
         // A terminal command rejection never turns into an automatic snapshot
         // overwrite. Let the user explicitly select a version for recovery.
-        if (response.status === 409 || head.kind === "command" && [400, 403].includes(response.status)) {
-          let current = result.current;
+        if (response.status === 409 || head.kind === "command" && [400, 403].includes(response.status)
+          || hosted && [400, 401, 403, 413, 415, 422].includes(response.status)) {
+          const revisionConflict = response.status === 409 && result?.error?.code === "REVISION_CONFLICT";
+          if (hosted && !revisionConflict) {
+            rejectedWrite.current = true;
+            cache(latest.current, true);
+          }
+          let current = result?.current;
           if (!current) {
             const refreshed = await kitchenFetch("/api/kitchen", { signal: AbortSignal.timeout(5_000) });
             if (refreshed.ok) current = await refreshed.json() as KitchenDocument;
           }
           if (current) {
-            paused.current = true; setConflict(current); serverDocument.current = current;
+            pauseForConflict(checkedDocument(current), revisionConflict);
             cache(latest.current, true);
-            setStatus(result.error?.message ?? "Another tab saved changes. Your draft is preserved; choose a version.");
-            setSavePhase("conflict"); return;
+            setStatus(result?.error?.message ?? (rejectedWrite.current
+              ? "The server rejected a change in this draft. Choose a version to keep."
+              : "Another tab saved changes. Your draft is preserved; choose a version."));
+            return;
           }
         }
-        throw new Error(result.error?.message || "Save failed");
+        throw new Error(result?.error?.message || "Save failed");
       }
       const acknowledged: KitchenDocument = head.kind === "command" ? result.document : result;
       if (!acknowledged || !Number.isSafeInteger(acknowledged.revision) || acknowledged.revision < 0
         || head.kind === "command" && result.commandId !== head.command.commandId) throw new Error("The server returned an invalid save receipt. Retry to confirm the pending write.");
-      if (acknowledged.state) validateKitchenWrite({ revision: acknowledged.revision, state: acknowledged.state });
+      checkedDocument(acknowledged);
       writes.current = writes.current.slice(1);
       revision.current = acknowledged.revision;
+      if (hosted) mergeBase.current = confirmedBase(acknowledged);
       savedJson.current = JSON.stringify(acknowledged.state ?? EMPTY_KITCHEN);
       setSavedSnapshot(savedJson.current);
       const previouslyKnown = serverDocument.current;
@@ -265,9 +335,8 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
         try {
           const response = await kitchenFetch("/api/kitchen", { cache: "no-store", signal: AbortSignal.timeout(5_000) });
           if (!response.ok) throw new Error();
-          const received = await response.json() as KitchenDocument;
+          const received = checkedDocument(await response.json());
           if (!Number.isSafeInteger(received.revision) || received.revision < acknowledged.revision) throw new Error();
-          if (received.state) validateKitchenWrite({ revision: received.revision, state: received.state });
           if (!current || received.revision >= current.revision) current = received;
           refreshed = true;
         } catch { /* A known newer document remains usable after a failed read. */ }
@@ -276,12 +345,13 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
           if (writes.current.length) {
             // These edits were accepted against the receipt revision while the
             // read was pending. Preserve them without silently rebasing them.
-            paused.current = true; setConflict(current); setSavePhase("conflict");
+            pauseForConflict(current, true);
             cache(latest.current, true);
             setStatus("The saved kitchen changed while confirming a previous save. Your draft is preserved; choose a version.");
             return;
           }
           const next = current.state ?? structuredClone(EMPTY_KITCHEN);
+          if (hosted) mergeBase.current = confirmedBase(current);
           revision.current = current.revision; savedJson.current = JSON.stringify(next);
           latest.current = next; setState(next); setSavedSnapshot(savedJson.current);
           cache(next, false);
@@ -306,7 +376,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       saving.current = false;
       if (success && writes.current.length) setRetry(value => value + 1);
     }
-  }, [cache, ready, kitchenFetch, savedLocation, savedAt, canEditProfile]);
+  }, [cache, ready, kitchenFetch, savedLocation, savedAt, canEditProfile, hosted, pauseForConflict]);
 
 
   useEffect(() => {
@@ -386,8 +456,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       const timeout = AbortSignal.timeout(5_000);
       const response = await kitchenFetch("/api/kitchen", { cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       if (!response.ok) throw new Error();
-      const current = await response.json() as KitchenDocument;
-      if (current.state) validateKitchenWrite({ revision: current.revision, state: current.state });
+      const current = checkedDocument(await response.json());
       // A save or edit may have happened while this read was in flight.
       if (signal?.aborted || saving.current || paused.current || hasAttemptedKitchenCommand(writes.current) || revision.current !== startingRevision) return null;
       serverDocument.current = current;
@@ -395,13 +464,12 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       if (current.revision === revision.current) return current;
       if (writes.current.length || JSON.stringify(latest.current) !== savedJson.current) {
         cache(latest.current, true);
-        paused.current = true;
-        setConflict(current);
-        setSavePhase("conflict");
+        pauseForConflict(current, true);
         setStatus("Another tab saved changes. Your draft is preserved; choose a version.");
         return null;
       }
       const next = current.state ?? structuredClone(EMPTY_KITCHEN);
+      if (hosted) mergeBase.current = confirmedBase(current);
       revision.current = current.revision;
       savedJson.current = JSON.stringify(next);
       latest.current = next;
@@ -416,7 +484,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       setStatus(`The saved kitchen could not be refreshed. Your current kitchen is unchanged; retry when ${savedLocation} is available.`);
       return null;
     }
-  }, [cache, ready, kitchenFetch, savedLocation]);
+  }, [cache, ready, kitchenFetch, savedLocation, hosted, pauseForConflict]);
 
   useEffect(() => {
     if (!ready) return;
@@ -438,14 +506,16 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   }, [ready, refreshSavedKitchen, hosted, storageKey]);
 
   const resolveConflict = useCallback((keepDraft: boolean) => {
-    if (!conflict) return;
+    if (!conflict || !paused.current || serverDocument.current !== conflict) return;
     serverDocument.current = conflict;
     // Choosing a complete version explicitly supersedes the old outbox. A
     // previously attempted command is never silently assigned a new revision.
     writes.current = [];
+    rejectedWrite.current = false;
     revision.current = conflict.revision;
+    if (hosted) mergeBase.current = confirmedBase(conflict);
     paused.current = false;
-    setConflict(null);
+    setReview(null);
     if (keepDraft) {
       if (!canEditProfile) {
         const cookingProfile = conflict.state?.cookingProfile;
@@ -471,7 +541,23 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       connected.current = true;
       setSavePhase("saved");
     }
-  }, [cache, conflict, savedLocation, canEditProfile]);
+  }, [cache, conflict, savedLocation, canEditProfile, hosted]);
+
+  const sharedReview = hosted ? review : null;
+  const combination = useMemo(() => evaluateCombination(sharedReview, state, canEditProfile), [sharedReview, state, canEditProfile]);
+  const combineConflict = () => {
+    if (!conflict || !paused.current || saving.current || serverDocument.current !== conflict) return;
+    // Edits may be accepted while the conflict panel is open, including before React's next render.
+    const candidate = evaluateCombination(sharedReview, latest.current, canEditProfile);
+    if (!candidate.state) return;
+    if (candidate.state === (conflict.state ?? EMPTY_KITCHEN)) {
+      resolveConflict(false);
+      return;
+    }
+    latest.current = candidate.state;
+    setState(candidate.state);
+    resolveConflict(true);
+  };
 
   const restoreBackup = useCallback((value: KitchenState): boolean => {
     if (!ready || saving.current || paused.current) {
@@ -509,17 +595,27 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
       if (!preserveCurrent("before-recovery")) return false;
       const previousRevision = revision.current;
       const previousWrites = writes.current;
+      const previousBase = mergeBase.current;
+      const previousRejection = rejectedWrite.current;
       revision.current = entry.cached.revision;
+      rejectedWrite.current = hosted && entry.cached.rejectedWrite === true;
+      if (hosted) {
+        const current = serverDocument.current;
+        mergeBase.current = current?.revision === entry.cached.revision ? confirmedBase(current) : entry.cached.mergeBase ?? null;
+      }
       writes.current = structuredClone(entry.cached.writeQueue?.writes ?? []);
       const next = structuredClone({ ...entry.cached.state, cookingProfile: (canEditProfile ? entry.cached.state.cookingProfile : latest.current.cookingProfile) ?? latest.current.cookingProfile ?? DEFAULT_COOKING_PROFILE });
       if (!writes.current.length) writes.current = appendKitchenSnapshot([], next);
-      if (!cache(next, true)) { revision.current = previousRevision; writes.current = previousWrites; return false; }
+      if (!cache(next, true)) {
+        revision.current = previousRevision; writes.current = previousWrites; mergeBase.current = previousBase; rejectedWrite.current = previousRejection;
+        return false;
+      }
       latest.current = next;
       savedJson.current = "";
       setState(next);
       const current = serverDocument.current;
-      if (current && current.revision !== revision.current && !hasAttemptedKitchenCommand(writes.current)) {
-        paused.current = true; setConflict(current); setSavePhase("conflict");
+      if (current && (rejectedWrite.current || current.revision !== revision.current && !hasAttemptedKitchenCommand(writes.current))) {
+        pauseForConflict(current, true);
         setStatus("Draft recovered. The saved kitchen has changed; choose which version to keep.");
       } else {
         setSavePhase("pending"); setStatus("Draft recovered into this tab. The original draft is preserved.");
@@ -530,7 +626,7 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     } catch {
       setStatus("The browser could not read that draft. Export your current kitchen and retry."); return false;
     }
-  }, [cache, preserveCurrent, ready, refreshRecovery, privateStorage, canEditProfile]);
+  }, [cache, preserveCurrent, ready, refreshRecovery, privateStorage, canEditProfile, hosted, pauseForConflict]);
 
   const discardDraft = useCallback((id: string): boolean => {
     const entry = recoveryEntries.current.get(id);
@@ -545,6 +641,6 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   }, [refreshRecovery, privateStorage]);
 
   const saveState: KitchenSaveState = savePhase === "saved" && JSON.stringify(state) !== savedSnapshot ? "pending" : savePhase;
-  return { state, update, dispatch, command, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, resolveConflict, retrySave: () => setRetry((value) => value + 1),
+  return { state, update, dispatch, command, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, resolveConflict, combineConflict, combineAvailable: Boolean(combination.state), combineReason: combination.reason ?? "", retrySave: () => setRetry((value) => value + 1),
     busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoverDraft, discardDraft, restoreBackup };
 }

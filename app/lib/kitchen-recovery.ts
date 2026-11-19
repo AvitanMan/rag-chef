@@ -4,11 +4,14 @@ import { KITCHEN_CACHE_KEY } from "./kitchen-state";
 import { validateKitchenWrite } from "./kitchen-validation";
 
 export type DraftReason = "edit" | "before-restore" | "before-recovery";
+export type KitchenMergeBase = { revision: number; state: KitchenState };
 export interface CachedKitchen {
   revision: number;
   state: KitchenState;
   dirty: boolean;
   writeQueue?: KitchenWriteQueue;
+  mergeBase?: KitchenMergeBase;
+  rejectedWrite?: true;
   updatedAt?: string;
   reason?: DraftReason;
 }
@@ -39,11 +42,27 @@ export function parseCachedKitchen(text: string | null): CachedKitchen | null {
     const value = JSON.parse(text);
     if (!value || typeof value !== "object" || typeof value.dirty !== "boolean") return null;
     validateKitchenWrite({ revision: value.revision, state: value.state });
+    if (value.mergeBase !== undefined) {
+      try {
+        const base = validateKitchenWrite(value.mergeBase);
+        if (!value.dirty || base.revision !== value.revision) delete value.mergeBase;
+      } catch { delete value.mergeBase; } // An unusable ancestor must never hide the draft and its outbox.
+    }
     if (value.writeQueue !== undefined) value.writeQueue = parseKitchenWriteQueue(value.writeQueue);
     if (value.updatedAt !== undefined && (typeof value.updatedAt !== "string" || !Number.isFinite(Date.parse(value.updatedAt)) || new Date(value.updatedAt).toISOString() !== value.updatedAt)) return null;
     if (value.reason !== undefined && !["edit", "before-restore", "before-recovery"].includes(value.reason)) return null;
     return value as CachedKitchen;
   } catch { return null; }
+}
+
+export function writeCachedKitchen(storage: Storage, key: string, record: CachedKitchen, base: KitchenMergeBase | null) {
+  if (record.dirty && base?.revision === record.revision) {
+    try {
+      storage.setItem(key, JSON.stringify({ ...record, mergeBase: base }));
+      return;
+    } catch { /* Prioritize the recoverable draft and pending commands if the extra snapshot does not fit. */ }
+  }
+  storage.setItem(key, JSON.stringify(record));
 }
 
 export function compareKitchens(current: KitchenState, candidate: KitchenState): KitchenDifferences {

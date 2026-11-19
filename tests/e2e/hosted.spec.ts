@@ -1,8 +1,8 @@
-import { isKitchenWrite } from "./kitchen-requests";
+import { isKitchenWrite, kitchenWriteRevision } from "./kitchen-requests";
 import { createHmac } from "node:crypto";
 import { test, expect, type BrowserContext, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
-import { openPantryManagement } from "./pantry-helpers";
+import { openPantryManagement, showPantryBatches } from "./pantry-helpers";
 
 test.skip(process.env.RAG_CHEF_HOSTED_TEST !== "1", "Requires disposable hosted identities and signed sessions.");
 const baseURL = process.env.RAG_CHEF_TEST_BASE_URL!;
@@ -116,6 +116,61 @@ test("owner creation and invitations share one kitchen while protecting requirem
     expect(await document(context.request)).toEqual(changed);
     await page.screenshot({ path: info.outputPath("hosted-household.png"), fullPage: true });
   } finally { await memberContext.close(); await otherContext.close(); }
+});
+
+test("Combine safe edits preserves independent pantry corrections from two household members", async ({ page, browser, context }, info) => {
+  const memberContext = await browser.newContext({ baseURL, viewport: page.viewportSize() });
+  let releaseWrite!: () => void;
+  const heldWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+  try {
+    const owner = await createKitchen(context, `owner-combine-${info.project.name}`);
+    await joinKitchen(context, memberContext, `member-combine-${info.project.name}`);
+    const starting = await save(context.request, owner.headers, { ...emptyState(), pantry: [
+      { id: "shared-rice", name: "rice", measure: "1 kg" },
+      { id: "shared-beans", name: "beans", measure: "400 g" },
+    ] });
+    const member = await memberContext.newPage();
+    for (const editor of [page, member]) {
+      await pantry(editor);
+      await showPantryBatches(editor);
+    }
+    const beans = member.getByRole("textbox", { name: "Available beans", exact: true });
+    const rice = page.getByRole("textbox", { name: "Available rice", exact: true });
+    await expect(beans).toHaveValue("400 g");
+    await expect(rice).toHaveValue("1 kg");
+
+    // Hold the member's actual request until the owner's edit is committed.
+    await member.route("**/api/kitchen**", async route => {
+      if (isKitchenWrite(route.request())) await heldWrite;
+      await route.continue();
+    });
+    const pending = member.waitForRequest(isKitchenWrite);
+    await beans.fill("600 g");
+    await beans.blur();
+    expect(kitchenWriteRevision(await pending)).toBe(starting.revision);
+    const ownerSave = page.waitForResponse(response => isKitchenWrite(response.request()));
+    await rice.fill("2 kg");
+    await rice.blur();
+    expect((await ownerSave).status()).toBe(200);
+    const rejected = member.waitForResponse(response => isKitchenWrite(response.request()));
+    releaseWrite();
+    expect((await rejected).status()).toBe(409);
+    expect((await document(context.request)).state?.pantry.map(stock => stock.measure)).toEqual(["2 kg", "400 g"]);
+
+    const combineButton = member.getByRole("button", { name: "Combine safe edits", exact: true });
+    const review = member.getByRole("alert").filter({ has: combineButton });
+    await review.screenshot({ path: info.outputPath("combine-safe-edits.png") });
+    const combined = member.waitForResponse(response => isKitchenWrite(response.request()));
+    await combineButton.click();
+    expect((await combined).status()).toBe(200);
+    await expect(member.locator(".save-indicator")).toHaveText("Saved");
+    for (const editor of [page, member]) {
+      await pantry(editor); // Reopen the kitchen with this member's own session.
+      await showPantryBatches(editor);
+      await expect(editor.getByRole("textbox", { name: "Available rice", exact: true })).toHaveValue("2 kg");
+      await expect(editor.getByRole("textbox", { name: "Available beans", exact: true })).toHaveValue("600 g");
+    }
+  } finally { releaseWrite(); await memberContext.close(); }
 });
 
 test("hosted pantry stocktake updates the shared household and dinner shopping history stays private", async ({ page, browser, context }, info) => {

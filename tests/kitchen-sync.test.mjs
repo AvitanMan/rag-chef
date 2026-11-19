@@ -27,6 +27,7 @@ export function useState(initial) {
 }
 export function useRef(initial) { const index = cursor++; slots[index] ??= { value: {current:initial} }; return slots[index].value; }
 export function useCallback(fn,deps) { const index = cursor++; if (!same(slots[index]?.deps,deps)) slots[index] = {value:fn,deps}; return slots[index].value; }
+export function useMemo(create,deps) { const index = cursor++; if (!same(slots[index]?.deps,deps)) slots[index] = {value:create(),deps}; return slots[index].value; }
 export function useEffect(fn,deps) {
   const index = cursor++;
   if (!same(slots[index]?.deps,deps)) { const cleanup = slots[index]?.cleanup; slots[index] = {deps, effect:fn}; pending.push(() => {cleanup?.(); slots[index].cleanup = fn();}); }
@@ -211,6 +212,161 @@ test("hosted polling refreshes clean snapshots but retains a pending stocktake a
   assert.ok(h.calls.every(({ options }) => options.method !== "PUT"), "an overlapping stocktake never silently replaces the newer household snapshot");
 });
 
+function currentTabDraft(h) {
+  const key = h.session.getItem(h.prefix + KITCHEN_CACHE_KEY + ":tab-draft");
+  return { key, record: JSON.parse(h.privateLocal.getItem(key)) };
+}
+
+const householdUpdate = () => document(2, {
+  ...state(), pantry: [...state().pantry, { id: "beans", name: "beans", measure: "2 kg" }],
+});
+
+test("a reopened hosted draft combines against its saved base and includes edits made during review", async () => {
+  const first = await setup({ hosted: true });
+  first.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+  await first.pump();
+  const remote = householdUpdate();
+  const h = await setup({ hosted: true, existingLocal: first.local, existingSession: first.session, fetch: () => Response.json(remote) });
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.combineAvailable, true);
+  await h.tick();
+  assert.ok(h.calls.every(({ options }) => !options.method));
+
+  const onClick = h.result.combineConflict;
+  h.result.command({ type: "SetFavorite", recipeId: "rice-soup", favorite: true });
+  onClick();
+  let request;
+  h.respond((_url, options) => {
+    request = JSON.parse(options.body);
+    return Response.json(document(3, request.state));
+  });
+  await h.pump(); await h.tick();
+  assert.equal(request.revision, 2);
+  assert.deepEqual(request.state.favoriteRecipeIds, ["bean-stew", "rice-soup"]);
+  assert.deepEqual(request.state.pantry, remote.state.pantry);
+  assert.equal(h.result.saveState, "saved");
+});
+
+for (const base of ["legacy", "wrong revision", "invalid state"]) test(`a hosted draft with ${base} base remains recoverable through whole-version choices`, async () => {
+  const first = await setup({ hosted: true });
+  first.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+  await first.pump();
+  const { key, record } = currentTabDraft(first);
+  if (base === "legacy") delete record.mergeBase;
+  else record.mergeBase = base === "wrong revision" ? { revision: 99, state: state() } : { revision: 1, state: { pantry: null } };
+  first.privateLocal.setItem(key, JSON.stringify(record));
+  const remote = householdUpdate();
+  const h = await setup({ hosted: true, existingLocal: first.local, existingSession: first.session, fetch: () => Response.json(remote) });
+  assert.equal(h.result.saveState, "conflict");
+  assert.deepEqual(h.result.state.favoriteRecipeIds, ["bean-stew"]);
+  assert.equal(h.result.combineAvailable, false);
+  assert.ok(h.result.combineReason);
+  h.result.combineConflict(); await h.pump(); await h.tick();
+  assert.ok(h.calls.every(({ options }) => !options.method));
+  h.result.resolveConflict(false); await h.pump();
+  assert.deepEqual(h.result.state, remote.state);
+});
+
+test("draft storage can fall back to an envelope without a merge base when browser space is limited", async () => {
+  const h = await setup({ hosted: true });
+  const write = h.local.setItem.bind(h.local);
+  h.local.setItem = (key, value) => {
+    if (JSON.parse(value).mergeBase) throw new Error("quota exceeded");
+    write(key, value);
+  };
+  h.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+  await h.pump();
+  assert.equal(h.result.backupAvailable, true);
+  const { record } = currentTabDraft(h);
+  assert.equal(record.mergeBase, undefined);
+  assert.deepEqual(record.state.favoriteRecipeIds, ["bean-stew"]);
+  assert.equal(record.writeQueue.writes.length, 1);
+});
+
+test("combine requires fresh review after a second revision conflict", async () => {
+  const h = await setup({ hosted: true });
+  h.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+  const remote = householdUpdate();
+  const newer = document(3, { ...remote.state, pantry: remote.state.pantry.map(batch => ({ ...batch, location: "freezer" })) });
+  h.respond(() => Response.json(remote));
+  await h.pump(); await h.poll();
+  assert.equal(h.result.combineAvailable, true);
+  const attempts = [];
+  h.respond((_url, options) => {
+    if (!options.method) return Response.json(newer);
+    const request = JSON.parse(options.body);
+    attempts.push(request);
+    if (request.revision === 2) return Response.json({ error: { code: "REVISION_CONFLICT" }, current: newer }, { status: 409 });
+    return Response.json(document(4, request.state));
+  });
+  const firstReview = h.result.combineConflict;
+  firstReview(); await h.pump(); await h.tick(); await h.tick();
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.conflict.revision, 3);
+  assert.equal(h.result.combineAvailable, true);
+  assert.deepEqual(currentTabDraft(h).record.state.favoriteRecipeIds, ["bean-stew"]);
+  firstReview(); await h.pump(); await h.tick();
+  assert.deepEqual(attempts.map(attempt => attempt.revision), [2]);
+  h.result.combineConflict(); await h.pump(); await h.tick();
+  assert.deepEqual(attempts.map(attempt => attempt.revision), [2, 3]);
+  assert.deepEqual(h.result.state.pantry, newer.state.pantry);
+  assert.deepEqual(h.result.state.favoriteRecipeIds, ["bean-stew"]);
+  assert.equal(h.result.saveState, "saved");
+});
+
+test("combining a change already saved by another member adopts their revision without a write", async () => {
+  const h = await setup({ hosted: true });
+  h.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+  const remote = document(2, { ...state(), favoriteRecipeIds: ["bean-stew"] });
+  h.respond(() => Response.json(remote));
+  await h.pump(); await h.poll();
+  assert.equal(h.result.combineAvailable, true);
+  h.result.combineConflict(); await h.pump(); await h.tick();
+  assert.equal(h.result.getRevision(), 2);
+  assert.equal(h.result.saveState, "saved");
+  assert.ok(h.calls.every(({ options }) => !options.method));
+});
+
+for (const [status, code] of [[409, "COMMAND_ID_REUSED"], [403, "FORBIDDEN"], [400, "INVALID_COMMAND"]]) {
+  test(`a hosted ${code} rejection cannot be converted to a combined write`, async () => {
+    const h = await setup({ hosted: true });
+    h.result.command({ type: "SetFavorite", recipeId: "bean-stew", favorite: true });
+    const remote = householdUpdate();
+    h.respond((_url, options) => options.method === "POST"
+      ? Response.json({ error: { code, message: "Command rejected" } }, { status })
+      : Response.json(remote));
+    await h.pump(); await h.tick();
+    assert.equal(h.result.combineAvailable, false);
+    h.result.combineConflict(); await h.pump(); await h.tick();
+    assert.equal(h.result.saveState, "conflict");
+    const rejectedQueue = queuedCommands(h);
+    assert.equal(rejectedQueue[0].attempted, true);
+    assert.ok(h.calls.every(({ options }) => options.method !== "PUT"));
+
+    const reopened = await setup({ hosted: true, existingLocal: h.local, existingSession: h.session, fetch: () => Response.json(remote) });
+    await reopened.tick();
+    assert.equal(reopened.result.saveState, "conflict");
+    assert.equal(reopened.result.combineAvailable, false);
+    assert.deepEqual(queuedCommands(reopened), rejectedQueue);
+    assert.ok(reopened.calls.every(({ options }) => !options.method));
+  });
+}
+
+test("a rejected hosted snapshot cannot become eligible for combine on refresh", async () => {
+  const h = await setup({ hosted: true });
+  h.result.update(current => ({ ...current, favoriteRecipeIds: ["bean-stew"] }));
+  const remote = householdUpdate();
+  h.respond((_url, options) => options.method === "PUT"
+    ? Response.json({ error: { code: "OWNER_REQUIRED" } }, { status: 403 })
+    : Response.json(remote));
+  await h.pump(); await h.tick(); await h.poll();
+  assert.equal(h.result.saveState, "conflict");
+  assert.equal(h.result.combineAvailable, false);
+  h.result.combineConflict(); await h.pump(); await h.tick();
+  assert.deepEqual(currentTabDraft(h).record.state.favoriteRecipeIds, ["bean-stew"]);
+  assert.equal(h.calls.filter(({ options }) => options.method === "PUT").length, 1);
+});
+
 test("a queued command survives an earlier save acknowledgement without accepting later stale commands", async () => {
   const h = await setup();
   h.result.command({ type: "ReplacePantryBatch", snapshot: h.result.state.pantry[0], replacement: { ...h.result.state.pantry[0], measure: "900 g" } });
@@ -243,10 +399,10 @@ test("a queued command survives an earlier save acknowledgement without acceptin
   assert.equal(h.result.state.pantry[0].measure, "800 g");
 });
 
-test("a lost command response survives reload and replays once before loading later remote edits", async () => {
+for (const hosted of [false, true]) test(`a lost command response survives reload and replays once before loading later remote edits (hosted=${hosted})`, async () => {
   let current = document(), receipt;
   const attempts = [];
-  const first = await setup({ fetch: (_url, options) => {
+  const first = await setup({ hosted, fetch: (_url, options) => {
     if (options.method !== "POST") return Response.json(current);
     const command = JSON.parse(options.body); attempts.push(command);
     current = document(2, applyKitchenCommand(current.state, command, { revision: current.revision }));
@@ -256,16 +412,16 @@ test("a lost command response survives reload and replays once before loading la
   assert.equal(first.result.command({ type: "ReplacePantryBatch", snapshot: first.result.state.pantry[0], replacement: { ...first.result.state.pantry[0], measure: "900 g" } }), true);
   await first.pump(); await first.tick();
   assert.equal(first.result.saveState, "offline"); assert.equal(current.revision, 2);
-  const draft = JSON.parse(first.local.getItem(first.session.getItem(`${KITCHEN_CACHE_KEY}:tab-draft`)));
-  assert.deepEqual(draft.writeQueue.writes, [{ kind: "command", command: attempts[0], attempted: true }]);
+  assert.deepEqual(queuedCommands(first), [{ kind: "command", command: attempts[0], attempted: true }]);
   current = document(3, { ...current.state, pantry: [...current.state.pantry, { id: "remote", name: "beans", measure: "2 kg" }] });
-  const reopened = await setup({ existingLocal: first.local, existingSession: first.session, fetch: (url, options) => {
+  const reopened = await setup({ hosted, existingLocal: first.local, existingSession: first.session, fetch: (url, options) => {
     if (options.method !== "POST") return Response.json(current);
     assert.equal(url, "/api/kitchen/commands"); attempts.push(JSON.parse(options.body));
     assert.deepEqual(attempts[1], attempts[0]);
     return Response.json({ ...receipt, replayed: true });
   } });
   assert.notEqual(reopened.result.saveState, "conflict", "an attempted command resolves its receipt before comparing newer snapshots");
+  assert.equal(reopened.result.combineAvailable, false);
   assert.equal(reopened.result.state.pantry[0].measure, "900 g");
   await reopened.tick();
   assert.equal(attempts.length, 2); assert.equal(current.revision, 3);
