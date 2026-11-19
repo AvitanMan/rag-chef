@@ -5,6 +5,7 @@ import { createSourceLoader } from "../tools/testing/load-source.mjs";
 const sources = await createSourceLoader({ name: "kitchen-merge" });
 after(() => sources.dispose());
 const { combineKitchenEdits } = await sources.import("app/lib/kitchen-merge.ts");
+const { undoMeal } = await sources.import("app/lib/quantities.ts");
 const { DEFAULT_COOKING_PROFILE, EMPTY_KITCHEN } = await sources.import("app/lib/kitchen-types.ts");
 const week = "2026-11-16", at = "2026-11-16T13:00:00.000Z";
 const riceKey = week + ":rice", beansKey = week + ":beans";
@@ -109,6 +110,21 @@ test("duplicate purchases keep the saved receipt and stock IDs across different 
   }
 });
 
+for (const cycle of ["active", undefined]) {
+  test(`concurrent purchases retain only untouched saved stock (${cycle ?? "legacy"} cycle)`, () => {
+    const base = { ...empty(), shoppingChecked: { [riceKey]: true },
+      ...(cycle ? { shoppingCycles: { [riceKey]: cycle } } : {}) };
+    const draft = recordPurchase(base, "receipt-draft", stock("draft-batch", "rice", "500 g"), riceKey, cycle);
+    const saved = recordPurchase(base, "receipt-saved", stock("saved-batch", "rice", "500 g"), riceKey, cycle);
+
+    assert.strictEqual(merge(base, draft, saved), saved);
+    for (const branch of [draft, saved]) branch.pantry[0].measure = "400 g";
+    blocked(base, draft, saved);
+    blocked(base, structuredClone(saved), saved);
+    blocked(base, { ...draft, pantry: [] }, { ...saved, pantry: [] });
+  });
+}
+
 test("purchases keep edited or removed live stock and withhold Combine for undo against concurrent consumption", () => {
   const base = recordPurchase(empty(), "receipt", stock("batch"));
   const other = { ...base, favoriteRecipeIds: ["rice"] };
@@ -187,4 +203,30 @@ test("a one-sided unlock or Undo can accompany an independent edit, preserving t
   assert.deepEqual(merged.meals, undone.meals);
   assert.deepEqual(merged.pantry, undone.pantry);
   blocked(finished, { ...undone, meals: { [week]: { ...dinner(week), recipeId: "replacement" } } }, finished);
+});
+
+test("shared cooking Undo must account for the entire restored batch, including recreated stock", () => {
+  for (const pantry of [[stock("batch", "rice", "50 g")], [], [stock("batch", "beans")]]) {
+    const base = { ...empty(), pantry, meals: { [week]: cooked(week, "batch") } };
+    const undone = undoMeal(base, week);
+    const saved = { ...undone, favoriteRecipeIds: ["rice"] };
+    assert.strictEqual(merge(base, undone, saved), saved);
+    const restored = undone.pantry.find(item => item.name === "rice");
+    const restoredGrams = parseInt(restored.measure, 10);
+    for (const used of [20, 50]) {
+      const usedStock = undone.pantry.map(item => item.id === restored.id ? { ...item, measure: (restoredGrams - used) + " g" } : item);
+      blocked(base, { ...undone, pantry: usedStock }, { ...saved, pantry: structuredClone(usedStock) });
+    }
+  }
+});
+
+test("two shared cooking Undos restore their combined deductions to one batch", () => {
+  const next = "2026-11-17";
+  const laterMeal = cooked(next, "batch");
+  Object.assign(laterMeal.completion.deductions[0], { before: "50 g", after: "0 g" });
+  const base = { ...empty(), pantry: [stock("batch", "rice", "0 g")], meals: { [week]: cooked(week, "batch"), [next]: laterMeal } };
+  const undone = undoMeal(undoMeal(base, next), week);
+  assert.deepEqual(merge(base, undone, structuredClone(undone)).pantry, [stock("batch")]);
+  const used = { ...undone, pantry: [stock("batch", "rice", "80 g")] };
+  blocked(base, used, structuredClone(used));
 });

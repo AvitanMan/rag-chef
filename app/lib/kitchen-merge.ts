@@ -1,5 +1,5 @@
 import type { KitchenState, PantryStock, PlannedMeal, ShoppingPurchase } from "./kitchen-types";
-import { parseMeasure } from "./quantities";
+import { parseMeasure, undoMeal } from "./quantities";
 import { validateKitchenState, validateKitchenWrite } from "./kitchen-validation";
 
 type CombineResult = { state: KitchenState; reason?: never } | { reason: string; state?: never };
@@ -56,8 +56,8 @@ function purchaseRows(state: KitchenState, pantry: Rows<PantryStock>, owners: Ro
   return rows;
 }
 
-function stockFields(stock?: PantryStock) {
-  if (stock) return [stock.name, stock.measure, stock.useBy, stock.location];
+function stockFields(stock: PantryStock) {
+  return [stock.name, stock.measure, stock.useBy, stock.location];
 }
 
 function protectedDinnerChange(saved: PlannedMeal, candidate?: PlannedMeal) {
@@ -102,6 +102,7 @@ function checkCookingOverlap(base: KitchenState, draft: KitchenState, saved: Kit
   const mine = changedDeductions(base, draft);
   const theirs = changedDeductions(base, saved);
   const [originalStock, draftStock, savedStock] = stocks;
+  const sharedUndos = new Set<string>();
   // Two dinners can each reduce 100 g to 50 g. Equal remaining stock alone
   // would lose a deduction and let both dinners add it back during Undo.
   for (const id of new Set([...mine.keys(), ...theirs.keys()])) {
@@ -113,8 +114,28 @@ function checkCookingOverlap(base: KitchenState, draft: KitchenState, saved: Kit
       if (!sameCompletions || !equal(draftStock.get(id), savedStock.get(id))) {
         throw new Error("Both versions used the same pantry batch while cooking.");
       }
+      for (const [date, completion] of local) {
+        if (completion === null) sharedUndos.add(date);
+      }
     } else if (!equal(originalStock.get(id), (local ? savedStock : draftStock).get(id))) {
       throw new Error("A cooking deduction overlaps another change to the same pantry batch.");
+    }
+  }
+
+  if (sharedUndos.size) {
+    // An Undo can restore a missing batch under a new ID. Replay the shared
+    // restorations so equal, partially used batches cannot hide two uses.
+    let restored = base;
+    for (const date of sharedUndos) {
+      const next = undoMeal(restored, date);
+      if (next === restored) throw new Error("The shared cooking Undo could not restore its pantry stock.");
+      restored = next;
+    }
+    for (const batch of restored.pantry) {
+      if (!equal(originalStock.get(batch.id), batch)
+        && (!equal(draftStock.get(batch.id), batch) || !equal(savedStock.get(batch.id), batch))) {
+        throw new Error("A shared cooking Undo overlaps another change to its restored pantry batch.");
+      }
     }
   }
 
@@ -165,8 +186,14 @@ function selectPurchase(checks: ThreeVersions<Rows<ShoppingRow>>, referenced: Se
       throw new Error("A shopping change overlaps a purchase for the same item.");
     }
   }
-  if (!original && local && remote && equal(stockFields(local.item.pantry), stockFields(remote.item.pantry))
-    && equal(stockFields(local.stock), stockFields(remote.stock))) {
+  if (!original && local && remote) {
+    // Matching balances can hide two independent uses after the purchase.
+    if (!equal(local.stock, local.item.pantry) || !equal(remote.stock, remote.item.pantry)) {
+      throw new Error("A pantry batch changed after both versions recorded the same purchase.");
+    }
+    if (!equal(stockFields(local.item.pantry), stockFields(remote.item.pantry))) {
+      throw new Error("Both versions recorded different stock for the same purchase.");
+    }
     if (local.item.pantry.id !== remote.item.pantry.id && referenced.has(local.item.pantry.id)) {
       throw new Error("A cooked dinner still refers to the other purchase batch.");
     }
