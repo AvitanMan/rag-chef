@@ -1,6 +1,76 @@
 # UI review and improvement plan
 
-**Implementation status:** F1–F9 are implemented, with a persistent dark mode toggle added. The original review is retained below; see the implementation record at the end for verification and screenshots.
+## November 18, 2026 · implemented UI improvements
+
+A cook can now compare measured shortages before choosing dinner, open a shopping list focused on that meal, and see which weekly quantities are shared. The checks below used disposable kitchens with synthetic recipes.
+
+| Workflow | Before | After |
+| --- | --- | --- |
+| Keyboard access | The dinner request field had no visible focus ring. Its label was 9 px. White action text on the light paprika fill measured 3.81 to 1. | The field has a visible boundary, a 14 px sentence-case label and a keyboard focus ring. White on the new light fill measures 5.39 to 1. The dark action measures 8.13 to 1. The visible navigation announces the current page and counts such as “Shopping, 2 items to buy.” [Keyboard and contrast checks](../tests/e2e/navigation-accessibility.spec.ts) |
+| Pantry → dinner | At 390 × 844, the first choose button started at y=1,139. Eggplant Stew’s 60 g shortage appeared only after expanding its details. | The first choose button spans y=549–593, above the navigation at y=775. At 1440 × 900 it spans y=454–498, previously starting at y=1,102. Eggplant Stew shows “Needs 60 g more eggplant” before the choice. [Mobile comparison](../output/playwright/hallmark-after-2026-11-18/390x844-light-pantry-results.png) |
+| Saved dinner → Shopping | A click could settle 414 px down the page at 320 px width. | “Shop for this dinner” focuses the meal title and opens at the top. The dinner and whole-week controls fit above the navigation for click, tap and keyboard entry on both tested phone sizes. Cooked meals retain “Weekly shopping.” [Shopping checks](../tests/e2e/dinner-shopping.spec.ts) |
+
+Pantry groups location, add and search beside the inventory. Both Pantry dinner results and the Everyday collection show measured coverage, uncertainty and relevant preparation notes before selection. Other collection cards describe ingredient-name matches. The recipe collection and search lead the Recipes screen, and each filter explains what it includes. [Dinner comparison checks](../tests/e2e/dinner-candidates.spec.ts) · [Recipe collection checks](../tests/e2e/everyday-collection.spec.ts)
+
+Plan puts today’s dinner first and groups the week range, navigation and dinner count above weekly actions. Cooking opens with the recipe and selected method above its current instruction, timers and persistent step controls. Settings leads with cooking preferences, groups the source inventory in a disclosure and discards connection results when the user changes provider or model. [Plan, theme and provider checks](../tests/e2e/usability.spec.ts) · [Hosted household checks](../tests/e2e/hosted.spec.ts)
+
+### Verification
+
+The viewport review covered Chef, Pantry, pantry dinner results, Recipes, Plan, saved dinner, Shopping, Cooking and Settings at 320 × 568, 390 × 844 and 1440 × 900 in light and dark themes. The 54 Chromium captures, geometry and accessibility snapshots are stored locally under `output/playwright`. All nine views fit the viewport width in every capture. At 320 px the first pantry choice requires a scroll. Both the source cooking instruction and **Next step** fit at all three sizes. Physical-device and assistive-technology checks remain open. [Geometry](../output/playwright/hallmark-after-2026-11-18/screens.json) · [Phone overview](../output/playwright/hallmark-after-2026-11-18/contact-390x844-light.jpg) · [Desktop overview](../output/playwright/hallmark-after-2026-11-18/contact-1440x900-dark.jpg)
+
+All 602 distinct desktop and mobile browser cases passed in isolated runs. An earlier combined run reached its deadline during host sleep. Separate runs covered all 301 cases per device profile. [Desktop](../output/playwright/e2e-2026-11-18T21-03-42-002Z-54943/results.json) · [Mobile](../output/playwright/e2e-2026-11-18T21-03-42-002Z-54944/results.json) · [Mobile Pantry](../output/playwright/e2e-2026-11-18T21-04-11-140Z-55215/results.json)
+
+The final focus and navigation changes also passed 70 targeted cases, including older scrolled views, browser Back and Forward, stale meals, pantry picks, dinner portions and shared purchases. All 836 source tests, built-worker integration checks, TypeScript and lint passed. The hosted suite passed all 12 cases, and first-run setup passed on both device profiles using separate empty kitchens. [Targeted results](../output/playwright/e2e-2026-11-18T20-08-15-478Z-53124/results.json) · [Hosted results](../output/playwright/hosted-2026-11-18T20-10-52-579Z-54226/results.json)
+
+Hallmark 2.0.0 scanned the same 31 UI files and rendered the Chef entry at five sizes. Findings changed from 91 to 83 failures, 310 to 310 design-pattern flags and 36 to 32 warnings. The focus and contrast rules (26a and 40) cleared. Of the remaining failures, 42 concern literal design values, and the small-type rule still identifies 8–10 px secondary text. The full report lists each rule and location. [Before](../output/playwright/hallmark-audit-2026-11-18/findings.json) · [After](../output/playwright/hallmark-after-2026-11-18/findings.json)
+
+<details>
+<summary>November 18 baseline, original measurements and acceptance criteria</summary>
+
+
+Fix keyboard focus and light-theme contrast first. Then make it easier for a household cook to answer two questions in order: “What do I still need for this dinner?” and “Which list am I shopping from?” The current app already calculates both answers. The work is to put them where the decision happens.
+
+Keep the cream and green surfaces, serif recipe titles, labeled destinations, and the cooking screen’s large source instruction with persistent step controls. On the three tested viewport sizes, both the first instruction and **Next step** were visible. Keep the existing dinner-specific and weekly amounts, shared purchase checkboxes, and explicit pantry purchase review. [Cooking capture](../output/playwright/e2e-2026-11-18T11-24-54-968Z-44739/390x844-light-cooking.png) · [Shopping behavior](guide.md)
+
+### 1. Make keyboard focus and primary actions readable
+
+**Observed.** On the Chef discovery screen, Tab lands in the dinner request field without a visible focus indicator. The textarea suppresses its outline, and the enclosing composer shows no focus change. Its label is 9 px. On the saved dinner screen, the light-theme **Cook dinner** label is 11 px bold, white on paprika, with 3.81:1 contrast. The dark-theme pair measures 8.13:1. Hallmark flags focus, contrast, and small functional type in gates 26a, 40, and 75. [Composer styles](../app/globals.css#L368) · [Action colors](../app/globals.css#L419) · [Rendered Chef screen](../output/playwright/hallmark-audit-2026-11-18/.hallmark/before/127.0.0.1-52637-1440x900.png)
+
+**Change.** Give the textarea an immediate focus ring and a visible field boundary. Set its label in sentence case at a readable size. Use the existing darker paprika for light-theme primary fills and accent text where it meets contrast. White on that darker fill measures 5.39:1. Give the active main navigation button a programmatic current state and hide its decorative glyph from the accessible name. Preserve destination labels and meaningful counts. [Theme tokens](../app/globals.css#L1) · [Navigation buttons](../app/components/RagChefApp.tsx#L1627)
+
+**Done when** the cook can Tab and Shift+Tab through the request field, its submit button, and navigation in both themes and see focus at every stop. Normal-sized action text must reach 4.5:1 and the field boundary and focus ring must reach 3:1 against adjacent surfaces. The accessibility tree should identify the current destination once in the visible navigation. [Current navigation snapshot](../output/playwright/e2e-2026-11-18T11-24-54-968Z-44739/390x844-light-shopping.aria.txt) · [W3C text contrast criterion](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html)
+
+### 2. Open dinner shopping with the meal and list scope in view
+
+**Observed.** From the saved Tomato Rice dinner at 320 × 568, clicking **Weekly shopping** opened the correct items but left the page scrolled 414 px. The dinner title, **Back to dinner**, and scope controls were above the viewport after 1.5 seconds. A fresh run using a touchscreen tap settled at the top. At 390 × 844, both inputs left a 90 px offset. Desktop opened at the top. The distinction matters because a shared rice row shows 300 g for the week even when the selected dinner needs less. [320 px click](../output/playwright/e2e-2026-11-18T11-26-37-475Z-45364/320-click.json) · [320 px tap](../output/playwright/e2e-2026-11-18T11-26-37-475Z-45364/320-tap.json) · [390 px click](../output/playwright/e2e-2026-11-18T11-26-37-475Z-45364/390-click.json)
+
+**Change.** Treat opening Shopping from a dinner as a fresh arrival. Establish the destination scroll position before recording new scroll events and move focus to the meal heading. On the dinner panel, place the shopping action beside the shortage summary and label it **Shop for this dinner** for an uncooked meal. Keep the weekly label on cooked dinners. Keep **For this dinner**, **Whole week**, and the weekly-quantity explanation together above the checklist. [View scroll restoration](../app/components/RagChefApp.tsx#L305) · [Dinner actions](../app/components/ChosenDinner.tsx#L30) · [Shopping scope controls](../app/components/WeeklyKitchenViews.tsx#L184)
+
+**Done when** a click, tap, or keyboard activation from a scrolled dinner lands with the meal title and selected scope visible at 320 and 390 px after layout settles. Verify before any test helper scrolls the page. Switching scope must preserve the shared checkbox. Browser Back and Forward must restore the correct dinner and week, including when that meal was replaced or cooked. [Existing dinner-shopping scenarios](../tests/e2e/dinner-shopping.spec.ts)
+
+### 3. Put measured shortages where people compare dinners
+
+**Observed.** With rice and tomato selected from 12 pantry ingredients, the first result began at y=633 on a 390 × 844 screen. Its **Choose for tonight** action began at y=1,139, below the fixed navigation at y=775. On desktop the first choice began at y=1,102 in a 900 px viewport. The mobile screen spends much of its first view on two results headings, the date and portions, selected picks, and ranking instructions. Eggplant Stew led with “No other food ingredients missing by name.” Opening **Shopping needs** revealed the decision-relevant fact: 60 g more eggplant was needed. [Mobile results](../output/playwright/discovery-audit-2026-11-18/mobile-results.png) · [Desktop results](../output/playwright/discovery-audit-2026-11-18/desktop-results.png) · [Expanded shortage](../output/playwright/discovery-audit-2026-11-18/mobile-comparison.png)
+
+**Change.** Use one results heading. Put the current day, portions, and editable picks together in a compact header. Lead each recipe with its name, the selected ingredient it uses, and the measured outcome. For the audited example, show **Needs 60 g more eggplant** beside the choice. Put the full ingredient breakdown and reservation explanation in the existing disclosure. Keep unknown amounts, frozen stock that needs preparation, and applicable dietary warnings visible before selection. Reuse the existing estimate and ranking. [Results header](../app/components/PantryDinnerResults.tsx#L28) · [Card content](../app/components/RagChefApp.tsx#L1933) · [Measured estimate](../app/components/DinnerEstimate.tsx#L5)
+
+**Done when** the first result’s name, measured outcome, and choose action fit above the mobile navigation at 390 × 844 and inside the desktop viewport at 1440 × 900 with the same fixture. Check fully covered, partial, unknown, and frozen cases. Changing portions must update the summary and its detail together. Comparing results must leave kitchen state untouched, and Back must restore the selected ingredients.
+
+### Audit baseline and verification
+
+Reviewed the working tree at `9e07bc8` including the local dinner-focused Shopping changes. Hallmark 2.0.0 ran in app audit mode on 31 UI source files and rendered the seeded Chef entry screen. It recorded 91 failures, 310 design-pattern flags, and 36 warnings. These are rule matches, often repeated: 295 flags concerned spacing increments. The actionable focus and contrast findings above were independently checked. The tool also mistook the pantry ingredient browser for imitation browser chrome. Use the confirmed findings to order work. [Pinned Hallmark skill](https://github.com/Nutlope/hallmark/tree/04977e15f3dfd6ee4b74c887dac3eb52665d6c92/skills/hallmark) · [Raw findings](../output/playwright/hallmark-audit-2026-11-18/findings.json)
+
+Use a disposable kitchen with synthetic recipes to repeat each change. Recheck the affected flow with keyboard and touch emulation, capture its settled screen at the same width, and run the existing dinner-choice, dinner-shopping, and hosted navigation regressions. The saved dinner, Shopping, and cooking captures cover 320 × 568, 390 × 844, and 1440 × 900 in both themes. Pantry comparison was inspected at 390 × 844 and 1440 × 900. The screenshots and geometry are local ignored artifacts. Physical-device and screen-reader checks remain release verification tasks. [Interaction captures and measurements](../output/playwright/e2e-2026-11-18T11-24-54-968Z-44739/) · [Pantry comparison evidence](../output/playwright/discovery-audit-2026-11-18/)
+
+</details>
+
+## Completed October review
+
+F1–F9 and the dark-mode toggle were delivered in October. The dated findings and test counts below document that release.
+
+<details>
+<summary>October 25 findings, acceptance criteria, and implementation record</summary>
+
 
 Reviewed October 25, 2026, against the current working tree, including the recent usability changes. This is a browser-tested review. No application code was changed during this review.
 
@@ -171,3 +241,5 @@ Selected local evidence:
 - [Dark desktop recipes](../output/playwright/ui-implementation/recipes-1440-dark.png) and [mobile preferences](../output/playwright/ui-implementation/settings-320-dark.png).
 - [Cooking at 320 px](../output/playwright/ui-implementation/cooking-320-dark.png).
 - [Final browser results](../output/playwright/e2e-2026-10-25T12-14-26-725Z/results.json).
+
+</details>

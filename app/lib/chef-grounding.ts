@@ -97,7 +97,7 @@ function claimsTotalTime(text: string, cookingStep: boolean): boolean {
     || !cookingStep && /\b(?:(?:this |the )?(?:recipe|dish|dinner)|it)\s+takes?\b/.test(value);
 }
 
-function sourceClaimsTotalTime(text: string, sourceNote = false): boolean {
+export function sourceClaimsTotalTime(text: string, sourceNote = false): boolean {
   const value = normalized(text);
   // Source steps often use "it" or "ready" for a component. Only an explicit
   // recipe-level statement establishes their total. An original recipe note

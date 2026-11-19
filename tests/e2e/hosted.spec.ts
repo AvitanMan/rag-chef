@@ -105,7 +105,11 @@ test("owner creation and invitations share one kitchen while protecting requirem
     expect((await context.request.get("/api/admin/catalog")).status()).toBe(403);
     expect((await memberContext.request.get("/api/admin/catalog")).status()).toBe(403);
     await memberPage.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(memberPage.getByRole("textbox", { name: "Allergies", exact: true })).toBeDisabled();
+    const allergies = memberPage.getByRole("textbox", { name: "Allergies", exact: true });
+    await expect(allergies).toBeDisabled();
+    const sharedSettings = memberPage.getByRole("region", { name: "Shared kitchen settings", exact: true });
+    expect((await allergies.boundingBox())!.y).toBeLessThan((await sharedSettings.boundingBox())!.y);
+    await expect(memberPage.getByRole("group", { name: "Chef provider", exact: true })).toHaveCount(0);
     await expect(memberPage.getByRole("button", { name: "Create invitation link" })).toHaveCount(0);
     const changed = await save(memberContext.request, memberHeaders, { ...saved.state!, pantry: [{ id: "shared-rice", name: "rice", measure: "1 kg" }] });
     expect((await context.request.put("/api/kitchen", { headers: identity, data: { revision: saved.revision, state: saved.state } })).status()).toBe(409);
@@ -114,7 +118,7 @@ test("owner creation and invitations share one kitchen while protecting requirem
   } finally { await memberContext.close(); await otherContext.close(); }
 });
 
-test("hosted pantry stocktake changes the shared household and preserves another household", async ({ page, browser, context }, info) => {
+test("hosted pantry stocktake updates the shared household and dinner shopping history stays private", async ({ page, browser, context }, info) => {
   const owner = `owner-stocktake-${info.project.name}`, member = `member-stocktake-${info.project.name}`, other = `other-stocktake-${info.project.name}`;
   const memberContext = await browser.newContext({ baseURL });
   const otherContext = await browser.newContext({ baseURL });
@@ -137,6 +141,32 @@ test("hosted pantry stocktake changes the shared household and preserves another
     ]);
     expect(await document(otherContext.request)).toEqual(untouched);
     await expect(page.locator(".save-indicator")).toHaveText("Saved");
+
+    await review.getByRole("button", { name: "Finish review", exact: true }).click();
+    await navigate(page, "Recipes");
+    await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
+    await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
+    await page.getByRole("region", { name: "Chosen dinner" }).getByRole("button", { name: "Shop for this dinner", exact: true }).click();
+    const shopping = page.getByRole("region", { name: "Dinner shopping context" });
+    await expect(shopping.getByRole("button", { name: "For this dinner", pressed: true })).toBeVisible();
+    await expect(page.locator(".save-indicator")).toHaveText("Saved");
+    const [dinner] = Object.values((await document(memberContext.request)).state!.meals);
+    const prefix = `rag-chef-account:${encodeURIComponent(owner)}:${encodeURIComponent(home.session.household.id)}:navigation:`;
+    const historyEntry = await page.evaluate(prefix => {
+      const state = history.state;
+      return { state, scoped: JSON.parse(sessionStorage.getItem(prefix + state.ragChefNavigationRef) ?? "null") };
+    }, prefix);
+    expect(historyEntry.state.ragChefNavigationRef).toMatch(/^[a-f0-9-]{36}$/);
+    expect(historyEntry.state.ragChefNavigation).toBeUndefined();
+    expect(historyEntry.scoped.shoppingDinner).toMatchObject({ date: dinner.date, mealId: dinner.id, scope: "dinner" });
+    for (const value of [dinner.date, dinner.id, dinner.title]) expect(JSON.stringify(historyEntry.state)).not.toContain(value);
+
+    await navigate(page, "Pantry");
+    await expect(page.getByRole("heading", { name: "Your pantry", exact: true })).toBeVisible();
+    await page.goBack();
+    await expect(shopping.getByRole("button", { name: "For this dinner", pressed: true })).toBeVisible();
+    await shopping.getByRole("button", { name: "Back to dinner", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Chosen dinner" })).toContainText(dinner.title);
   } finally { await memberContext.close(); await otherContext.close(); }
 });
 

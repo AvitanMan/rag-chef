@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ShoppingItem } from "../lib/quantities";
-import { shoppingListText } from "../lib/shopping-export";
+import { shoppingListText, type ShoppingDinner } from "../lib/shopping-export";
 
-export function ShoppingExport({ items, week }: { items: ShoppingItem[]; week: string }) {
-  const text = shoppingListText(items, week);
+export function ShoppingExport({ items, week, dinner }: { items: ShoppingItem[]; week: string; dinner?: ShoppingDinner }) {
+  const text = shoppingListText(items, week, dinner);
   const [result, setResult] = useState<{ text: string; status: "copied" | "manual" } | null>(null);
   const fallback = useRef<HTMLTextAreaElement>(null);
   const status = result?.text === text ? result.status : null;
@@ -26,7 +26,7 @@ export function ShoppingExport({ items, week }: { items: ShoppingItem[]; week: s
       <button className="secondary-button" disabled={!items.length} onClick={() => void copy()}>Copy shopping list</button>
       <button className="secondary-button" disabled={!items.length} onClick={() => window.print()}>Print</button>
     </div>
-    <p className="quantity-note">Copy or print this week’s unchecked items, including any amount or preparation warnings.</p>
+    <p className="quantity-note">Copy or print {dinner ? "this dinner’s unchecked items at their weekly totals" : "this week’s unchecked items"}, including any amount or preparation warnings.</p>
     {status === "copied" && <p role="status">Shopping list copied.</p>}
     {status === "manual" && <div className="shopping-export-fallback"><p role="status">Copying is unavailable. Select and copy the list below.</p><label>Shopping list text<textarea ref={fallback} readOnly rows={8} value={text} /></label></div>}
     {typeof document !== "undefined" && createPortal(<section className="shopping-print" aria-label="Printable shopping list"><pre>{text}</pre></section>, document.body)}

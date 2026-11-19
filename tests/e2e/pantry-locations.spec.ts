@@ -186,7 +186,7 @@ test("global ingredient selections cross tabs and explicitly include freezer foo
   await expect(page.getByRole("button", { name: "Find dinners", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Find dinners", exact: true }).click();
   await expect(results(page).locator(".recipe-card")).toHaveCount(3);
-  await expect(tomatoCard.locator(".recipe-pantry-fit")).toContainText("Uses your picks: rice, tomato");
+  await expect(tomatoCard.locator(".recipe-picks")).toHaveText("Uses your picks: rice, tomato");
   await expect(tomatoCard.locator(".recipe-pantry-fit")).toContainText("Also saved in freezer: tomato");
   await expect(results(page).locator(".recipe-card").filter({ hasText: "Salmon Bowl" }).locator(".recipe-pantry-fit")).not.toContainText("Also saved in freezer: tomato");
   await screenshot(page, info, "selected-freezer-dinner");

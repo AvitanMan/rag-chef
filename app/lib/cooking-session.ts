@@ -1,4 +1,5 @@
 import type { PlannedMeal } from "./kitchen-types";
+import { sourceClaimsTotalTime } from "./chef-grounding";
 import type { Recipe } from "./recipe-types";
 import { validateKitchenWrite, validateRecipeSnapshot } from "./kitchen-validation";
 
@@ -135,12 +136,16 @@ export function parseCookingSession(text: string | null): CookingSession | null 
   } catch { return null; }
 }
 
-/** Only an explicit single source duration supplies a shortcut; never a range. */
+/** Only a single duration for the current action supplies a timer shortcut. */
 export function stepTimerSeconds(text: string): number | null {
   const matches = [...text.matchAll(/\b(\d+)\s*(seconds?|minutes?|hours?)\b/gi)];
   if (matches.length !== 1) return null;
   const match = matches[0];
   const prefix = text.slice(0, match.index);
+  // Classify the statement containing the duration, keeping "approx. 20 minutes" together.
+  const statement = text.split(/[!?;]|\.(?=\s+[a-z])/i).find(part => part.includes(match[0])) ?? text;
+  if (sourceClaimsTotalTime(statement) || statement.split(/[(,]/).some(clause =>
+    clause.includes(match[0]) && sourceClaimsTotalTime(clause))) return null;
   if (/(?:[\d./¼½¾⅓⅔⅛⅜⅝⅞]|\d\s*[-–—]|\d\s+(?:to|or|and))\s*$/i.test(prefix)) return null;
   const factor = /^hour/i.test(match[2]) ? 3600 : /^minute/i.test(match[2]) ? 60 : 1;
   const seconds = Number(match[1]) * factor;

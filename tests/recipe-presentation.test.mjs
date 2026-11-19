@@ -143,7 +143,7 @@ test("real photos remain optional and coverage uses the same counts in cards and
   assert.match(html, /<img[^>]+src="https:\/\/example.com\/rice.jpg"/);
   assert.match(html, /2 of 2 ingredients in pantry/);
   const details = drawer();
-  assert.match(details, /1 of 2 ingredients in pantry/);
+  assert.match(details, /1 of 2 ingredient names match your pantry\. Amounts haven’t been checked\./);
   assert.doesNotMatch(details, /drawer-hero|No changes suggested yet|changes-panel/);
 });
 

@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { test, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { EVERYDAY_RECIPES } from "../../app/lib/everyday-collection";
 import { DEMO_SOURCE } from "../../app/lib/demo-recipes";
@@ -93,6 +94,87 @@ test.beforeEach(async ({ page, request, baseURL }) => {
   await save(request, empty());
 });
 
+test("the first pantry choice fits above navigation and confirmed shortages precede selection", async ({ page, request, isMobile }, info) => {
+  await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+  await save(request, { ...empty(), pantry: [
+    { id: "beans", name: "beans", measure: "400 g", location: "cupboard" },
+    { id: "cheese", name: "cheese", measure: "", location: "fridge" },
+    { id: "eggplant", name: "eggplant", measure: "240 g", location: "fridge" },
+    { id: "garlic", name: "garlic", measure: "1 clove", location: "cupboard" },
+    { id: "oil", name: "olive oil", measure: "", location: "cupboard" },
+    { id: "onion", name: "onion", measure: "2", location: "cupboard" },
+    { id: "pasta", name: "pasta", measure: "300 g", location: "cupboard" },
+    { id: "rice", name: "rice", measure: "250 g", location: "cupboard" },
+    { id: "salmon", name: "salmon", measure: "150 g", location: "freezer" },
+    { id: "salt", name: "salt", measure: "", location: "spice-rack" },
+    { id: "tomato", name: "tomato", measure: "3", useBy: "2026-10-23", location: "fridge" },
+    { id: "paste", name: "tomato paste", measure: "30 ml", location: "fridge" },
+  ] });
+  await open(page, "Chef");
+  await page.clock.runFor(100);
+  await page.evaluate(() => window.scrollTo({ top: 700, behavior: "instant" }));
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(300);
+  await page.clock.runFor(100);
+  await navigate(page, "Pantry");
+  const before = await saved(request), activity = watch(page);
+  await pick(page, ["rice", "tomato"]);
+  const first = page.locator(".pantry-dinner-results .recipe-card").first();
+  await expect(first.getByRole("button", { name: "Tomato Rice", exact: true })).toBeVisible();
+  await page.clock.runFor(250);
+  const heading = page.getByRole("heading", { name: "Dinner ideas for tonight", exact: true });
+  await expect(heading).toBeFocused();
+  expect(await heading.evaluate(el => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
+  const geometry = await first.evaluate(card => {
+    const rect = (element: Element) => {
+      const r = element.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
+    };
+    const nav = document.querySelector(".mobile-nav")!;
+    return {
+      title: rect(card.querySelector(".recipe-title-button")!), outcome: rect(card.querySelector(".estimate-outcome")!),
+      choose: rect(card.querySelector(".recipe-add-action")!), limit: nav.getClientRects().length ? rect(nav).top : innerHeight,
+    };
+  });
+  await writeFile(info.outputPath("pantry-results-layout.json"), JSON.stringify(geometry, null, 2));
+  for (const box of [geometry.title, geometry.outcome, geometry.choose]) {
+    expect(box.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0);
+    expect(box.bottom, JSON.stringify(geometry)).toBeLessThanOrEqual(geometry.limit);
+  }
+  await page.screenshot({ path: info.outputPath("pantry-results.png"), animations: "disabled" });
+  const stew = card(page, "Eggplant Stew");
+  await expect(stew.locator(".estimate-outcome")).toHaveText("Needs 60 g more eggplant");
+  await expect(stew.locator(".recipe-readiness details")).not.toHaveAttribute("open", "");
+  if (isMobile) {
+    await page.setViewportSize({ width: 320, height: 568 });
+    const comparison = await stew.locator(".estimate-outcome").evaluate(outcome => {
+      const navTop = document.querySelector(".mobile-nav")!.getBoundingClientRect().top;
+      const distance = Math.ceil(outcome.getBoundingClientRect().bottom - navTop) + 2;
+      window.scrollBy({ top: distance, behavior: "instant" });
+      return { distance, navTop };
+    });
+    expect(comparison.distance).toBeLessThanOrEqual(comparison.navTop);
+    for (const result of [first, stew]) {
+      const lines = result.locator(".recipe-title-button, .recipe-picks, .estimate-outcome");
+      await expect(lines).toHaveCount(3);
+      for (const line of await lines.all()) {
+        const box = await line.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.y).toBeGreaterThanOrEqual(0);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(comparison.navTop);
+      }
+    }
+    await page.screenshot({ path: info.outputPath("pantry-two-dinners-320.png"), animations: "disabled" });
+  }
+  await expect(await shopping(stew)).toContainText("eggplant: 60 g");
+  const title = stew.getByRole("button", { name: "Eggplant Stew", exact: true });
+  await title.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "Eggplant Stew", exact: true });
+  await expect(drawer.locator(".estimate-outcome")).toHaveText("Needs 60 g more eggplant");
+  await drawer.press("Escape");
+  await expect(title).toBeFocused();
+  await unchanged(page, request, before, activity);
+});
+
 test("Pantry estimates reserve saved dinners and preserve picks and portions when changing dinner day", async ({ page, request }, info) => {
   const recipe = await source(request);
   const reserved = meal(recipe, "2026-10-21");
@@ -104,17 +186,20 @@ test("Pantry estimates reserve saved dinners and preserve picks and portions whe
   const before = await saved(request), activity = watch(page);
   await pick(page, ["rice", "tomato"]);
   await expect(card(page).locator(".recipe-readiness")).toContainText("1 covered · 1 partial · 0 missing · 0 need review");
+  await expect(card(page).locator(".estimate-outcome")).toHaveText("Needs 100 g more rice");
   await expect(await shopping(card(page))).toContainText("rice: 100 g");
   const controls = await context(page);
   await controls.getByRole("spinbutton", { name: "Chef portions", exact: true }).fill("4");
   await expect(card(page).locator(".recipe-readiness")).toContainText("0 covered · 2 partial · 0 missing · 0 need review");
+  await expect(card(page).locator(".estimate-outcome")).toContainText("Needs 300 g more rice");
   await expect(await shopping(card(page))).toContainText("rice: 300 g");
   await expect(await shopping(card(page))).toContainText("tomato: 2");
   await controls.getByLabel("Dinner day", { exact: true }).fill(NEXT_WEEK);
-  await expect(page.locator(".pantry-dinner-results h2")).not.toHaveText("Dinner ideas for tonight");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Dinner ideas for Tuesday");
   await expect(controls.getByRole("spinbutton", { name: "Chef portions", exact: true })).toHaveValue("4");
   for (const name of ["rice", "tomato"]) await expect(page.getByRole("button", { name: `Remove ${name} from picks`, exact: true })).toBeVisible();
   await expect(card(page).locator(".recipe-readiness")).toContainText("1 covered · 1 partial · 0 missing · 0 need review");
+  await expect(card(page).locator(".estimate-outcome")).toHaveText("Needs 100 g more rice");
   await expect(await shopping(card(page))).toContainText("rice: 100 g");
   await unchanged(page, request, before, activity);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -137,10 +222,16 @@ test("unknown pantry amounts remain review items and measured freezer stock carr
   await pick(page);
   const dinner = card(page);
   await expect(dinner.locator(".recipe-readiness")).toContainText("1 covered · 0 partial · 0 missing · 1 need review");
+  await expect(dinner.getByText("Review amount: rice.", { exact: true })).toBeVisible();
+  await expect(dinner.getByText("Includes frozen stock:", { exact: true })).toBeVisible();
   await expect(await shopping(dinner)).toContainText(/rice:.*review/i);
   await expect(dinner).toContainText("Includes frozen stock:");
   await expect(dinner).toContainText("Check preparation before cooking.");
   await expect(dinner.locator(".dinner-ranking-reason")).not.toContainText(/due soon/i);
+  await dinner.getByRole("button", { name: "Tomato Rice", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Tomato Rice", exact: true });
+  await expect(drawer.getByText("Review amount: rice.", { exact: true })).toBeVisible();
+  await expect(drawer.getByText(/tomato: 2\. Check preparation before cooking\./)).toBeVisible();
   await unchanged(page, request, before, activity);
 });
 
@@ -175,6 +266,13 @@ test("Everyday dinners rank by measured fit while an exact title remains findabl
   await page.getByRole("button", { name: "Everyday dinners", exact: true }).click();
   await expect(page.locator(".recipe-card .recipe-title-button").first()).toHaveText("Garlic Tomato Pasta");
   await expect(card(page, "Garlic Tomato Pasta").locator(".recipe-readiness")).toContainText("8 covered · 0 partial · 0 missing · 0 need review");
+  await expect(card(page, "Garlic Tomato Pasta").locator(".estimate-outcome")).toHaveText("Known quantities are covered.");
+  const title = card(page, "Garlic Tomato Pasta").getByRole("button", { name: "Garlic Tomato Pasta", exact: true });
+  await title.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "Garlic Tomato Pasta", exact: true });
+  await expect(drawer.locator(".estimate-outcome")).toHaveText("Known quantities are covered.");
+  await drawer.getByRole("button", { name: "Close recipe" }).click();
+  await expect(title).toBeFocused();
   const query = page.getByRole("searchbox", { name: "Search recipes", exact: true });
   await query.fill("Creamy Garlic Mushroom Pasta");
   await expect(page.locator(".recipe-card .recipe-title-button").first()).toHaveText("Creamy Garlic Mushroom Pasta");

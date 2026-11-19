@@ -75,7 +75,7 @@ test("inline needs reserve other dinners and weekly shopping returns to this din
   await page.goto("/");
   const needs = page.getByRole("region", { name: "Dinner shopping needs", exact: true });
   await expect(needs).toContainText("rice: 100 g");
-  await page.getByRole("button", { name: "Weekly shopping", exact: true }).click();
+  await page.getByRole("button", { name: "Shop for this dinner", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Bought rice 100 g", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Back to dinner", exact: true }).click();
   await expect(needs).toContainText("rice: 100 g");
@@ -145,6 +145,8 @@ test("unknown yields use editable batches and multiple methods are selected inli
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Cook · Oven", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking Tomato Rice", exact: true });
+  await expect(cooking.locator("header")).toContainText("Oven");
+  await expect(cooking.locator("header")).toContainText("1 / 1");
   await expect(cooking).toContainText("Bake for 20 minutes.");
   await expect(cooking).not.toContainText("Simmer for 10 minutes.");
 });

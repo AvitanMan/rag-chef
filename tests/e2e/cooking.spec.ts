@@ -134,6 +134,31 @@ test("source-duration timers pause, reset and keep their remaining time across s
   await expect(cooking.getByRole("timer")).toContainText("10:00");
 });
 
+test("Eggplant Stew offers step timers for the simmer and keeps its recipe total out of both timer controls", async ({ page, request }) => {
+  const recipe = await recipeFixture(request, "fixture-eggplant");
+  await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
+  const cooking = page.getByRole("dialog", { name: "Cooking Eggplant Stew", exact: true });
+  await expect(cooking).toContainText("Total time: 20 minutes. Dice the eggplant.");
+  await expect(cooking.getByRole("button", { name: "Set timer", exact: true })).toBeVisible();
+  await expect(cooking.getByRole("button", { name: /from this step/ })).toHaveCount(0);
+  await cooking.getByRole("button", { name: "Add another timer" }).click();
+  const useStepDuration = cooking.getByRole("button", { name: "Use this step’s duration" });
+  await expect(useStepDuration).toHaveCount(0);
+  await cooking.getByRole("button", { name: "Cancel new timer" }).click();
+
+  await cooking.getByRole("button", { name: /Next step/ }).click();
+  await expect(cooking).toContainText("Simmer with tomato for 15 minutes.");
+  await cooking.getByRole("button", { name: "Start 15 min from this step" }).click();
+  const mainTimer = cooking.getByRole("timer", { name: "Time remaining", exact: true });
+  await expect(mainTimer).toHaveText("15:00");
+  await cooking.getByRole("button", { name: "Add another timer" }).click();
+  await useStepDuration.click();
+  await expect(cooking.getByLabel("Additional timer minutes")).toHaveValue("15");
+  await expect(cooking.getByLabel("Additional timer seconds")).toHaveValue("0");
+});
+
 test("a source time range keeps manual timers available without offering an endpoint as the source duration", async ({ page, request }) => {
   const recipe = { ...await recipeFixture(request), instructions: ["Simmer between 5 and 10 minutes."] };
   await saveFixture(request, { ...emptyState(), meals: { [TODAY]: mealFixture(recipe) } });

@@ -33,6 +33,7 @@ export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook,
         {readiness.personalAmountsApplied && <p className="quantity-note">Includes captured personal amounts scaled for this dinner.</p>}
         {readiness.shopping.length ? <ul>{readiness.shopping.map((item, index) => <li key={index}><strong>{item.name}</strong>: {item.measure}{item.needsReview ? " · Review amount" : ""}{item.preparationNote && <small>{item.preparationNote}</small>}</li>)}</ul> : <p>Known quantities are covered.</p>}
       </section>}
+      <button className="secondary-button" onClick={shop}>Shop for this dinner</button>
       {!meal.recipe && <p role="alert">This saved recipe is unavailable. Choose a replacement to recover its shopping amounts.</p>}
       {methodsOpen ? <section className="method-picker" aria-label="Choose cooking method"><h3>Choose a cooking method</h3>{methods.map((method, index) => <button className="primary-button" key={index} onClick={() => selectMethod(index)}>Cook · {method.title}</button>)}<button className="text-button" onClick={cancelMethod}>Cancel method selection</button></section>
         : meal.recipe && <button className="primary-button" onClick={cook}>Cook dinner</button>}
@@ -42,6 +43,6 @@ export function ChosenDinner({ meal, today, readiness, eligibility, patch, cook,
         <DinnerAmounts meal={meal} patch={patch} />
       </details>}
     </>}
-    <div className="dinner-secondary-actions">{meal.recipe && <button className="text-button" onClick={details}>Recipe details</button>}<button className="text-button" onClick={shop}>Weekly shopping</button></div>
+    <div className="dinner-secondary-actions">{meal.recipe && <button className="text-button" onClick={details}>Recipe details</button>}{meal.status === "cooked" && <button className="text-button" onClick={shop}>Weekly shopping</button>}</div>
   </section>;
 }

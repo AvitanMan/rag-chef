@@ -328,6 +328,11 @@ test("Today is immediately actionable and saving reveals and focuses the new din
   await page.goto("/");
   await navigate(page, "Plan");
   const today = page.getByRole("region", { name: "Today’s dinner", exact: true });
+  const week = page.getByRole("region", { name: "Plan week", exact: true });
+  const actions = page.getByRole("region", { name: "Plan actions", exact: true });
+  await expect(week).toContainText("0 of 7 dinners planned.");
+  expect((await today.boundingBox())!.y).toBeLessThan((await week.boundingBox())!.y);
+  expect((await week.boundingBox())!.y).toBeLessThan((await actions.boundingBox())!.y);
   const box = await today.boundingBox();
   expect(box!.y + box!.height).toBeLessThan(page.viewportSize()!.height);
   await today.getByRole("button", { name: "Choose tonight’s dinner", exact: true }).click();
@@ -403,6 +408,10 @@ test("preferences come first and theme follows the system until a manual choice 
   const backup = await page.getByRole("heading", { name: "Kitchen backup", exact: true }).boundingBox();
   expect(backup!.y).toBeGreaterThan(allergies!.y);
   await page.screenshot({ path: info.outputPath("settings-dark.png"), fullPage: true });
+  const sources = page.locator(".settings-sources");
+  await expect(sources.locator(".source-list")).toBeHidden();
+  await sources.getByText("Where recipes come from", { exact: true }).click();
+  await expect(sources.locator(".source-list")).toContainText("Original test fixtures");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await navigate(page, "Recipes");
@@ -412,6 +421,49 @@ test("preferences come first and theme follows the system until a manual choice 
   await page.screenshot({ path: info.outputPath("recipe-dark.png") });
   expect(errors).toEqual([]);
 });
+
+for (const change of ["provider", "model"] as const) {
+  test(`AI settings ignore a delayed result after changing the ${change}`, async ({ page }) => {
+    await page.goto("/");
+    await navigate(page, "Settings");
+    const ollama = page.getByRole("button", { name: /^Ollama/ });
+    const openai = page.getByRole("button", { name: /^OpenAI/ });
+    await expect(ollama).toHaveAttribute("aria-pressed", "true");
+    const model = page.getByRole("textbox", { name: "Model", exact: true });
+    const original = await model.inputValue();
+    let release!: () => void;
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    const oldRequest = (url: URL) => url.pathname === "/api/health" && url.searchParams.get("provider") === "ollama" && url.searchParams.get("model") === original;
+    await page.route("**/api/health?*", async route => {
+      const old = oldRequest(new URL(route.request().url()));
+      if (old) await delayed;
+      const message = old ? "Old connection" : "Selected connection";
+      await route.fulfill({ json: { message, capabilities: { generation: { ready: true, message: message + " details" } } } });
+    });
+    const check = page.getByRole("button", { name: "Test connection", exact: true });
+    const status = page.locator(".connection-row").getByRole("status");
+    const requestStarted = page.waitForRequest(request => oldRequest(new URL(request.url())));
+    await check.click();
+    await requestStarted;
+    try {
+      if (change === "provider") {
+        await openai.focus();
+        await openai.press("Enter");
+        await expect(openai).toHaveAttribute("aria-pressed", "true");
+        await expect(ollama).toHaveAttribute("aria-pressed", "false");
+      } else await model.fill(original + "-other");
+      await expect(status).toHaveText("Not tested");
+      await check.click();
+      await expect(status).toHaveText("Selected connection");
+      const oldResponse = page.waitForResponse(response => oldRequest(new URL(response.url())));
+      release();
+      await (await oldResponse).finished();
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(status).toHaveText("Selected connection");
+      await expect(page.getByRole("list", { name: "Chef capabilities" })).toHaveText("Selected connection details");
+    } finally { release(); }
+  });
+}
 
 test("theme toggle remains usable when preference storage cannot be written", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
