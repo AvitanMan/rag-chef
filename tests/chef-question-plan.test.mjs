@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 const dir = await mkdtemp(join(tmpdir(), "chef-question-plan-"));
 after(() => rm(dir, { recursive: true, force: true }));
-for (const name of ["chef-question-plan", "chef-planning-answer", "chef-grounding", "quantities", "kitchen-types"]) {
+for (const name of ["recipe-instructions", "chef-question-plan", "chef-planning-answer", "chef-grounding", "quantities", "kitchen-types"]) {
   const source = await readFile(new URL(`../app/lib/${name}.ts`, import.meta.url), "utf8");
   await writeFile(join(dir, name + ".mjs"), ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace(/"\.\/([\w-]+)"/g, '"./$1.mjs"'));
 }
@@ -61,4 +61,27 @@ test("partial timing does not borrow another action's duration or a negated dura
     const out = partialRecipeAnswer({ ...recipe, instructions: [text] }, "How many calories per serving, and how long does it bake?");
     assert.equal(out.remainingQuery, "how long does it bake?", text); assert.deepEqual(out.evidenceIds, [], text);
   }
+});
+
+test("focused facts preserve duration ranges and never promote a second action's time", async () => {
+  const { focusedCookingFact } = await import(pathToFileURL(join(dir, "chef-question-plan.mjs")));
+  const ask = (text, query) => focusedCookingFact({ evidenceId: "S4", number: 2, text }, query);
+  assert.equal(ask("4. Simmer the rice for about 8–10 minutes.", "How long does step 2 take?").answer, "Simmer for about 8–10 minutes.");
+  assert.equal(ask("Bake the rolls for at least 17 minutes until golden.", "How do I know when they are ready?").answer, "Bake the rolls for at least 17 minutes until golden.");
+  assert.equal(ask("Cook the beans until just cooked.", "How do I know when the beans are ready?").missingCue, true);
+  for (const instruction of [
+    "Bake until the sauce bubbles for 5 minutes.",
+    "Bake until golden, rest for 10 minutes.",
+    "If the crust is pale, bake for 10 minutes.",
+    "Do not bake for 10 minutes.",
+  ]) assert.equal(ask(instruction, "How long do I bake it?"), undefined, instruction);
+  assert.equal(ask("Boil the potatoes for 7 minutes.", "How long do I boil the peas?"), undefined);
+  for (const instruction of [
+    "Simmer the beans but boil the rice for 5 minutes.",
+    "Simmer the beans instead of cooking the rice for 5 minutes.",
+    "Simmer the beans to soften them for 8 minutes.",
+    "Simmer the beans; they shouldn't cook for 8 minutes.",
+  ]) assert.equal(ask(instruction, "How long do I simmer the beans?"), undefined, instruction);
+  assert.equal(ask("Cook the beans with the rice until the rice is tender.", "How do I know when the beans are ready?"), undefined);
+  assert.equal(ask("Simmer the beans over low heat for 7 minutes.", "How long does it take?").answer, "Simmer the beans over low heat for 7 minutes.");
 });

@@ -560,7 +560,7 @@ function mockChef(contexts, transform = (answer) => answer, prompts = []) {
     assert.equal(body.format.properties.citations, undefined);
     assert.deepEqual(body.format.properties.recommendations.items.required, ["recipeId", "reason"]);
     assert.match(body.messages[0].content, /Required JSON schema:/);
-    assert.match(prompt, /at most two short sentences|two to four short actions or sentences/);
+    assert.match(prompt, /at most two short sentences|two to four short actions or sentences|up to five short sentences \(140 words\)/);
     assert.match(prompt, /complete original ingredients.*complete original directions/);
     prompts.push(prompt);
     const context = JSON.parse(prompt.slice(prompt.indexOf("\n\n") + 2));
@@ -1469,7 +1469,7 @@ test("step explanations receive the canonical focused step and separately attrib
   const before = (await store.listCatalogRecipes())[0];
   for (const [query, purpose, step, techniques] of [
     ["What does this instruction mean?", "cooking", "S1", 1],
-    ["Explain step 2", "cooking", "S2", 0],
+    ["Which components are handled in step 2?", "cooking", "S2", 0],
     ["How long do I boil it?", "cooking", "S1", 0],
     ["Explain boiling", undefined, undefined, 0],
   ]) {
@@ -1482,8 +1482,14 @@ test("step explanations receive the canonical focused step and separately attrib
       assert.equal(result.verification.status, "not_required");
       assert.equal(result.timings.generationMs, 0); assert.equal(contexts.length, 0);
       assert.match(result.answer, /large bubbles/);
+    } else if (query === "How long do I boil it?") {
+      assert.equal(result.answerStatus, "unsupported");
+      assert.match(result.answer, /does not specify a duration/);
+      assert.equal(result.timings.generationMs, 0);
+      assert.equal(result.timings.verificationMs, 0);
+      assert.equal(contexts.length, 0);
     } else assert.equal(result.verification.status, "checked");
-    if (purpose && !techniques) {
+    if (purpose && result.verification.status === "checked") {
       assert.deepEqual(contexts[0].focusedCookingStep, { recipeId: "R1", evidenceId: step, number: Number(step.slice(1)), text: instructions[Number(step.slice(1)) - 1] });
       assert.equal(contexts[0].techniqueGuidance.length, techniques);
     } else if (!purpose) assert.equal(contexts[0].focusedCookingStep, undefined);
@@ -1495,6 +1501,29 @@ test("step explanations receive the canonical focused step and separately attrib
   }
   assert.deepEqual((await store.listCatalogRecipes())[0], before);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM kitchen_state").get().n, 0);
+});
+
+test("step help preserves its cited instruction when a practical suggestion is accepted or rejected", async () => {
+  const instruction = "Fold the beans into the rice. Keep the beans whole.";
+  const { catalogId } = await importOne(await draft(0, { instructions: [instruction] }));
+  for (const [tip, suitable] of [["Lift the rice gently over the beans with a spoon.", true], ["Mash the beans with a fork.", false]]) {
+    const calls = [];
+    globalThis.fetch = async (_url, { body }) => {
+      const context = JSON.parse(JSON.parse(body).messages[1].content);
+      calls.push(context.task);
+      const reply = context.task === "suggest_cooking_tip" ? { tip } : { suitable };
+      return Response.json({ message: { content: JSON.stringify(reply) } });
+    };
+    const result = await (await chefRoute.POST(chefRequest({ query: "How do I do that?",
+      context: { recipeId: catalogId, purpose: "cooking", stepEvidenceId: "S1" } }))).json();
+    assert.deepEqual(calls, ["suggest_cooking_tip", "review_cooking_tip"]);
+    assert.equal(result.cookingTip, suitable ? tip : undefined);
+    assert.equal(result.answerStatus, "answered");
+    assert.deepEqual(result.sourceFacts, [{ recipeId: catalogId, evidenceId: "S1", fact: instruction }]);
+    assert.ok(result.answer.includes(instruction));
+    assert.ok(!result.answer.includes(tip));
+    assert.equal(result.citations[0].recipeId, catalogId);
+  }
 });
 
 test("a rejected local step answer gets one correction attempt and every replacement is verified", async () => {
@@ -1923,7 +1952,7 @@ test("sequencing words preserve verified cooking commands", async () => {
   const imported = await importOne(await draft(0, { instructions: ["Keep the sauce warm.", "Stop stirring."] }));
   for (const [step, answer] of [["S1", "Next, keep the sauce warm."], ["S2", "Now stop stirring."]]) {
     mockChef([], out => ({ ...out, answerStatus: "answered", answer, recommendations: [], sourceFacts: [{ recipeId: "R1", evidenceId: step }] }));
-    const result = await (await chefRoute.POST(chefRequest({ query: "What should I do now?", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: step } }))).json();
+    const result = await (await chefRoute.POST(chefRequest({ query: "Which instruction applies to the sauce here?", context: { recipeId: imported.catalogId, purpose: "cooking", stepEvidenceId: step } }))).json();
     assert.equal(result.answerStatus, "answered", answer); assert.equal(result.answer, answer); assert.equal(result.verification.status, "checked");
   }
 });

@@ -8,6 +8,7 @@ import { createSourceLoader } from "../tools/testing/load-source.mjs";
 const sources = await createSourceLoader({ name: "recipe-presentation" });
 after(() => sources.dispose());
 const { RecipeCard, RecipeDrawer } = await sources.import("app/components/RagChefApp.tsx");
+const { ChefAnswerContent } = await sources.import("app/components/CookingTechniqueReferences.tsx");
 const { ChefGrounding } = await sources.import("app/components/ChefGrounding.tsx");
 const { DinnerAmounts, DurablePlanView, DurableShoppingView } = await sources.import("app/components/WeeklyKitchenViews.tsx");
 const { recipePantryDetails } = await sources.import("app/lib/recipe-browser.ts");
@@ -100,6 +101,19 @@ test("catalog fallback retains real recipe excerpts and never claims an AI answe
   assert.match(html, /Retrieved recipe excerpt/);
   assert.match(html, /<blockquote>100 g rice<\/blockquote>/);
   assert.doesNotMatch(html, /Cited recipe excerpt|AI answer from retrieved recipes|Meaning, keywords/);
+});
+test("cooking answers present a separate Chef tip and show evidence for the requested method step", () => {
+  const context = { recipeId: recipe.id, purpose: "cooking", stepEvidenceId: "S1", methodStep: { number: 2, evidenceId: "S2" } };
+  const result = { generation: "catalog_fallback", resolvedContext: context, sourceFacts: [], answer: recipe.instructions[1], cookingTip: "Lift a small spoonful to see the grains." };
+  const answer = renderToStaticMarkup(createElement(ChefAnswerContent, { result }));
+  assert.ok(answer.indexOf(result.answer) < answer.indexOf("Chef tip"));
+  assert.match(answer, /Chef tip<\/strong><p>Lift a small spoonful/);
+  const html = grounding(result);
+  assert.match(html, /Recipe facts and a separately labeled AI cooking tip/);
+  assert.match(html, /<blockquote>Then simmer until cooked\.<\/blockquote>/);
+  assert.doesNotMatch(html, /No AI answer used|First rinse the rice/);
+  const unmatched = grounding({ ...result, cookingTip: undefined, answerStatus: "needs_clarification", resolvedContext: { ...context, methodStep: { number: 3 } } });
+  assert.doesNotMatch(unmatched, /<blockquote>/);
 });
 test("source-note evidence is displayed as the canonical note rather than an ingredient with the same number", () => {
   const sourceRecipe = { ...recipe, sourceNotes: ["Total time: 25 minutes.", "Protein: 12 g per serving."] };

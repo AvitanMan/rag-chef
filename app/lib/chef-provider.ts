@@ -1,12 +1,13 @@
 import type { ChefProvider } from "./chef-schema";
 import { runModelOperation, type ModelAdmission } from "./model-admission";
-import { checkLocalVerifier, type ProviderCapability } from "./provider-readiness";
+import { checkLocalVerifier, isLoopback, type ProviderCapability } from "./provider-readiness";
 import { embedTextsWithOllama } from "./recipe-embeddings";
 import { verifyChefAnswer } from "./chef-verification";
 import { hostedMode, initializeHouseholdRuntime } from "./household";
 import { readProviderText } from "./provider-response";
 
 export interface ChefGenerationRequest {
+  operation?: "verification";
   provider: ChefProvider;
   model: string;
   systemPrompt: string;
@@ -59,8 +60,11 @@ export function createChefModelTransport(options: {
       const timeoutMs = options.timeoutMs ?? generationTimeoutMs();
       const apiKey = setting("OPENAI_API_KEY");
       if (provider === "openai" && !apiKey) throw new ProviderError("OpenAI is not configured. Add OPENAI_API_KEY to the server environment.", 503, "provider_not_configured");
-      return runModelOperation(options.admission, provider, "generation", async signal => {
+      return runModelOperation(options.admission, provider, request.operation ?? "generation", async signal => {
         const baseUrl = setting(provider === "openai" ? "OPENAI_BASE_URL" : "OLLAMA_BASE_URL", provider === "openai" ? "https://api.openai.com/v1" : "http://127.0.0.1:11434").replace(/\/+$/, "");
+        if (request.operation === "verification" && (provider !== "ollama" || !isLoopback(baseUrl))) {
+          throw new ProviderError("Cooking tip verification requires local Ollama.", 503, "verification_unavailable");
+        }
         const messages = [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
         const body = provider === "openai"
           ? { model, store: false, max_output_tokens: 2_500, input: messages, text: { format: { type: "json_schema", name: "rag_chef_answer", strict: true, schema } } }

@@ -1,4 +1,5 @@
 import type { Recipe } from "./recipe-types";
+import { requestedCookingStep } from "./recipe-instructions";
 import { recipeEvidence, selectQuestionEvidence } from "./chef-context";
 import { bm25Scores, reciprocalRanks } from "./retrieval-ranking";
 import { cosineSimilarity, isValidEmbeddingVector } from "./recipe-embeddings";
@@ -11,14 +12,14 @@ export type EvidenceSelection = {
   indexedSteps: number;
   totalSteps: number;
 };
-export function selectRecipeEvidence(recipe: Recipe, query: string, options: { stepId?: string; vectors?: Map<number, number[]>; queryVector?: number[] | null; budget?: number; full?: boolean } = {}): EvidenceSelection {
+export function selectRecipeEvidence(recipe: Recipe, query: string, options: { stepId?: string; stepResolved?: boolean; vectors?: Map<number, number[]>; queryVector?: number[] | null; budget?: number; full?: boolean } = {}): EvidenceSelection {
   const all = recipeEvidence(recipe), budget = Math.max(0, options.budget ?? 16_000);
   const vectors = new Map([...(options.vectors ?? [])].filter(([index, vector]) => recipe.instructions[index] !== undefined && isValidEmbeddingVector(vector, options.queryVector?.length)));
   const semantic = Boolean(options.queryVector && vectors.size);
   const totalSize = all.reduce((sum, item) => sum + item.text.length, 0);
   const full = options.full || all.length <= 12 || !options.stepId && /\b(?:full|complete|all)\s+(?:directions|instructions|method)|\bhow\b.*\b(?:make|cook|prepare)\b/i.test(query);
   if (full && totalSize <= budget) return { items: all, coreStepIds: recipe.instructions.map((_, index) => `S${index + 1}`).slice(0, 6), method: "full_recipe", complete: true, indexedSteps: vectors.size, totalSteps: recipe.instructions.length };
-  const legacy = selectQuestionEvidence(recipe, query, options.stepId);
+  const legacy = selectQuestionEvidence(recipe, query, options.stepId, options.stepResolved);
   const hinted = new Set(legacy.length < all.length ? legacy.map((item) => item.evidenceId) : []);
   const scores = bm25Scores(recipe.instructions.map((text, index) => ({ id: `S${index + 1}`, title: "", ingredients: "", other: text })), query);
   const lexical = recipe.instructions.map((_, index) => `S${index + 1}`).filter((id) => (scores.get(id) ?? 0) > 0 || hinted.has(id))
@@ -33,8 +34,8 @@ export function selectRecipeEvidence(recipe: Recipe, query: string, options: { s
     for (const value of [index, index - 1, index + 1]) if (recipe.instructions[value - 1]) priority.push(`S${value}`);
   };
   if (options.stepId) neighbors(options.stepId);
-  const explicit = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
-  if (explicit) neighbors(`S${Number(explicit[1])}`);
+  const explicit = options.stepResolved ? undefined : requestedCookingStep(query);
+  if (explicit !== undefined) neighbors(`S${explicit}`);
   const noteScores = bm25Scores((recipe.sourceNotes ?? []).map((text, index) => ({ id: `N${index + 1}`, title: "", ingredients: "", other: text })), query);
   const timingQuestion = /\b(?:how long|time|duration|minutes?|hours?|seconds?)\b/i.test(query);
   const nutritionQuestion = /\b(?:nutrition(?:al)?|nutrients?|macros?|calories?|kcal|protein|carbohydrates?|carbs?|fat|fibre|fiber|sodium|sugar)\b/i.test(query);

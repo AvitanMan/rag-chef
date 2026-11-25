@@ -2043,7 +2043,7 @@ input[aria-invalid="true"] { border-color: var(--paprika-dark); }
 .cook-help p, .step-chef-reply { font-size: 14px; line-height: 1.6; }
 .step-chef-reply { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; overflow-wrap: anywhere; }
 .step-chef-reply blockquote { font-size: 14px; border-left: 2px solid var(--paprika); padding-left: 12px; margin: 12px 0; }
-.step-chef-reply .step-explanation { white-space: pre-line; }
+.step-explanation { white-space: pre-line; }
 .step-chef-reply details { margin: 12px 0; }
 .step-chef-reply summary { cursor: pointer; font-weight: 600; }
 .step-chef-reply a { display: inline-flex; min-height: 44px; align-items: center; font-size: 12px; }

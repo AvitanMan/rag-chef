@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cookingAnswerCases, gradeCookingAnswer } from "./cooking-answer-cases.mjs";
 import { summarizeGroundingResults } from "./evaluation-grading.mjs";
 import { fingerprintApplication, fingerprintFiles } from "./evaluation-fingerprints.mjs";
 
@@ -27,7 +28,7 @@ const kitchenBefore = await get("/api/kitchen"), catalogBefore = await get("/api
 const catalog = JSON.parse(catalogBefore).recipes;
 if (!catalog.some((recipe) => recipe.id === "fixture-oven-dinner")) throw new Error("The disposable grounding fixtures are missing.");
 
-const cases = [
+const originalCases = [
   { id: "step-duration", recipeId: "fixture-tomato-rice", query: "How long does the source say to simmer?", evidence: "S2", answer: /\b10\s*(?:minutes?|mins?)\b/i },
   { id: "temperature-paraphrase", recipeId: "fixture-oven-dinner", query: "How hot should the oven be?", evidence: "S20", answer: /(?:180\s*°?\s*(?:c\b|celsius)|356\s*°?\s*(?:f\b|fahrenheit))/i },
   { id: "doneness-paraphrase", recipeId: "fixture-oven-dinner", query: "How can I tell it is done?", evidence: "S20", answer: /golden/i },
@@ -37,6 +38,7 @@ const cases = [
   { id: "step-time-unknown", recipeId: "fixture-step-soup", step: "S1", query: "How long do I boil them?", evidence: "S1", unknown: true, noDuration: true },
   { id: "step-ingredients-in-scope", recipeId: "fixture-step-soup", step: "S2", query: "Which vegetables do I use in this step?", evidence: "S2", allowWithheld: true, answer: /\b(?:bread|soup|no new vegetables)\b/i, forbid: /\b(?:uses?|contains?)\s+no vegetables|\bonly bread\b/i },
 ];
+const cases = [...originalCases, ...cookingAnswerCases];
 const results = [];
 for (const item of cases) {
   const started = performance.now();
@@ -59,7 +61,8 @@ for (const item of cases) {
     // a checked correction or an explicit refusal with the exact step is safe.
     const withheldSafely = Boolean(item.allowWithheld && result.answerStatus === "unverified" && result.generation === "catalog_fallback"
       && result.verification?.status === "rejected" && expectedEvidence && exactEvidence && /could not verify/i.test(result.answer ?? ""));
-    const answerMatches = withheldSafely || (item.unsupported ? result.answerStatus === "unsupported"
+    const cookingChecks = cookingAnswerCases.includes(item) ? gradeCookingAnswer(item, result) : undefined;
+    const answerMatches = cookingChecks ? Object.values(cookingChecks).every(Boolean) : withheldSafely || (item.unsupported ? result.answerStatus === "unsupported"
       : item.unknown ? /\b(?:unknown|not (?:provided|given|stated|established|specified)|does not (?:establish|specify|state|provide)|doesn't (?:state|provide|specify))\b/i.test(result.answer ?? "")
       : (item.technique ? result.answerKind === "cooking_technique" : result.generation === "ai") && result.answerStatus === "answered" && item.answer.test(result.answer ?? ""));
     const techniqueExplained = !item.technique || (result.cookingTechniques ?? []).some(guide => guide.term === "Boiling" && /large bubbles/.test(guide.explanation)
@@ -71,7 +74,7 @@ for (const item of cases) {
     const passed = response.ok && result.outcome === "matches" && exactEvidence && expectedEvidence && answerMatches && techniqueExplained && noInventedDuration && noUnsupportedParaphrase && noUnverifiedAnswer;
     results.push({ id: item.id, query: item.query, passed, exactEvidence, expectedEvidence, answerMatches, techniqueExplained, noInventedDuration, noUnsupportedParaphrase, noUnverifiedAnswer, withheldSafely,
       milliseconds: Math.round(performance.now() - started), generation: result.generation, answerKind: result.answerKind, answerStatus: result.answerStatus,
-      answer: result.answer, cookingTechniques: result.cookingTechniques, sourceFacts: result.sourceFacts, selectedEvidence: selected, verification: result.verification, answerValidation: result.answerValidation, timings: result.timings });
+      answer: result.answer, cookingTip: result.cookingTip, cookingChecks, cookingTechniques: result.cookingTechniques, sourceFacts: result.sourceFacts, selectedEvidence: selected, verification: result.verification, answerValidation: result.answerValidation, timings: result.timings });
   } catch (error) {
     results.push({ id: item.id, passed: false, error: error.message, milliseconds: Math.round(performance.now() - started) });
   }
@@ -80,15 +83,19 @@ for (const item of cases) {
 const unchanged = kitchenBefore === await get("/api/kitchen") && catalogBefore === await get("/api/recipes/catalog");
 const [sourceFingerprint, evaluationFingerprint] = await Promise.all([
   fingerprintApplication(ROOT),
-  fingerprintFiles(ROOT, ["tools/recipes/evaluate-grounding.mjs", "tools/recipes/evaluation-grading.mjs", "tools/recipes/evaluation-fingerprints.mjs", "tools/recipes/rag-cases.mjs", "tools/testing/run-isolated.mjs", "tools/testing/fixtures.mjs", "tools/testing/journey-fixtures.mjs"]),
+  fingerprintFiles(ROOT, ["tools/recipes/evaluate-grounding.mjs", "tools/recipes/cooking-answer-cases.mjs", "tools/recipes/evaluation-grading.mjs", "tools/recipes/evaluation-fingerprints.mjs", "tools/recipes/rag-cases.mjs", "tools/testing/run-isolated.mjs", "tools/testing/fixtures.mjs", "tools/testing/journey-fixtures.mjs"]),
 ]);
 const summary = summarizeGroundingResults(cases, results);
-const report = { reportVersion: 2, generatedAt: new Date().toISOString(), model: installed.name, modelDigest: installed.digest, ollamaVersion: version.version,
+function groupSummary(group) {
+  const ids = new Set(group.map(item => item.id));
+  return summarizeGroundingResults(group, results.filter(row => ids.has(row.id)));
+}
+const report = { reportVersion: 3, generatedAt: new Date().toISOString(), model: installed.name, modelDigest: installed.digest, ollamaVersion: version.version,
   corpusSha256: createHash("sha256").update(catalogBefore).digest("hex"), syntheticRecipes: catalog.length,
   sourceSha256: sourceFingerprint.sha256, sourceFiles: sourceFingerprint.files, evaluationSha256: evaluationFingerprint.sha256, evaluationFiles: evaluationFingerprint.files,
   labelsSha256: createHash("sha256").update(JSON.stringify(cases, (_, value) => value instanceof RegExp ? value.toString() : value)).digest("hex"),
-  passed: summary.checks.passed, total: cases.length, withheld: summary.withheldAnswers.permitted, unchanged, summary, gatesPassed: unchanged && summary.contractChecksPassed, results,
-  scope: "Eight fixed synthetic checks: four answerable source questions, three correct refusals or uncertainty responses, and one wrong-step-premise guard. The guard permits a checked correction or explicit withholding with the canonical step; withholding never counts as a useful answer. This is not a general answer-accuracy benchmark." };
+  passed: summary.checks.passed, total: cases.length, withheld: summary.withheldAnswers.permitted, unchanged, summary, originalChecks: groupSummary(originalCases), focusedCooking: groupSummary(cookingAnswerCases), gatesPassed: unchanged && summary.contractChecksPassed, results,
+  scope: "Eight original synthetic contracts and six selected-step cooking cases. The original wrong-premise guard permits safe withholding, which never counts as useful. Focused questions test direct time and doneness, practical folding help, missing facts, and a prohibited action." };
 await writeFile(join(process.env.RAG_CHEF_TEST_ARTIFACTS, "grounding-results.json"), JSON.stringify(report, null, 2) + "\n");
 console.log(JSON.stringify(report, null, 2));
 if (!report.gatesPassed) process.exitCode = 1;

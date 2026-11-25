@@ -1,7 +1,7 @@
 import type { PlannedMeal } from "./kitchen-types";
 import type { ChefPlanningFact } from "./chef-schema";
 import type { Recipe } from "./recipe-types";
-import { mealAmountBasis, canonicalIngredient, resolvedMealIngredients } from "./quantities";
+import { mealAmountBasis, canonicalIngredient, normalizePlanningIngredient, parseMeasure, resolvedMealIngredients } from "./quantities";
 
 /** Quantity-only requests: source wording and cooking advice keep their own path. */
 export function isPlanningQuantityQuestion(query: string): boolean {
@@ -29,6 +29,10 @@ function requestedIngredients(query: string): string[] {
     .replace(/^(?:the\s+)?/i, "").replace(/\s+for\s+.+$/i, "").trim()).filter(Boolean) ?? [];
 }
 
+function planningFact(meal: PlannedMeal, ingredient: ReturnType<typeof resolvedMealIngredients>[number], index: number): ChefPlanningFact {
+  return { recipeId: meal.recipeId, ingredientIndex: index, sourceEvidenceId: `I${index + 1}`, ...ingredient, basis: mealAmountBasis(meal, index) };
+}
+
 export function planningQuantityAnswer(meal: PlannedMeal, query: string) {
   const amounts = resolvedMealIngredients(meal);
   const selected = new Set<number>();
@@ -44,11 +48,7 @@ export function planningQuantityAnswer(meal: PlannedMeal, query: string) {
     }));
   }
   const ambiguous = !all && [...selected].some(index => identities.filter(value => value === identities[index]).length > 1);
-  const planningFacts: ChefPlanningFact[] = [...selected].sort((a, b) => a - b).map(index => ({
-    recipeId: meal.recipeId, ingredientIndex: index, sourceEvidenceId: `I${index + 1}`,
-    name: amounts[index].name, measure: amounts[index].measure, needsReview: amounts[index].needsReview,
-    basis: mealAmountBasis(meal, index),
-  }));
+  const planningFacts = [...selected].sort((a, b) => a - b).map(index => planningFact(meal, amounts[index], index));
   const clarify = !planningFacts.length || unmatched.length > 0 || ambiguous || planningFacts.some(row => row.needsReview);
   const yieldLabel = meal.baseServings ? `${meal.servings} servings` : `${meal.batches} recipe ${meal.batches === 1 ? "batch" : "batches"}`;
   const followUp = ambiguous ? " Several saved entries match; which one do you mean?" : unmatched.length ? " Which saved ingredient do you mean for the other amount?" : "";
@@ -85,6 +85,24 @@ function escapePattern(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** A direction belongs to the source. Saved ingredient totals may cover several
+ * directions, so never scale an amount embedded in the imperative itself. */
+export function savedTotalsForDirection(meal: PlannedMeal, recipe: Recipe, text: string): ChefPlanningFact[] {
+  const quantities = text.replace(/\b\d+(?:[.\-/–]\d+)*\s*(?:minutes?|seconds?|hours?|mins?|secs?|hrs?|degrees?\b|°\s*[CF]\b)/gi, "");
+  if (!/[\d¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|half|quarter|remaining|divided)\b/i.test(quantities)) return [];
+  return resolvedMealIngredients(meal).map((row, i) => planningFact(meal, row, i)).filter(fact => {
+    const original = recipe.ingredients[fact.ingredientIndex];
+    if (!original) return false;
+    const line = normalizePlanningIngredient(original);
+    const identity = canonicalIngredient(line.name);
+    if (identity !== canonicalIngredient(fact.name)) return false;
+    const source = parseMeasure(line.measure), saved = parseMeasure(fact.measure);
+    if (line.measure === fact.measure || source && saved && source.unit === saved.unit && source.quantity === saved.quantity) return false;
+    return [line.name.split(/[,()]/u)[0].trim(), identity].some(name =>
+      name && new RegExp(`\\b${escapePattern(name)}\\b(?=$|[.,;:!?)]|\\s+(?:and|or|into|to|until|in|for|over|from|with|before|after|then|[a-z]+ly)\\b)`, "i").test(quantities));
+  });
+}
+
 function sourceMaySpecifyAmount(recipe: Recipe, requested: string): boolean {
   const mention = new RegExp(`\\b${escapePattern(requested)}\\b`, "i");
   const possibleAmount = /[\d¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|half|quarter|pinch|dash|handful|spoonful|to taste|as needed)\b/i;
@@ -92,14 +110,16 @@ function sourceMaySpecifyAmount(recipe: Recipe, requested: string): boolean {
 }
 
 function ingredientListContains(list: string, requested: string): boolean {
-  return list.split(/,|\band\b/i).some(part => ingredientNameMatches(part.trim()
-    .replace(/^(?:the\s+)?(?:remaining\s+)?/i, ""), requested));
+  return list.split(/,|\band\b/i).some(part => {
+    const name = part.trim().replace(/^(?:the\s+)?(?:remaining\s+)?/i, "");
+    return ingredientNameMatches(normalizePlanningIngredient({ name, measure: "" }).name, requested);
+  });
 }
 
 /** Only direct ingredient additions qualify; heating milk or adding to milk does not. */
 function addsIngredient(text: string, requested: string): boolean {
   return text.split(/[.!?;]\s*/).some(sentence => {
-    const addition = sentence.trim().match(/^(?:add|combine|mix in|stir in|pour|fold in)\s+(.+?)(?=\s+(?:into|in|to|with|until|over|a little at a time)\b|$)/i)
+    const addition = sentence.trim().match(/^(?:when the oil is hot,\s*)?(?:add|combine|mix in|stir in|pour(?: in)?|fold in)\s+(.+?)(?=\s+(?:into|in|to|with|until|over|a little at a time)\b|$)/i)
       ?? sentence.trim().match(/^season by adding\s+(.+?)(?=\s+a little at a time\b|$)/i);
     return Boolean(addition && ingredientListContains(addition[1], requested));
   });
@@ -169,21 +189,26 @@ export function originalIngredientAnswer(recipe: Recipe, query: string, step?: {
 }
 
 /** Answer only a saved amount plus one unambiguous source addition, with both bases exposed. */
-export function planningIngredientStepAnswer(meal: PlannedMeal, recipe: Recipe, query: string) {
+export function planningIngredientStepAnswer(meal: PlannedMeal, recipe: Recipe, query: string, step?: { number: number; evidenceId: string; text: string } | null) {
   if (meal.recipeId !== recipe.id || /\b(?:original|source)\b/i.test(query)) return undefined;
   const compound = query.trim().match(/^(how (?:much|many)\s+.+?)(?:,\s*(?:and\s+)?|\s+and\s+|\?\s*)when\s+(?:do|should)\s+(?:i|we)\s+add\s+(.+?)[?.!\s]*$/i);
   if (!compound || !isPlanningQuantityQuestion(compound[1])) return undefined;
   const quantity = planningQuantityAnswer(meal, compound[1]);
   if (quantity.answerStatus !== "answered" || quantity.planningFacts.length !== 1) return undefined;
-  const fact = quantity.planningFacts[0], requested = compound[2].replace(/^the\s+/i, "").trim();
+  const fact = quantity.planningFacts[0], requested = compound[2].replace(/^the\s+/i, "").replace(/\s+in (?:the |this )?(?:whole|entire) recipe$/i, "").trim();
   if (requested.toLowerCase() !== "it" && canonicalIngredient(requested) !== canonicalIngredient(fact.name)) return undefined;
   const ingredient = recipe.ingredients[fact.ingredientIndex];
   // A different/reordered planning ingredient cannot borrow a source ingredient
   // ID or instructions just because a saved amount occupies the same index.
   if (!ingredient || canonicalIngredient(ingredient.name) !== canonicalIngredient(fact.name)
     || recipe.ingredients.filter(row => canonicalIngredient(row.name) === canonicalIngredient(fact.name)).length !== 1) return undefined;
-  const steps = recipe.instructions.map((text, index) => ({ evidenceId: `S${index + 1}`, number: index + 1, text }))
+  const steps = (step ? [step] : recipe.instructions.map((text, index) => ({ evidenceId: `S${index + 1}`, number: index + 1, text })))
     .filter(item => addsIngredient(item.text, canonicalIngredient(fact.name)));
+  if (step && !steps.length) return { ...quantity, sourceStep: step,
+    answer: `${quantity.answer} I couldn't identify an instruction to add ${fact.name} in step ${step.number} of this method.` };
   if (steps.length !== 1) return undefined;
-  return { ...quantity, answerStatus: "answered" as const, answer: `${quantity.answer} Source step ${steps[0].number}: ${steps[0].text}`, sourceStep: steps[0] };
+  const direction = steps[0];
+  const qualifier = step && savedTotalsForDirection(meal, recipe, direction.text).length
+    ? " The saved amount is for the whole dinner." : "";
+  return { ...quantity, answerStatus: "answered" as const, answer: `${quantity.answer} Source step ${direction.number}: ${direction.text}${qualifier}`, sourceStep: direction };
 }

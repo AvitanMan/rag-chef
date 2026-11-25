@@ -1,9 +1,8 @@
 "use client";
 
-import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
+import { ChefAnswerContent } from "./CookingTechniqueReferences";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { PlanningFacts } from "./PlanningFacts";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Modal } from "./Modal";
 import { ThemeToggle } from "./ThemeToggle";
 import { ValidatedInput } from "./ValidatedInput";
@@ -70,7 +69,7 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
   chefBusy?: boolean;
   chefUnavailable?: string;
   chefError?: string;
-  chefReply?: (Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus" | "answerKind" | "planningFacts" | "cookingTechniques"> & { requestQuery?: string }) | null;
+  chefReply?: (Pick<ChefApiResponse, "answer" | "sourceFacts" | "chefChanges" | "citations" | "generation" | "resolvedContext" | "answerStatus" | "answerKind" | "planningFacts" | "cookingTechniques" | "cookingInstruction" | "cookingTip"> & { requestQuery?: string }) | null;
   askChefStep?: (question: string) => void;
   onChange: (session: CookingSession) => void;
   close: () => void;
@@ -78,8 +77,12 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
   completionReview?: ReactNode;
 }) {
   const [now, setNow] = useState(Date.now);
+  const sourceStepId = useMemo(() => visible ? cookingSourceStep(session.recipe, session.instructions, session.step) : undefined,
+    [visible, session.recipe, session.instructions, session.step]);
   const [helpQuestion, setHelpQuestion] = useState("");
   const [lastHelpRequest, setLastHelpRequest] = useState<{ question: string; step: number } | null>(null);
+  // Discard a request as soon as its displayed step changes, even if the cook later returns to it.
+  if (lastHelpRequest && lastHelpRequest.step !== session.step) setLastHelpRequest(null);
   const [minutesInput, setMinutesInput] = useState(String(Math.floor(session.timer.durationMs / 60_000)));
   const [secondsInput, setSecondsInput] = useState(String(Math.floor(session.timer.durationMs / 1000) % 60));
   const [timerError, setTimerError] = useState("");
@@ -193,16 +196,14 @@ export function CookingWorkspace({ session, visible, onChange, close, finish, co
         <ul className="ingredient-list">{ingredients.map((ingredient, index) => <li key={index}><strong>{ingredient.name}</strong><small>{ingredient.measure || "Amount needs review"}{ingredient.needsReview && ingredient.measure ? " · review amount" : ""}{session.plannedMeal && <span className="amount-basis">{mealAmountLabel(session.plannedMeal, index)}</span>}</small></li>)}</ul>
       </section></details>
       {askChefStep && <details className="cook-help"><summary>Ask about this step</summary><section aria-label="Cooking step help">
-        <p className="quantity-note" id="cooking-question-help">{cookingSourceStep(session.recipe, session.instructions, session.step) ? "Ask about this instruction, its ingredients, or timing stated in the recipe. Timers keep running while Chef answers." : "Chef will use the recipe as a whole because this saved step cannot be matched to one source direction."}</p>
+        <p className="quantity-note" id="cooking-question-help">{sourceStepId ? "Ask about this instruction, its ingredients, or timing stated in the recipe. Timers keep running while Chef answers." : "This saved step cannot be matched to one source direction. You can still ask about the original recipe."}</p>
         <form onSubmit={(event) => { event.preventDefault(); if (!chefUnavailable && !chefBusy && helpQuestion.trim()) { const question = helpQuestion.trim(); setLastHelpRequest({ question, step: session.step }); askChefStep(question); setHelpQuestion(""); } }}><label>Question about this step<textarea aria-label="Question about this step" aria-describedby="cooking-question-help" placeholder="e.g. What does this instruction mean?" maxLength={1000} rows={2} value={helpQuestion} onChange={(event) => setHelpQuestion(event.target.value)} /></label><button className="secondary-button" disabled={Boolean(chefUnavailable) || chefBusy || !helpQuestion.trim()}>{chefBusy ? "Checking recipe…" : "Ask Chef about step"}</button></form>
         {chefUnavailable && <p className="quantity-note" role="status">Chef is waiting for the kitchen: {chefUnavailable}</p>}
-        {chefError && <p role="alert">{chefError}</p>}
-        {chefReply && lastHelpRequest?.step === session.step && chefReply.requestQuery === lastHelpRequest.question && chefReply.resolvedContext?.stepEvidenceId === cookingSourceStep(session.recipe, session.instructions, session.step) && <div className="step-chef-reply" aria-live="polite">
+        {chefError && lastHelpRequest?.step === session.step && <p role="alert">{chefError}</p>}
+        {!chefBusy && chefReply && lastHelpRequest?.step === session.step && chefReply.requestQuery === lastHelpRequest.question && chefReply.resolvedContext?.stepEvidenceId === sourceStepId && <div className="step-chef-reply" aria-live="polite">
           <strong>{chefReply.answerKind === "planning_quantities" ? "Saved dinner calculation" : chefReply.generation === "ai" ? "Chef explanation" : "Recipe reference"}</strong>
-          {chefReply.answerKind === "planning_quantities" && <PlanningFacts result={chefReply} />}
-          {chefReply.answerKind !== "cooking_technique" && (chefReply.answerKind !== "planning_quantities" || chefReply.answerStatus !== "answered") && <p className="step-explanation">{chefReply.answer}</p>}
+          <ChefAnswerContent result={chefReply} />
           {chefReply.answerStatus === "unverified" && <button className="secondary-button" disabled={Boolean(chefUnavailable) || chefBusy} onClick={() => askChefStep(lastHelpRequest.question)}>Retry step answer</button>}
-          <CookingTechniqueReferences guides={chefReply.cookingTechniques} />
           {chefReply.sourceFacts.length > 0 && <details className="step-source-evidence"><summary>Source for this answer</summary>{chefReply.sourceFacts.map((fact, index) => <blockquote key={index}>{fact.fact}</blockquote>)}</details>}
           {chefReply.chefChanges.map((change, index) => <div key={index}><b>Suggested change — original recipe unchanged</b><p>{change.change} {change.reason}</p></div>)}
           {chefReply.citations.map(citation => <a key={citation.recipeId} href={citation.sourceUrl} target="_blank" rel="noreferrer">{citation.sourceName} · Original source</a>)}

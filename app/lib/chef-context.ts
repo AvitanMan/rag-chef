@@ -1,7 +1,7 @@
 import type { Recipe, RecipeSearchOptions } from "./recipe-types";
 import type { PantryStock, PlannedMeal } from "./kitchen-types";
 import type { ChefDinnerContext, PantryItem } from "./chef-schema";
-import { cookingStepText } from "./recipe-instructions";
+import { cookingStepText, requestedCookingStep } from "./recipe-instructions";
 import { allocateStockForMeals, mealReadiness, pantryStockEligibility } from "./quantities";
 
 export type CookingTechniqueGuide = { term: string; explanation: string; sourceName: string; sourceUrl: string; licenseUrl: string };
@@ -12,24 +12,40 @@ const COOKING_TECHNIQUES = [
   { pattern: /\bsimmer(?:ing|ed)?\b/i, term: "Simmering", explanation: "Simmering cooks food in liquid below a boil. The liquid moves gently rather than rapidly.", sourceUrl: "https://en.wikibooks.org/wiki/Cookbook:Simmering" },
 ];
 
-export function focusedCookingStep(recipe: Recipe, query: string, currentStepId?: string) {
-  const requested = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
-  const evidenceId = requested ? `S${Number(requested[1])}` : currentStepId;
+export function focusedCookingStep(recipe: Recipe, query: string, currentStepId?: string, methodStep?: ChefDinnerContext["methodStep"]) {
+  const requested = requestedCookingStep(query);
+  const evidenceId = methodStep ? methodStep.evidenceId : requested !== undefined ? `S${requested}` : currentStepId;
   const index = evidenceId && /^S[1-9]\d{0,2}$/.test(evidenceId) ? Number(evidenceId.slice(1)) - 1 : -1;
   const text = recipe.instructions[index];
-  return text ? { evidenceId: evidenceId!, number: index + 1, text } : null;
+  return text ? { evidenceId: evidenceId!, number: methodStep?.number ?? index + 1, text } : null;
+}
+
+function techniqueReference({ term, explanation, sourceUrl }: typeof COOKING_TECHNIQUES[number]): CookingTechniqueGuide {
+  return { term, explanation, sourceUrl, sourceName: "Wikibooks Cookbook", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" };
+}
+
+export function namedTechniqueGuides(term: CookingTechniqueGuide["term"]): CookingTechniqueGuide[] {
+  return COOKING_TECHNIQUES.filter(guide => guide.term === term).map(techniqueReference);
 }
 
 export function cookingTechniqueGuides(stepText: string, query: string): CookingTechniqueGuide[] {
-  if (!/\b(?:explain|mean|meaning|how do|how should|how to|what is|what does|what should|help)\b/i.test(query)) return [];
-  const namedTerm = query.match(/\b(?:what (?:does|is)|explain)\s+(boil(?:ing)?|simmer(?:ing)?)\b/i)?.[1];
-  return COOKING_TECHNIQUES.filter(guide => guide.pattern.test(stepText) && (!namedTerm || guide.pattern.test(namedTerm))).map(({ term, explanation, sourceUrl }) => ({ term, explanation, sourceUrl,
-    sourceName: "Wikibooks Cookbook", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" }));
+  const namedTerm = query.trim().match(/^(?:please\s+)?(?:what (?:does|is)|explain|how (?:do|should) i)\s+(boil(?:ing)?|simmer(?:ing)?)\b/i)?.[1];
+  if (!isCookingMeaningQuestion(query) && !namedTerm) return [];
+  return COOKING_TECHNIQUES.filter(guide => guide.pattern.test(stepText) && (!namedTerm || guide.pattern.test(namedTerm))).map(techniqueReference);
 }
 
 /** Only standalone meaning requests; compound or recipe-specific questions still use Chef. */
 export function isCookingMeaningQuestion(query: string): boolean {
-  return /^(?:please\s+)?(?:what does (?:this|the|this source|the current) (?:step|instruction|direction) mean|what does (?:boil(?:ing)?|simmer(?:ing)?) mean|explain (?:this|the|the current) (?:source )?(?:step|instruction|direction)|what does this mean)(?:\s+(?:in plain english|in simple terms|simply))?[?.!\s]*$/i.test(query.trim());
+  return /^(?:please\s+)?(?:what does (?:this|the|this source|the current) (?:step|instruction|direction) mean|what does (?:boil(?:ing)?|simmer(?:ing)?) mean|explain (?:this|the|the current) (?:source )?(?:step|instruction|direction)|what does this mean|how (?:do|should|can) (?:i|we) (?:do|perform) (?:this|that|it|this step))(?:\s+(?:in plain english|in simple terms|simply))?[?.!\s]*$/i.test(query.trim());
+}
+
+/** Resolve a named how-to request only when that technique occurs in the step. */
+export function asksAboutSourceTechnique(step: string, query: string): boolean {
+  const term = query.trim().match(/^(?:what (?:does ([a-z]+) mean|is ([a-z]+))|how (?:do|can|should) i ([a-z]+) (?:it|this|them))[?.!\s]*$/i);
+  if (!term) return false;
+  const name = (term[1] ?? term[2] ?? term[3]).toLowerCase();
+  const forms = [/\bfold(?:ing)?\b/i, /\bknead(?:ing)?\b/i, /\bwhisk(?:ing)?\b/i, /\btoss(?:ing)?\b/i, /\bstir(?:ring)?\b/i, /\bmash(?:ing)?\b/i];
+  return forms.some(pattern => pattern.test(name) && pattern.test(step));
 }
 
 /** Preserve every source action and restriction before adding term definitions. */
@@ -71,7 +87,8 @@ export function chefMealReadiness(meal: PlannedMeal, stock: NonNullable<RecipeSe
 }
 
 export async function chefRecipeHash(recipe: Recipe): Promise<string> {
-  const text = JSON.stringify([recipe.id, recipe.title, recipe.ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
+  const ingredients = recipe.ingredients.map(({ name, measure }) => ({ name, measure }));
+  const text = JSON.stringify([recipe.id, recipe.title, ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
@@ -83,7 +100,7 @@ export function recipeEvidence(recipe: Recipe) {
 }
 
 /** Keep original IDs and whole source steps. Missing context is explicit. */
-export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: string) {
+export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: string, stepResolved = false) {
   const all = recipeEvidence(recipe);
   if (!stepId && (all.length <= 12 || /\b(?:full|complete|all)\s+(?:directions|instructions|method)|\bhow\b.*\b(?:make|cook|prepare)\b/i.test(query))) return all;
   const forms: Record<string, string> = { baking: "bake", baked: "bake", boiling: "boil", boiled: "boil", frying: "fry", fried: "fry", simmering: "simmer", simmered: "simmer", melting: "melt", melted: "melt", mixing: "mix", mixed: "mix", draining: "drain", drained: "drain", cooling: "cool", cooled: "cool", stirring: "stir", stirred: "stir" };
@@ -96,8 +113,8 @@ export function selectQuestionEvidence(recipe: Recipe, query: string, stepId?: s
     for (const nearby of [index - 1, index, index + 1]) if (recipe.instructions[nearby]) selected.add(`S${nearby + 1}`);
   };
   if (current >= 0) addStep(current);
-  const requestedStep = query.match(/\b(?:step|direction|instruction)\s*#?\s*(\d{1,3})\b/i);
-  if (requestedStep && recipe.instructions[Number(requestedStep[1]) - 1]) addStep(Number(requestedStep[1]) - 1);
+  const requestedStep = stepResolved ? undefined : requestedCookingStep(query);
+  if (requestedStep !== undefined && recipe.instructions[requestedStep - 1]) addStep(requestedStep - 1);
   const timing = /\b(?:how long|how much time|duration|timing|minutes?|hours?|seconds?)\b/i.test(query);
   const temperature = /\b(?:temperature|degrees?|what heat|how hot|oven setting|preheat)\b/i.test(query);
   const doneness = /\b(?:done|doneness|ready|finished|tender|cooked through)\b/i.test(query);
@@ -133,6 +150,13 @@ export function cookingSourceStep(recipe: Recipe, instructions: string[], step: 
   const exact = matchingCookingSteps(recipe.instructions, instructions, step);
   const matches = exact.length ? exact : matchingCookingSteps(recipe.instructions.map(cookingStepText), instructions.map(cookingStepText), step);
   return matches.length === 1 ? `S${matches[0] + 1}` : undefined;
+}
+
+export function cookingMethodStep(recipe: Recipe, instructions: string[], current: number, currentId: string | undefined, query: string): ChefDinnerContext["methodStep"] {
+  const requested = requestedCookingStep(query);
+  if (requested === undefined && !currentId && /\b(?:original|whole|entire) recipe\b/i.test(query)) return undefined;
+  const number = requested ?? current + 1;
+  return { number, evidenceId: number === current + 1 ? currentId : cookingSourceStep(recipe, instructions, number - 1) };
 }
 
 export async function chefMealHash(meal: import("./kitchen-types").PlannedMeal): Promise<string> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CookingTechniqueReferences } from "./CookingTechniqueReferences";
+import { ChefAnswerContent } from "./CookingTechniqueReferences";
 import { PersonalRecipeAmountsEditor } from "./PersonalRecipeAmountsEditor";
 import { compareKitchens } from "../lib/kitchen-recovery";
 import { isEverydayRecipe, missingEverydayRecipeCount, recipeIntroduction } from "../lib/everyday-collection";
@@ -39,9 +39,8 @@ import { ChosenDinner } from "./ChosenDinner";
 import { DinnerCompletionReview } from "./DinnerCompletionReview";
 import { PurchasePreview } from "./PurchasePreview";
 import { purchasePreviewProblem, purchaseUndoProblem, shoppingForWeek, unappliedBoughtItems, type PurchaseDraft } from "../lib/shopping-purchases";
-import { PlanningFacts } from "./PlanningFacts";
 import { ChefGrounding, recipeEvidenceExcerpt } from "./ChefGrounding";
-import { chefMealHash, chefMealPreview, chefRecipeHash, cookingSourceStep } from "../lib/chef-context";
+import { chefMealHash, chefMealPreview, chefRecipeHash, cookingMethodStep, cookingSourceStep } from "../lib/chef-context";
 import type { ChefDinnerContext, ChefApiResponse } from "../lib/chef-schema";
 import { MAX_CHEF_REFINEMENT_LENGTH } from "../lib/chef-schema";
 import { COOKING_SESSION_KEY, writeCookingSession, canCompleteCookingSession, cookingHasRunningTimer, createCookingSession, parseCookingSession, plannedDinnerFingerprint, type CookingSession } from "../lib/cooking-session";
@@ -93,6 +92,8 @@ type ChefResponse = {
   answerKind?: ChefApiResponse["answerKind"];
   planningFacts?: ChefApiResponse["planningFacts"];
   cookingTechniques?: ChefApiResponse["cookingTechniques"];
+  cookingInstruction?: string;
+  cookingTip?: string;
   verification?: ChefApiResponse["verification"];
   evidenceRetrieval?: ChefApiResponse["evidenceRetrieval"];
   answerStatus?: ChefApiResponse["answerStatus"];
@@ -1650,12 +1651,13 @@ export default function RagChefApp() {
             && chefResult.resolvedContext.mealId === cookingSession.plannedMeal?.id ? chefResult : null}
           askChefStep={(question) => {
             const sourceStep = cookingSourceStep(cookingSession.recipe, cookingSession.instructions, cookingSession.step);
+            const methodStep = cookingMethodStep(cookingSession.recipe, cookingSession.instructions, cookingSession.step, sourceStep, question);
             const meal = cookingSession.plannedMeal;
             if (pinnedRecipe?.id !== cookingSession.recipe.id || chefMealDate !== (meal?.date ?? null)) { setChefTurns([]); setChefResult(null); }
             setChefFlow(current => ({ kind: "discussion", recipe: cookingSession.recipe, mealDate: meal?.date ?? null, date: meal?.date ?? today, origin: current.origin }));
             setChefPortions(meal?.servings ? String(meal.servings) : "");
             void Promise.all([chefRecipeHash(cookingSession.recipe), meal ? chefMealHash(meal) : Promise.resolve(undefined)]).then(([recipeHash, mealHash]) => askChef(question, { purpose: "cooking", recipeId: cookingSession.recipe.id, recipeHash, ...(mealHash ? { mealHash } : {}),
-              ...(sourceStep ? { stepEvidenceId: sourceStep } : {}), ...(meal ? { mealDate: meal.date, mealId: meal.id, targetDate: meal.date } : { targetDate: today }) }));
+              ...(sourceStep ? { stepEvidenceId: sourceStep } : {}), ...(methodStep ? { methodStep } : {}), ...(meal ? { mealDate: meal.date, mealId: meal.id, targetDate: meal.date } : { targetDate: today }) }));
           }}
           onChange={persistCookingSession}
           completionReview={completionReview ?? undefined}
@@ -1822,12 +1824,10 @@ function ChefView({
       {chefError && <section className="inline-confirm chef-error" role="alert"><div><strong>Chef is unavailable</strong><p>{chefError}</p><p>Your local pantry picks are still available below.</p></div><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry Chef</button></section>}
       {chefResult && (
         <section ref={answerRef} tabIndex={-1} className="chef-answer" aria-live="polite" aria-label="Chef answer">
-          <div className="chef-stamp">{chefResult.answerKind === "planning_quantities" ? "Dinner amounts" : chefResult.answerKind === "cooking_technique" ? "Cooking reference" : chefResult.generation === "ai" ? "AI + sources" : "Catalog results"}</div>
+          <div className="chef-stamp">{chefResult.answerKind === "planning_quantities" ? "Dinner amounts" : chefResult.answerKind === "recipe_guidance" ? "Recipe guidance" : chefResult.cookingTip ? "Recipe and AI cooking tip" : chefResult.resolvedContext?.purpose === "cooking" && chefResult.generation === "catalog_fallback" ? "Cooking reference" : chefResult.generation === "ai" ? "AI + sources" : "Catalog results"}</div>
           <div>
             <p className="chef-request">{chefResult.requestQuery}</p>
-            {chefResult.answerKind === "planning_quantities" && <PlanningFacts result={chefResult} />}
-            {chefResult.answerKind !== "cooking_technique" && (chefResult.answerKind !== "planning_quantities" || chefResult.answerStatus !== "answered") && <p>{chefResult.answer}</p>}
-            <CookingTechniqueReferences guides={chefResult.cookingTechniques} />
+            <ChefAnswerContent result={chefResult} />
             {chefResult.answerStatus === "unsupported" && <strong className="answer-status">Question not established by this source</strong>}
             {chefResult.answerStatus === "unverified" && <><strong className="answer-status">AI answer withheld · Check original evidence</strong><button className="secondary-button" disabled={askingChef} onClick={retryChef}>Retry answer</button></>}
             {chefResult.answerStatus === "needs_clarification" && <strong className="answer-status">{chefResult.answerKind === "planning_quantities" ? "Clarify the ingredient or review its amount" : "Choose a recipe or clarify your question"}</strong>}

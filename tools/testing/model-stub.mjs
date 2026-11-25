@@ -24,6 +24,23 @@ export async function startModelStub() {
         if (mode === "hold") await new Promise((resolve) => pending.push(resolve));
         const prompt = body.messages?.find((item) => item.role === "user")?.content ?? "";
         const context = JSON.parse(prompt.startsWith("{") ? prompt : prompt.slice(prompt.lastIndexOf("\n\n") + 2));
+        if (mode === "focused_step") {
+          let reply;
+          if (context.task === "verify_recipe_answer") {
+            const focus = context.sourceFocus;
+            const source = context.evidence.find(item => item.recipeId === focus.recipeId && item.evidenceId === focus.stepEvidenceId);
+            if (!source) throw new Error("Missing evidence for the current cooking step");
+            reply = { sentences: context.sentences.map(claim => ({ id: claim.id, verdict: "supported", supportRefs: [source.ref] })) };
+          } else {
+            const step = context.focusedCookingStep;
+            reply = {
+              answerStatus: "answered", answer: step.text.replace(/^\d+\.\s*/, ""),
+              sourceFacts: [{ recipeId: step.recipeId, evidenceId: step.evidenceId }],
+              chefChanges: [], recommendations: [], warnings: [],
+            };
+          }
+          send(200, { done: true, done_reason: "stop", message: { content: JSON.stringify(reply) } }); return;
+        }
         if (context.task === "verify_recipe_answer") {
           if (mode === "verification_hold") await new Promise((resolve) => pending.push(resolve));
           if (mode === "verification_unavailable") { send(503, { error: "Verification unavailable" }); return; }

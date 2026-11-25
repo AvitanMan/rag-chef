@@ -1,4 +1,18 @@
 import type { CookingTechniqueGuide } from "@/app/lib/chef-context";
+import type { ChefApiResponse } from "../lib/chef-schema";
+import { PlanningFacts } from "./PlanningFacts";
+
+type AnswerContent = Pick<ChefApiResponse, "answer" | "answerKind" | "answerStatus" | "planningFacts" | "resolvedContext" | "cookingInstruction" | "cookingTechniques" | "cookingTip">;
+
+export function ChefAnswerContent({ result }: { result: AnswerContent }) {
+  return <>
+    {result.answerKind === "planning_quantities" && <PlanningFacts result={result} />}
+    {(result.answerKind !== "planning_quantities" || result.answerStatus !== "answered") &&
+      <p className="step-explanation">{result.cookingInstruction ?? result.answer}</p>}
+    <CookingTechniqueReferences guides={result.cookingTechniques} />
+    {result.cookingTip && <section aria-label="Chef tip"><strong>Chef tip</strong><p>{result.cookingTip}</p></section>}
+  </>;
+}
 
 export function CookingTechniqueReferences({ guides }: { guides?: CookingTechniqueGuide[] }) {
   return guides?.map(guide => <section className="technique-reference" aria-label={`${guide.term} explained`} key={guide.term}>

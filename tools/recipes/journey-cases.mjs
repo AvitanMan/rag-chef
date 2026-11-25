@@ -37,7 +37,8 @@ export const journeyCases = [
     { id: "pasta", name: "pasta", measure: "some" }, { id: "leftovers", name: "cooked pasta", measure: "900 g" },
     { id: "zucchini", name: "zucchini", measure: "0" }, { id: "cheese", name: "cheese", measure: "300 g" },
   ], steps: [
-    { id: "unknown-is-not-enough", query: "Recommend Zucchini Pasta Bake.", expect: { first: "bake", only: "bake", minRecommendations: 1, readiness: { coveredCount: 1, partialCount: 0, missingCount: 5, reviewCount: 3 }, shopping: [{ name: "any small pasta", measure: "400 g", needsReview: true }] } },
+    // Unmeasured raw pasta needs review alongside the three unquantified recipe ingredients.
+    { id: "unknown-is-not-enough", query: "Recommend Zucchini Pasta Bake.", expect: { first: "bake", only: "bake", minRecommendations: 1, readiness: { coveredCount: 1, partialCount: 0, missingCount: 4, reviewCount: 4 }, shopping: [{ name: "any small pasta", measure: "400 g", needsReview: true }] } },
     { id: "measure-stock", action: "pantry", patch: { id: "pasta", measure: "200 g" } },
     { id: "partial-is-not-enough", query: "Recommend Zucchini Pasta Bake again with my updated pantry.", expect: { first: "bake", only: "bake", minRecommendations: 1, readiness: { coveredCount: 1, partialCount: 1, missingCount: 4, reviewCount: 3 }, shopping: [{ name: "any small pasta", measure: "200 g", needsReview: true }] } },
   ] },

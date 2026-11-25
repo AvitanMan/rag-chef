@@ -9,7 +9,7 @@ export type OllamaHealth = {
   baseUrl: string; embedModel: string; chatModelInstalled: boolean; embedModelInstalled: boolean;
 };
 
-function isLoopback(baseUrl: string): boolean {
+export function isLoopback(baseUrl: string): boolean {
   try { return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(baseUrl).hostname); }
   catch { return false; }
 }

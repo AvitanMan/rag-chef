@@ -1,5 +1,6 @@
 import type { Recipe, RecipeMetadataMap } from "./recipe-types";
 import { COOKING_PROFILE_LIMITS } from "./kitchen-types";
+import { requestedCookingStep } from "./recipe-instructions";
 
 export const DEFAULT_CHEF_PROVIDER = "ollama" as const;
 export const DEFAULT_OLLAMA_CHAT_MODEL = "qwen3.5:9b";
@@ -78,6 +79,8 @@ export type ChefDinnerContext = {
   servings?: number;
   batches?: number;
   stepEvidenceId?: string;
+  /** Target in the displayed method, with its canonical source ID when uniquely matched. */
+  methodStep?: { number: number; evidenceId?: string };
   previousRecipeIds?: string[];
 };
 
@@ -136,8 +139,10 @@ export type ChefPlanningFact = {
 };
 
 export type ChefApiResponse = ChefStructuredAnswer & {
+  cookingTip?: string;
+  cookingInstruction?: string;
   cookingTechniques?: import("./chef-context").CookingTechniqueGuide[];
-  answerKind?: "planning_quantities" | "cooking_technique";
+  answerKind?: "planning_quantities" | "cooking_technique" | "recipe_guidance";
   planningFacts?: ChefPlanningFact[];
   verification?: import("./chef-verification").AnswerVerification;
   evidenceRetrieval?: Record<string, Omit<import("./chef-evidence").EvidenceSelection, "items">>;
@@ -281,7 +286,7 @@ export function parseChefRequest(value: unknown): ChefRequest {
   if (value.context !== undefined) {
     if (!isRecord(value.context)) throw new ChefValidationError("context must be an object.");
     const row = value.context;
-    const allowed = ["purpose", "recipeId", "recipeHash", "mealHash", "mealDate", "mealId", "kitchenRevision", "targetDate", "today", "servings", "batches", "stepEvidenceId", "previousRecipeIds"];
+    const allowed = ["purpose", "recipeId", "recipeHash", "mealHash", "mealDate", "mealId", "kitchenRevision", "targetDate", "today", "servings", "batches", "stepEvidenceId", "methodStep", "previousRecipeIds"];
     if (Object.keys(row).some((key) => !allowed.includes(key))) throw new ChefValidationError("Unknown dinner context field.");
     context = {};
     if (row.purpose !== undefined) {
@@ -293,6 +298,18 @@ export function parseChefRequest(value: unknown): ChefRequest {
     }
     if ([context.recipeHash, context.mealHash].some((hash) => hash !== undefined && !/^[a-f0-9]{64}$/.test(hash))) throw new ChefValidationError("Invalid recipe version.");
     if (context.stepEvidenceId && !/^S[1-9]\d{0,2}$/.test(context.stepEvidenceId)) throw new ChefValidationError("Invalid source step.");
+    if (row.methodStep !== undefined) {
+      const step = row.methodStep;
+      const requested = requestedCookingStep(query);
+      if (context.purpose !== "cooking" || !context.recipeId || !isRecord(step)
+        || Object.keys(step).some(key => key !== "number" && key !== "evidenceId")
+        || typeof step.number !== "number" || !Number.isSafeInteger(step.number) || step.number < 0 || step.number > 999
+        || (requested !== undefined ? requested !== step.number : step.number === 0 || step.evidenceId !== context.stepEvidenceId)
+        || (step.evidenceId !== undefined && (typeof step.evidenceId !== "string" || !/^S[1-9]\d{0,2}$/.test(step.evidenceId)))) {
+        throw new ChefValidationError("Invalid numbered cooking step.");
+      }
+      context.methodStep = { number: step.number, ...(step.evidenceId ? { evidenceId: step.evidenceId } : {}) };
+    }
     for (const key of ["mealDate", "targetDate", "today"] as const) if (row[key] !== undefined) {
       const date = requiredString(row[key], `context.${key}`, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(new Date(`${date}T12:00:00Z`).getTime()) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new ChefValidationError("Invalid dinner date.");
