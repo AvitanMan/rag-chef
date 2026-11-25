@@ -362,6 +362,30 @@ function kitchenState(pantry, meals = []) {
   return { schemaVersion: 2, pantry, meals: Object.fromEntries(meals.map(meal => [meal.date, meal])), shoppingChecked: {}, migratedLegacy: false };
 }
 
+test("a legacy cooking request resolves its source ID in the selected method", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "carrots", measure: "2" }, { name: "milk", measure: "200 ml" }],
+    instructions: ["Oven:", "Slice the carrots into rounds.", "Stovetop:", "Dice the carrots into cubes.", "Add 50 ml milk.", "Add 150 ml milk."] };
+  const meal = createPlannedMeal(today, source);
+  const h = chefHarness(t, kitchenState([], [meal]), source);
+  const context = await savedContext(meal, { stepEvidenceId: "S4" });
+  const reply = await h.ask(context, [], "How should I cut the carrots?");
+  assert.equal(reply.status, 200);
+  assert.equal(reply.body.answerStatus, "answered");
+  assert.match(reply.body.answer, /Step 1.*Dice the carrots/);
+  assert.deepEqual(reply.body.sourceFacts.map(fact => fact.evidenceId), ["I1", "S4"]);
+  const earlier = await h.ask(context, [], "What do I do in step 2?");
+  assert.match(earlier.body.answer, /Slice the carrots into rounds/);
+  assert.deepEqual(earlier.body.sourceFacts.map(fact => fact.evidenceId), ["S2"]);
+  const milkContext = { ...context, stepEvidenceId: "S5" };
+  const amount = await h.ask(milkContext, [], "How much milk goes in now?");
+  const rest = await h.ask(milkContext, [], "What about the rest?", [
+    { role: "user", content: "How much milk goes in now?" }, { role: "assistant", content: amount.body.answer },
+  ]);
+  assert.match(rest.body.answer, /step 3: Add 150 ml milk/i);
+  assert.ok(rest.body.sourceFacts.some(fact => fact.evidenceId === "S6"));
+  assert.equal(h.prompts.length, 0);
+});
+
 test("a restored dinner can ask about unchanged ingredients regardless of JSON field order", async t => {
   const source = { ...routeRecipe, ingredients: [{ name: "carrots", measure: "2" }], instructions: ["Slice the carrots into rounds."] };
   const snapshot = { ...source, ingredients: source.ingredients.map(({ name, measure }) => ({ measure, name })) };

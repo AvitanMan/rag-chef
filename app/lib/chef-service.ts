@@ -27,7 +27,7 @@ import { catalogMatchReason, constraintsForRecipeQuery, focusedRecipeId, recipeQ
 import type { Recipe } from "./recipe-types";
 import { normalizeConstraints, proposedChangeConflicts } from "./recipe-constraints";
 import { mealAmountBasis, parseMeasure, resolvedMealIngredients } from "./quantities";
-import { cookingStepText } from "./recipe-instructions";
+import { cookingStepText, sourceMethodStep } from "./recipe-instructions";
 import { asksAboutSourceTechnique, chefMealHash, chefMealPreview, chefMealReadiness, chefPantryProjection, chefRecipeHash, cookingTechniqueGuides, namedTechniqueGuides, focusedCookingStep, focusedCookingMeaningAnswer, isCookingMeaningQuestion, recipeEvidence } from "./chef-context";
 import { selectRecipeEvidence, type EvidenceSelection } from "./chef-evidence";
 import { RECIPE_STEP_EMBEDDING_KIND, buildRecipeQueryText } from "./recipe-embeddings";
@@ -282,13 +282,17 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
     } satisfies ChefApiResponse;
   }
   const selectedRecipe = ranked.length === 1 && ranked[0].recipe.id === dinner?.recipeId ? ranked[0].recipe : undefined;
+  // Older callers number the raw source, including headings. Resolve the selected
+  // source ID within its method before describing an ingredient or a later addition.
+  const preparationStep = cookingRecipe && stepFocus && !dinner?.methodStep
+    ? sourceMethodStep(cookingRecipe, stepFocus.evidenceId) ?? stepFocus : stepFocus;
   const preparation = selectedRecipe && !allowChanges && !requestingRecipes
-    ? preparationHelp(selectedRecipe, stepFocus, input.query, input.history) : undefined;
+    ? preparationHelp(selectedRecipe, preparationStep, input.query, input.history) : undefined;
   const asksForInstructions = /^(?:please\s+)?(?:how (?:do|should|can|would|to)\b|should (?:i|we)\b|(?:walk|talk) me through\b|explain\b)/i.test(input.query.trim());
   const personalQuestion = selectedRecipe && (asksForInstructions || /^(?:please\s+)?(?:do|must|would) (?:i|we)\b/i.test(input.query.trim()));
   const factualQuestion = question && !allowChanges && !requestingRecipes && (cookingHelp || Boolean(preparation || personalQuestion) || queryRequestsRecipeHelp(input.query));
-  const stepAddition = cookingRecipe && stepFocus && factualQuestion && ranked.length === 1
-    ? focusedStepAdditionAnswer({ recipe: cookingRecipe, meal: previewMeal, step: stepFocus, query: input.query, history: input.history }) : undefined;
+  const stepAddition = cookingRecipe && preparationStep && factualQuestion && ranked.length === 1
+    ? focusedStepAdditionAnswer({ recipe: cookingRecipe, meal: previewMeal, step: preparationStep, query: input.query, history: input.history }) : undefined;
   const planningStepAnswer = !stepAddition && previewMeal && ranked.length === 1 && !allowChanges
     ? planningIngredientStepAnswer(previewMeal, ranked[0].recipe, input.query, /\b(?:whole|entire) recipe\b/i.test(input.query) ? null : stepFocus) : undefined;
   const planningAnswer = stepAddition ?? planningStepAnswer ?? (previewMeal && ranked.length === 1 && !allowChanges && isPlanningQuantityQuestion(input.query) ? planningQuantityAnswer(previewMeal, input.query) : undefined);

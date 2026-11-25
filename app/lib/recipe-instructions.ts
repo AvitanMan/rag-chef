@@ -18,9 +18,7 @@ export function isCookingMethodHeading(value: string): boolean {
 }
 export type SourceDirection = { evidenceId: string; number: number; text: string };
 
-/** Keep source IDs alongside visible step numbers. Discussion without a
- * selected method can use its directions only when there is a single method. */
-export function methodDirections(recipe: Pick<Recipe, "instructions">, focus?: SourceDirection | null): SourceDirection[] {
+function recipeMethods(recipe: Pick<Recipe, "instructions">): SourceDirection[][] {
   const methods: SourceDirection[][] = [];
   let method: SourceDirection[] = [];
   for (const [index, raw] of recipe.instructions.entries()) {
@@ -32,6 +30,18 @@ export function methodDirections(recipe: Pick<Recipe, "instructions">, focus?: S
       method.push({ evidenceId: `S${index + 1}`, number: method.length + 1, text: raw });
     }
   }
+  return methods;
+}
+
+/** Legacy cooking requests identify the raw source direction without its visible method number. */
+export function sourceMethodStep(recipe: Pick<Recipe, "instructions">, evidenceId: string): SourceDirection | undefined {
+  return recipeMethods(recipe).flat().find(step => step.evidenceId === evidenceId);
+}
+
+/** Keep source IDs alongside visible step numbers. Discussion without a
+ * selected method can use its directions only when there is a single method. */
+export function methodDirections(recipe: Pick<Recipe, "instructions">, focus?: SourceDirection | null): SourceDirection[] {
+  const methods = recipeMethods(recipe);
   if (!focus) return methods.length === 1 ? methods[0] : [];
   return methods.find(steps => {
     const candidate = steps[focus.number - 1];
