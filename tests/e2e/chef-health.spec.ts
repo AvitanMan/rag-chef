@@ -59,7 +59,7 @@ test("service readiness checks all private workers without model calls and publi
   const report = await response.json();
   expect(report.ok).toBe(true);
   for (const service of ["gateway", "catalog", "chef"]) {
-    expect(report.services[service]).toMatchObject({ ok: true, service, protocol: 1, controls: 1, schema: 9 });
+    expect(report.services[service]).toMatchObject({ ok: true, service, protocol: 1, controls: 1, schema: 10 });
   }
   expect(await modelCalls()).toEqual([]);
   expect(await (await request.get("/api/kitchen")).json()).toEqual(before);

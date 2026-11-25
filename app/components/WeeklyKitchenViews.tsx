@@ -19,7 +19,7 @@ export function dateLabel(date: string, options: Intl.DateTimeFormatOptions = { 
   return new Date(`${date}T12:00:00`).toLocaleDateString("en", options);
 }
 
-export function DurablePlanView({ week, today, setWeek, meals, command, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0 }: {
+export function DurablePlanView({ week, today, setWeek, meals, command, removeMeals, chooseMeal, chooseDay, cookMeal, reviewDate, setReviewDate, generatePlan, fillReady, preferReviewedMains, setPreferReviewedMains, openMeal, markCooked, undoCooked, goShopping, catalogState, retryCatalog, planningNotice, planningReasons = {}, focusDate, clearFocusDate, shoppingCount = 0 }: {
   shoppingCount?: number;
   today?: string;
   focusDate?: string | null;
@@ -39,6 +39,7 @@ export function DurablePlanView({ week, today, setWeek, meals, command, removeMe
   reviewDate: string | null;
   setReviewDate: Dispatch<SetStateAction<string | null>>;
   generatePlan: () => void;
+  fillReady: boolean;
   preferReviewedMains: boolean;
   setPreferReviewedMains: (value: boolean) => void;
   openMeal: (date: string) => void;
@@ -102,7 +103,7 @@ export function DurablePlanView({ week, today, setWeek, meals, command, removeMe
         </div>
       </section>
       <section className="planner-intro" aria-label="Plan actions">
-        <div className="planner-actions"><button className="secondary-button" onClick={generatePlan} disabled={count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
+        <div className="planner-actions"><button className="secondary-button" onClick={generatePlan} disabled={!fillReady || count === 7 || catalogState !== "ready"}>Fill empty days</button><details><summary>More</summary><button className="text-button" onClick={() => setClearConfirm(true)}>Clear unlocked</button></details></div>
         <details className="fill-options"><summary>Fill options</summary><label className="planner-preference"><input type="checkbox" checked={preferReviewedMains} onChange={(event) => setPreferReviewedMains(event.target.checked)} />Prefer reviewed mains</label>
         <p className="quantity-note">{preferReviewedMains ? "Reviewed mains come first. If they run out, unreviewed recipes can fill the remaining days; known sides and desserts stay out." : "Use the wider collection, including sides and desserts. Check that each choice makes a complete dinner."}</p></details>
       </section>
@@ -122,7 +123,7 @@ export function DurablePlanView({ week, today, setWeek, meals, command, removeMe
             <div className="day-heading"><span className="day-name">{dateLabel(date)}</span>{date === today && <span className="today-badge">Today</span>}{meal && <span className={`meal-status ${meal.status}`}>{meal.status === "cooked" ? "Cooked" : meal.locked ? "Locked" : "Planned"}</span>}</div>
             {recipe ? <>{recipe.image && <button className="day-image" onClick={() => openMeal(date)} aria-label={`View photo of ${meal.title}`}><img src={recipe.image} alt="" /></button>}<button className="day-recipe-title" onClick={() => openMeal(date)} aria-label={`Open ${meal.title} on ${dateLabel(date)}`}>{meal.title}</button></> : meal ? <div className="missing-recipe"><strong>{meal.title}</strong><p>Recipe unavailable. Choose a replacement to recover its shopping amounts.</p></div> : null}
             {!immutable && <button className={meal ? "text-button" : "primary-button"} onClick={() => chooseDay(date)} aria-label={`${meal ? "Change dinner" : "Choose dinner"} ${dateLabel(date)}`}>{meal ? "Change dinner" : "Choose dinner"}</button>}
-            {meal && planningReasons[date] && <p className="quantity-note">{planningReasons[date]}</p>}
+            {meal && planningReasons[meal.id] && <p className="quantity-note">{planningReasons[meal.id]}</p>}
             {meal && <>
               <div className="meal-amounts">
                 {meal.baseServings ? <label>Cook for<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.servings} aria-label={`Servings ${dateLabel(date)}`} value={meal.servings ?? meal.baseServings} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, meal.id, { servings: Number(value) })} /><span>servings</span></label> : <label>Recipe batches<ValidatedInput type="number" {...DINNER_AMOUNT_LIMITS.batches} aria-label={`Batches ${dateLabel(date)}`} value={meal.batches} disabled={Boolean(immutable)} onCommit={(value) => patchMeal(date, meal.id, { batches: Number(value) })} /></label>}

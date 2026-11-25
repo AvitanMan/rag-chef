@@ -3,6 +3,8 @@ import { after, beforeEach, test } from "node:test";
 import { readFile, readdir } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { createHmac } from "node:crypto";
+import { fixtureSql } from "../tools/testing/fixtures.mjs";
+import { attachCatalogReadBinding } from "./helpers/catalog-binding.mjs";
 import { createSourceLoader } from "../tools/testing/load-source.mjs";
 
 const database = new DatabaseSync(":memory:");
@@ -46,7 +48,7 @@ async function runtime() {
   const household = await sources.import("app/lib/household.ts"); household.configureHouseholdRuntime(env);
   const service = await sources.import("app/lib/kitchen-service.ts");
   const route = await sources.import("app/api/kitchen/commands/route.ts");
-  return { household, service, route };
+  return { household, service, route, sources, env };
 }
 const app = await runtime();
 const secret = "isolated-command-ledger-auth-secret-2b671369"; // gitleaks:allow -- synthetic signing key for disposable test sessions only.
@@ -275,4 +277,218 @@ test("an actor moving to another household can reuse an ID without sharing the o
   assert.deepEqual(second.body.document.state.pantry.map(item => item.id), ["beans"]);
   assert.equal((await post(add(), { user: "owner" })).status, 403);
   assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt WHERE actor_id='owner'").get().n, 2);
+});
+
+async function planFixture() {
+  database.exec("DELETE FROM recipes; DELETE FROM recipe_sources;");
+  database.exec(fixtureSql({ journeys: true }));
+  await attachCatalogReadBinding(app.sources, app.env);
+  const previewRoute = await app.sources.import("app/api/kitchen/fill-empty-days/preview/route.ts");
+  const applyRoute = await app.sources.import("app/api/kitchen/fill-empty-days/apply/route.ts");
+  const { addDateDays, weekStart } = await app.sources.import("app/lib/kitchen-state.ts");
+  const options = { week: addDateDays(weekStart(), 7), seed: 23, preferReviewedMains: true, expectedRevision: 0, timezone: "UTC" };
+  async function send(route, payload, actor) {
+    const response = await route.POST(request(payload, actor));
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    return { status: response.status, ...await response.json() };
+  }
+  return {
+    options,
+    preview: (input = options, actor) => send(previewRoute, input, actor),
+    apply: (review, commandId = "apply-week", actor) => send(applyRoute, { review, commandId }, actor),
+  };
+}
+
+test("a read-only plan saves exactly the reviewed meals, then concurrent and lost-response retries return the original receipt", async () => {
+  const plan = await planFixture();
+  const proposal = await plan.preview();
+  assert.equal(proposal.status, 200);
+  assert.ok(proposal.preview.additions.length > 1);
+  assert.equal((await saved()).revision, 0);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 0);
+
+  const results = await Promise.all([plan.apply(proposal.review), plan.apply(proposal.review)]);
+  assert.deepEqual(results.map(result => result.status), [200, 200]);
+  assert.equal(results.filter(result => !result.replayed).length, 1);
+  const committed = results[0].document;
+  assert.deepEqual(Object.values(committed.state.meals), proposal.preview.additions);
+  assert.equal(committed.revision, 1);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 1);
+
+  const later = await post(add("later", 1));
+  database.exec("UPDATE recipe_sources SET approval_status='revoked'");
+  const retry = await plan.apply(proposal.review);
+  assert.equal(retry.status, 200); assert.equal(retry.replayed, true);
+  assert.deepEqual(retry.document, committed);
+  assert.deepEqual(await saved(), later.body.document);
+  assert.equal((await plan.apply({ ...proposal.review, seed: 9 })).error.code, "COMMAND_ID_REUSED");
+});
+
+test("reviewed fills with competing IDs advance only one revision, leaving the other review stale", async () => {
+  const plan = await planFixture();
+  const { review } = await plan.preview();
+  const results = await Promise.all([plan.apply(review, "one"), plan.apply(review, "two")]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  assert.equal(results.find(result => result.status === 409).error.code, "REVISION_CONFLICT");
+  assert.equal((await saved()).revision, 1);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 1);
+});
+
+test("catalog content, metadata and source permission edits at the atomic claim invalidate a plan without saving any meal", async () => {
+  const plan = await planFixture();
+  for (const update of [
+    "UPDATE recipe_instruction_steps SET text='Replacement instruction' WHERE id=(SELECT min(id) FROM recipe_instruction_steps)",
+    "UPDATE recipe_metadata SET reviewed_by='Another reviewer' WHERE recipe_id=(SELECT min(recipe_id) FROM recipe_metadata)",
+    "UPDATE recipe_sources SET allow_cache=0",
+  ]) {
+    const proposal = await plan.preview();
+    assert.ok(proposal.preview.additions.length);
+    let changed = false;
+    beforeStatement = sql => {
+      if (!changed && sql.startsWith("INSERT INTO kitchen_command_receipt")) {
+        changed = true;
+        database.exec(update);
+      }
+    };
+    const rejected = await plan.apply(proposal.review);
+    beforeStatement = undefined;
+    assert.ok(changed); assert.equal(rejected.status, 409); assert.equal(rejected.error.code, "REVIEW_STALE");
+    assert.equal((await saved()).revision, 0);
+    assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 0);
+  }
+  // A displayable source that forbids saving is never proposed, even on a fresh review.
+  assert.deepEqual((await plan.preview()).preview.additions, []);
+});
+
+test("Apply rejects changed review input, an elapsed local day, and a kitchen changed since preview", async t => {
+  // In Auckland it is already Monday, while UTC is still Sunday.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2030-06-02T13:30:00Z") });
+  const plan = await planFixture();
+  const options = { ...plan.options, timezone: "Pacific/Auckland", week: "2030-06-03" };
+  const proposal = await plan.preview(options);
+  assert.equal(proposal.review.today, "2030-06-03");
+  const utc = await plan.preview({ ...options, timezone: "UTC" });
+  assert.equal(utc.review.today, "2030-06-02");
+  for (const changes of [{ seed: 99 }, { digest: "0".repeat(64) }, { week: "2030-06-10" }]) {
+    const rejection = await plan.apply({ ...proposal.review, ...changes });
+    assert.equal(rejection.status, 409); assert.equal(rejection.error.code, "REVIEW_STALE");
+  }
+  assert.equal((await plan.preview({ ...options, timezone: "invalid/no-timezone" })).status, 400);
+  assert.equal((await plan.apply({ ...proposal.review, meals: {} })).status, 400);
+  t.mock.timers.tick(86_400_000);
+  const rejection = await plan.apply(proposal.review);
+  assert.equal(rejection.status, 409); assert.equal(rejection.error.code, "REVIEW_STALE");
+  assert.equal((await saved()).revision, 0);
+
+  assert.equal((await post(add("stock-change"))).status, 200);
+  const stale = await plan.apply(proposal.review);
+  assert.equal(stale.status, 409); assert.equal(stale.error.code, "REVISION_CONFLICT"); assert.equal(stale.current.revision, 1);
+  assert.deepEqual(stale.current.state.meals, {});
+});
+
+test("household authorization scopes the review and a revoked member cannot claim a reviewed plan", async () => {
+  const plan = await planFixture();
+  seedHosted();
+  app.household.configureHouseholdRuntime({ ...hostedSettings, HOSTED_RECIPE_SOURCE_IDS: "test-fixtures" });
+  const member = { user: "member" };
+  const proposal = await plan.preview({ ...plan.options, timezone: "Pacific/Auckland" }, member);
+  assert.equal(proposal.status, 200); assert.ok(proposal.preview.additions.length);
+  assert.equal(proposal.review.timezone, "UTC", "the household sets the hosted timezone");
+  for (const actor of [{ user: "other", home: "home-b" }, { user: "owner" }]) {
+    const result = await plan.apply(proposal.review, "copy", actor);
+    assert.equal(result.status, 409); assert.equal(result.error.code, "REVIEW_STALE");
+  }
+  const wrong = await plan.preview(plan.options, { user: "other", home: "home-a" });
+  assert.equal(wrong.status, 403);
+  beforeStatement = sql => {
+    if (sql.startsWith("INSERT INTO kitchen_command_receipt")) database.prepare("DELETE FROM member WHERE userId='member'").run();
+  };
+  const revoked = await plan.apply(proposal.review, "member-apply", member);
+  assert.equal(revoked.status, 403);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 0);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_state").get().n, 0);
+});
+
+test("crossing local midnight during the atomic write leaves the reviewed week and receipt untouched", async t => {
+  // The Auckland day containing the autumn DST transition lasts 25 hours.
+  const initial = Date.parse("2030-04-06T11:30:00Z");
+  t.mock.timers.enable({ apis: ["Date"], now: initial });
+  database.function("unixepoch", () => Math.floor(Date.now() / 1000));
+  const plan = await planFixture();
+  const { review } = await plan.preview({ ...plan.options, timezone: "Pacific/Auckland", week: "2030-04-08" });
+  assert.equal(review.today, "2030-04-07");
+  let invoked = false;
+  beforeStatement = sql => {
+    if (!invoked && sql.startsWith("INSERT INTO kitchen_command_receipt")) {
+      invoked = true;
+      t.mock.timers.setTime(Date.parse("2030-04-07T12:00:00Z"));
+    }
+  };
+  const response = await plan.apply(review);
+  assert.ok(invoked); assert.equal(response.status, 409); assert.equal(response.error.code, "REVIEW_STALE");
+  assert.equal((await saved()).revision, 0);
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 0);
+});
+
+test("session expiry during a reviewed Apply or a receipt lookup withholds the result at database time", async t => {
+  const plan = await planFixture();
+  seedHosted();
+  app.household.configureHouseholdRuntime({ ...hostedSettings, HOSTED_RECIPE_SOURCE_IDS: "test-fixtures" });
+  const context = await app.household.requireHousehold(request({}, { user: "member" }));
+  const { applyFillEmptyDays, previewFillEmptyDays } = await app.sources.import("app/lib/fill-empty-days-service.ts");
+  const original = await previewFillEmptyDays(plan.options, context);
+  const first = { commandId: "already-confirmed", review: original.review };
+  const savedPlan = await applyFillEmptyDays(first, context);
+  const { addDateDays } = await app.sources.import("app/lib/kitchen-state.ts");
+  const later = await previewFillEmptyDays({ ...plan.options, week: addDateDays(plan.options.week, 7), expectedRevision: savedPlan.document.revision }, context);
+  assert.ok(later.preview.additions.length);
+
+  // Pin the preflight to one millisecond before expiry while SQLite's real
+  // clock is past it. Advance the worker clock when the queued SQL executes.
+  const dbNow = database.prepare("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now') AS now").get().now;
+  const expiry = Date.parse(dbNow) - 1000;
+  t.mock.timers.enable({ apis: ["Date"], now: expiry - 1 });
+  database.prepare("UPDATE session SET expiresAt=? WHERE id=?").run(new Date(expiry).toISOString(), context.sessionId);
+  for (const [prefix, input] of [
+    ["INSERT INTO kitchen_command_receipt", { commandId: "queued-apply", review: later.review }],
+    ["SELECT request_hash,document_json", first],
+  ]) {
+    t.mock.timers.setTime(expiry - 1);
+    let reached = false;
+    beforeStatement = sql => {
+      if (!reached && sql.startsWith(prefix)) {
+        reached = true;
+        t.mock.timers.setTime(expiry);
+      }
+    };
+    await assert.rejects(applyFillEmptyDays(input, context), error => error.code === "MEMBERSHIP_CHANGED");
+    assert.ok(reached);
+  }
+  assert.equal(database.prepare("SELECT count(*) AS n FROM kitchen_command_receipt").get().n, 1);
+  assert.equal(database.prepare("SELECT revision FROM kitchen_state WHERE id=?").get(context.householdId).revision, savedPlan.document.revision);
+});
+
+test("a source can withdraw photo permission while its dinners remain available to browse, review and save", async () => {
+  const plan = await planFixture();
+  const image = "https://example.invalid/original-fixture-photo.png";
+  database.prepare("UPDATE recipes SET image_url=?").run(image);
+  database.exec("UPDATE recipe_sources SET allow_images=1");
+  const { catalogReadService } = await app.sources.import("app/lib/catalog-read-service.ts");
+  const allowed = await plan.preview();
+  assert.ok(allowed.preview.additions.length);
+  assert.ok(allowed.preview.additions.every(meal => meal.recipe.image === image));
+  assert.equal((await catalogReadService.list())[0].recipe.image, image);
+
+  database.exec("UPDATE recipe_sources SET allow_images=0");
+  assert.equal((await plan.apply(allowed.review)).error.code, "REVIEW_STALE");
+  assert.ok(database.prepare("SELECT count(*) AS n FROM recipes WHERE image_url=?").get(image).n);
+  const fresh = await plan.preview();
+  assert.deepEqual(fresh.preview.additions.map(meal => meal.recipeId), allowed.preview.additions.map(meal => meal.recipeId));
+  for (const row of await catalogReadService.list()) assert.equal(row.recipe.image, null);
+  const result = await plan.apply(fresh.review);
+  assert.equal(result.status, 200);
+  for (const meal of Object.values(result.document.state.meals)) {
+    assert.equal(meal.recipe.image, null);
+    assert.ok(meal.recipe.ingredients.length && meal.recipe.instructions.length);
+  }
 });

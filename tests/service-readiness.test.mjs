@@ -31,7 +31,7 @@ test("private readiness and operator aggregation inspect actual migrated schema 
     assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(response.headers.get("x-rag-chef-protocol"), "1"); assert.equal(response.headers.get("x-rag-chef-controls"), "1");
     const report = await response.json();
-    assert.deepEqual(report, { ok: true, service: name, protocol: 1, controls: 1, schema: 9, release: "test-release", scope: { hosted: false, sourceIds: [] }, limits: { ollama: 2, openai: 4, chef: { minute: null, day: null } } });
+    assert.deepEqual(report, { ok: true, service: name, protocol: 1, controls: 1, schema: 10, release: "test-release", scope: { hosted: false, sourceIds: [] }, limits: { ollama: 2, openai: 4, chef: { minute: null, day: null } } });
   }
   const response = await admin.GET(request()); assert.equal(response.status, 200);
   const report = await response.json(); assert.equal(report.ok, true);
@@ -40,7 +40,7 @@ test("private readiness and operator aggregation inspect actual migrated schema 
 });
 
 test("missing operational migration fails readiness with a generic response and recovers after repair", async () => {
-  for (const table of ["runtime_model_permits", "catalog_job_recipe_receipts"]) {
+  for (const table of ["runtime_model_permits", "catalog_job_recipe_receipts", "recipe_catalog_revision"]) {
     sql.db.exec(`ALTER TABLE ${table} RENAME TO unavailable_${table}`);
     try {
       for (const name of ["gateway", "chef", "catalog"]) {

@@ -17,7 +17,7 @@ export async function checkServiceConfiguration({ root = repository, built = fal
   };
   try {
     const manifest = await read("service-contracts.json");
-    if (manifest.protocol !== 1 || manifest.controls !== 1 || manifest.schema !== 9 || manifest.migration !== "0009_catalog_job_recipe_receipts") error("Service contract must match protocol 1, controls 1 and schema 9.");
+    if (manifest.protocol !== 1 || manifest.controls !== 1 || manifest.schema !== 10 || manifest.migration !== "0010_reviewed_plan_catalog_revision") error("Service contract must match protocol 1, controls 1 and schema 10.");
     if (JSON.stringify(Object.keys(manifest.roles ?? {}).sort()) !== JSON.stringify(["catalog", "chef", "gateway"])) throw new Error("Manifest must describe gateway, catalog and chef.");
     const required = { gateway: ["CATALOG", "CHEF"], catalog: [], chef: ["CATALOG"] };
     const configs = {}, paths = {};
@@ -56,7 +56,7 @@ export async function checkServiceConfiguration({ root = repository, built = fal
       catch { error(`${role}: worker entry point does not exist.`); }
     }
     const journal = await read("drizzle/meta/_journal.json");
-    if (!journal.entries?.some(entry => entry.tag === manifest.migration)) error("Required runtime admission migration is missing from the migration journal.");
+    if (!journal.entries?.some(entry => entry.tag === manifest.migration)) error("Required service migration is missing from the migration journal.");
     await access(resolve(root, "drizzle", `${manifest.migration}.sql`));
   } catch (failure) {
     // Never print config contents, environment values or credentials.
@@ -68,6 +68,6 @@ export async function checkServiceConfiguration({ root = repository, built = fal
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const result = await checkServiceConfiguration({ built: process.argv.includes("--built") });
   for (const error of result.errors) console.error(error);
-  if (result.ok) console.log(`Service ${process.argv.includes("--built") ? "build" : "source"} contracts passed (protocol 1, controls 1, schema 9).`);
+  if (result.ok) console.log(`Service ${process.argv.includes("--built") ? "build" : "source"} contracts passed (protocol 1, controls 1, schema 10).`);
   process.exitCode = result.ok ? 0 : 1;
 }

@@ -394,6 +394,7 @@ export interface MealStockAllocation {
   useSoonCoverage: number;
   ingredientIdentities: string[];
   coveredByGroup: Map<string, number>;
+  requiredByGroup: Map<string, number>;
 }
 
 export interface MealReadiness {
@@ -425,8 +426,13 @@ export function mealReadiness(meal: PlannedMeal, pantry: PantryStock[], today = 
     shopping: buildShoppingList([meal], pantry, today).map(({ name, measure, needsReview, preparationNote, notes }) => ({ name, measure, needsReview, notes, ...(preparationNote ? { preparationNote } : {}) })) };
 }
 
+function measuredGroupKey(identity: string, dimension: string): string {
+  return JSON.stringify([identity, dimension, ""]);
+}
+
 function requirementKey(requirement: Requirement): string {
-  return JSON.stringify([requirement.identity, requirement.parsed?.dimension ?? "review", requirement.parsed ? "" : requirement.raw.toLowerCase()]);
+  return requirement.parsed ? measuredGroupKey(requirement.identity, requirement.parsed.dimension)
+    : JSON.stringify([requirement.identity, "review", requirement.raw.toLowerCase()]);
 }
 
 function dateAfter(date: string, days: number): string {
@@ -439,12 +445,45 @@ function currentLocalDate(value = new Date()): string {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 }
 
+interface AllocationBatch {
+  stock: PantryStock;
+  parsed: ParsedMeasure | null;
+}
+
+function byUseByThenId(a: AllocationBatch, b: AllocationBatch): number {
+  return (a.stock.useBy ?? "9999-12-31").localeCompare(b.stock.useBy ?? "9999-12-31") || a.stock.id.localeCompare(b.stock.id);
+}
+
+/** Mutate only a working inventory. Re-parse the stored remainder so a sequence
+ * of allocations uses the same precision as Shopping and cooking completion. */
+function takeMeasuredStock(matches: AllocationBatch[], dimension: string, quantity: number, date: string,
+  onDeduct?: (stock: PantryStock, amount: number, after: string) => void,
+  onIneligible?: (reason: string) => void): { remaining: number; covered: number } {
+  let remaining = quantity;
+  for (const match of matches) {
+    const eligibility = pantryStockEligibility(match.stock, date);
+    if (!eligibility.eligible) {
+      if (eligibility.reason) onIneligible?.(eligibility.reason);
+      continue;
+    }
+    if (!match.parsed || match.parsed.dimension !== dimension || remaining <= 0) continue;
+    const consumed = Math.min(remaining, match.parsed.quantity);
+    remaining = cleanNumber(remaining - consumed);
+    const after = formatMeasure(cleanNumber(match.parsed.quantity - consumed), match.parsed.unit);
+    onDeduct?.(match.stock, consumed, after);
+    match.stock.measure = after;
+    match.parsed = parseMeasure(after);
+  }
+  return { remaining, covered: cleanNumber(quantity - remaining) };
+}
+
 /** Allocate compatible known amounts only. This never changes real pantry stock. */
 export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], today = currentLocalDate()): MealStockAllocation {
   const stock = uniquePantry(pantry).map((item) => ({ ...item }));
   const deductions: PantryDeduction[] = [];
   const notes: string[] = [];
   const coveredByGroup = new Map<string, number>();
+  const requiredByGroup = new Map<string, number>();
   const requirements = requirementsFor([meal]);
   let coverage = 0;
   let useSoonCoverage = 0;
@@ -456,28 +495,16 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
       notes.push(`${requirement.name}: required amount needs review; enter a measured dinner amount before subtracting pantry stock. No stock deducted.`, ...requirement.descriptions);
       continue;
     }
-    let remaining = requirement.quantity;
     let usedSoon = 0;
-    const matches = matchingStock(requirement, stock).sort((a, b) => (a.stock.useBy ?? "9999-12-31").localeCompare(b.stock.useBy ?? "9999-12-31") || a.stock.id.localeCompare(b.stock.id));
-    for (const match of matches) {
-      const eligibility = pantryStockEligibility(match.stock, stockDate);
-      if (!eligibility.eligible) {
-        notes.push(`${requirement.name}: ${eligibility.reason} Not deducted.`);
-        continue;
-      }
-      if (!match.parsed || match.parsed.dimension !== requirement.parsed.dimension || remaining <= 0) continue;
-      const consumed = Math.min(remaining, match.parsed.quantity);
-      remaining = cleanNumber(remaining - consumed);
-      if (match.stock.useBy && match.stock.useBy <= soon) usedSoon = cleanNumber(usedSoon + consumed);
-      const before = match.stock.measure;
-      const after = formatMeasure(cleanNumber(match.parsed.quantity - consumed), match.parsed.unit);
-      deductions.push({ pantryId: match.stock.id, name: match.stock.name, before, after,
-        ...(match.stock.useBy ? { useBy: match.stock.useBy } : {}),
-        ...(match.stock.location ? { location: match.stock.location } : {}) });
-      match.stock.measure = after;
-    }
-    const covered = cleanNumber(requirement.quantity - remaining);
-    coveredByGroup.set(requirementKey(requirement), covered);
+    const matches = matchingStock(requirement, stock).sort(byUseByThenId);
+    const { covered, remaining } = takeMeasuredStock(matches, requirement.parsed.dimension, requirement.quantity, stockDate, (batch, consumed, after) => {
+      if (batch.useBy && batch.useBy <= soon) usedSoon = cleanNumber(usedSoon + consumed);
+      deductions.push({ pantryId: batch.id, name: batch.name, before: batch.measure, after,
+        ...(batch.useBy ? { useBy: batch.useBy } : {}), ...(batch.location ? { location: batch.location } : {}) });
+    }, reason => notes.push(`${requirement.name}: ${reason} Not deducted.`));
+    const key = requirementKey(requirement);
+    requiredByGroup.set(key, requirement.quantity);
+    coveredByGroup.set(key, covered);
     if (requirement.quantity > 0) {
       coverage += covered / requirement.quantity;
       useSoonCoverage += usedSoon / requirement.quantity;
@@ -488,19 +515,70 @@ export function allocateMealStock(meal: PlannedMeal, pantry: PantryStock[], toda
   const denominator = requirements.length;
   return { mealId: meal.id, date: meal.date, pantry: stock, deductions, notes,
     coverage: denominator ? coverage / denominator : 0, useSoonCoverage: denominator ? useSoonCoverage / denominator : 0,
-    ingredientIdentities: [...new Set(requirements.map((item) => item.identity))], coveredByGroup };
+    ingredientIdentities: [...new Set(requirements.map((item) => item.identity))], coveredByGroup, requiredByGroup };
 }
 
 /** A single virtual inventory prevents later dinners from spending the same stock. */
-export function allocateStockForMeals(meals: PlannedMeal[], pantry: PantryStock[], today = currentLocalDate()): { pantry: PantryStock[]; allocations: MealStockAllocation[] } {
-  let remaining = uniquePantry(pantry).map((stock) => ({ ...stock }));
-  const allocations: MealStockAllocation[] = [];
-  for (const meal of meals.filter((item) => item.status !== "cooked").slice().sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+export function* mealAllocationsInOrder(meals: PlannedMeal[], pantry: PantryStock[], today: string): Generator<MealStockAllocation> {
+  let remaining = pantry;
+  for (const meal of meals.filter(item => item.status !== "cooked").sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
     const allocation = allocateMealStock(meal, remaining, today);
-    allocations.push(allocation);
+    yield allocation;
     remaining = allocation.pantry;
   }
-  return { pantry: remaining, allocations };
+}
+
+export function allocateStockForMeals(meals: PlannedMeal[], pantry: PantryStock[], today = currentLocalDate()): { pantry: PantryStock[]; allocations: MealStockAllocation[] } {
+  const allocations = [...mealAllocationsInOrder(meals, pantry, today)];
+  return { pantry: allocations.at(-1)?.pantry ?? uniquePantry(pantry).map(stock => ({ ...stock })), allocations };
+}
+
+export type SavedMealReservation = Pick<MealStockAllocation, "date" | "requiredByGroup" | "coveredByGroup">;
+
+/** Stock of different ingredient identities or unit dimensions cannot cover the
+ * same requirement. Replay only the affected groups, using the ordinary batch
+ * allocator and each saved dinner's original requirement and covered quantity. */
+export function savedCoverageGuard(available: PantryStock[], date: string, later: SavedMealReservation[]) {
+  if (!later.length) return () => true;
+  const reservations = new Map<string, { date: string; required: number; covered: number }[]>();
+  for (const allocation of later) {
+    for (const [key, required] of allocation.requiredByGroup) {
+      const group = reservations.get(key) ?? [];
+      group.push({ date: allocation.date, required, covered: allocation.coveredByGroup.get(key)! });
+      reservations.set(key, group);
+    }
+  }
+  const batches = new Map<string, AllocationBatch[]>();
+  for (const stock of available) {
+    const parsed = parseMeasure(stock.measure);
+    if (!parsed || parsed.quantity <= 0) continue;
+    const key = measuredGroupKey(canonicalIngredient(stock.name), parsed.dimension);
+    if (!reservations.has(key)) continue;
+    const group = batches.get(key) ?? [];
+    group.push({ stock, parsed });
+    batches.set(key, group);
+  }
+  const checks = new Map<string, (quantity: number) => boolean>();
+  for (const [key, batch] of batches) {
+    const saved = reservations.get(key)!;
+    if (!saved.some(entry => entry.covered > 0)) continue;
+    batch.sort(byUseByThenId);
+    const dimension = batch[0].parsed!.dimension;
+    const cache = new Map<number, boolean>();
+    checks.set(key, quantity => {
+      const known = cache.get(quantity);
+      if (known !== undefined) return known;
+      const remaining = batch.map(entry => ({ stock: { ...entry.stock }, parsed: entry.parsed }));
+      takeMeasuredStock(remaining, dimension, quantity, date);
+      const safe = saved.every(entry => takeMeasuredStock(remaining, dimension, entry.required, entry.date).covered >= entry.covered);
+      cache.set(quantity, safe);
+      return safe;
+    });
+  }
+  return (required: Map<string, number>) => {
+    for (const [key, quantity] of required) if (checks.get(key)?.(quantity) === false) return false;
+    return true;
+  };
 }
 
 export interface PantryUnitMismatch {
@@ -536,14 +614,21 @@ export function pantryUnitMismatches(meals: PlannedMeal[], pantry: PantryStock[]
   return mismatches;
 }
 
-export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], today = currentLocalDate()): ShoppingItem[] {
+interface ShoppingGroup {
+  key: string;
+  item: ShoppingItem;
+  missing: number | null;
+  unit: string | null;
+}
+
+function shoppingGroups(meals: PlannedMeal[], pantry: PantryStock[], today: string): ShoppingGroup[] {
   const stock = uniquePantry(pantry);
   const allocation = allocateStockForMeals(meals, stock, today);
   const covered = new Map<string, number>();
   for (const meal of allocation.allocations) {
     for (const [key, quantity] of meal.coveredByGroup) covered.set(key, cleanNumber((covered.get(key) ?? 0) + quantity));
   }
-  const items: ShoppingItem[] = [];
+  const items: ShoppingGroup[] = [];
   for (const requirement of requirementsFor(meals)) {
     const matches = matchingStock(requirement, stock);
     const recipeTitles = [...requirement.recipeTitles].sort();
@@ -559,7 +644,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     if (!requirement.parsed) {
       notes.push(`${requirement.name}: required amount is not quantified; enter a measured dinner amount before subtracting pantry stock.`);
       const measure = `${requirement.raw || "Amount missing"}${requirement.occurrences > 1 ? ` · ${requirement.occurrences} occurrences` : ""}`;
-      items.push({
+      const item = {
         key: JSON.stringify([requirement.identity, "review", requirement.raw.toLowerCase(), requirement.scales.slice().sort((a, b) => a - b)]),
         name: requirement.name,
         measure,
@@ -570,7 +655,8 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
         notes,
         recipeTitles,
         mealDates,
-      });
+      };
+      items.push({ key: requirementKey(requirement), missing: null, unit: null, item });
       continue;
     }
     const { unit, dimension } = requirement.parsed;
@@ -578,7 +664,7 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
     const needsReview = requirement.needsReview || preparation.length > 0 || comparison.length > 0;
     const missing = cleanNumber(Math.max(0, requirement.quantity - available));
     if (missing === 0) continue;
-    items.push({
+    const item = {
       key: JSON.stringify([requirement.identity, dimension, requirement.quantity, missing]),
       name: requirement.name,
       measure: formatMeasure(missing, unit),
@@ -589,9 +675,41 @@ export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], t
       notes,
       recipeTitles,
       mealDates,
-    });
+    };
+    items.push({ key: requirementKey(requirement), missing, unit, item });
   }
   return items;
+}
+
+export function buildShoppingList(meals: PlannedMeal[], pantry: PantryStock[], today = currentLocalDate()): ShoppingItem[] {
+  return shoppingGroups(meals, pantry, today).map(group => group.item);
+}
+
+export interface ShoppingDelta {
+  key: string;
+  name: string;
+  before: string | null;
+  after: string | null;
+  added: string | null;
+  needsReview: boolean;
+}
+
+/** Compare compatible shortages, including repeated unquantified requirements.
+ * Purchase keys intentionally change with total required amounts and are unsuitable for matching rows. */
+export function shoppingListDelta(before: PlannedMeal[], after: PlannedMeal[], pantry: PantryStock[], today: string): ShoppingDelta[] {
+  const previous = new Map(shoppingGroups(before, pantry, today).map(group => [group.key, group]));
+  const next = new Map(shoppingGroups(after, pantry, today).map(group => [group.key, group]));
+  const changes: ShoppingDelta[] = [];
+  for (const key of new Set([...next.keys(), ...previous.keys()])) {
+    const oldRow = previous.get(key), newRow = next.get(key);
+    if (oldRow && newRow && oldRow.item.needsReview === newRow.item.needsReview &&
+      (newRow.missing === null ? oldRow.item.key === newRow.item.key : oldRow.missing === newRow.missing)) continue;
+    const needsReview = Boolean(oldRow?.item.needsReview || newRow?.item.needsReview);
+    const extra = cleanNumber((newRow?.missing ?? 0) - (oldRow?.missing ?? 0));
+    changes.push({ key, name: (newRow ?? oldRow)!.item.name, before: oldRow?.item.measure ?? null,
+      after: newRow?.item.measure ?? null, added: !needsReview && newRow?.unit && extra > 0 ? formatMeasure(extra, newRow.unit) : null, needsReview });
+  }
+  return changes;
 }
 
 export function consumptionPreview(meal: PlannedMeal, pantry: PantryStock[], today = currentLocalDate()): { deductions: PantryDeduction[]; notes: string[] } {

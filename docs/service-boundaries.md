@@ -6,10 +6,8 @@ to a private Catalog Worker. Stage 5 moves Chef orchestration, model requests an
 connection checks to a private Chef Worker. Stage 6 adds shared provider admission,
 household request limits, correlated timings and release compatibility checks.
 All three Workers use the same D1 database; kitchen transactions remain in the
-application Worker. Apply all migrations, including
-`0006_kitchen_command_receipts.sql`, `0007_catalog_jobs.sql` and
-`0008_runtime_admission.sql` and `0009_catalog_job_recipe_receipts.sql`, before starting
-the new runtime. Hosted identity is described in
+application Worker. Apply all migrations through `0010_reviewed_plan_catalog_revision.sql` before
+starting the new runtime. Hosted identity is described in
 [hosted households](hosted-households.md).
 
 ```mermaid
@@ -88,6 +86,10 @@ owner-only profile permissions within SQL. A race or failed statement cannot
 partially save pantry changes or receipts. The reducer's permission check is
 an early guard; the repository remains authoritative. No-op results also have
 receipts and require the original revision to still be current.
+
+For **Fill empty days**, the gateway recomputes the reviewed selection from the
+current kitchen and approved catalog. Apply checks the catalog revision in the
+same transaction that records the command receipt and saves the dinners.
 
 ## Command API and retries
 
@@ -345,7 +347,7 @@ not authorization or idempotency keys.
 
 ## Release compatibility
 
-`service-contracts.json` records protocol 1, controls 1 and schema 9. Private
+`service-contracts.json` records protocol 1, controls 1 and schema 10. Private
 requests advertise required controls and responses advertise protocol/controls;
 callers reject incompatible responses. Missing private bindings fail closed.
 Catalog accepts an omitted request version for older clients but rejects an

@@ -57,7 +57,7 @@ kitchen, not personal data.
 - **Pantry to dinner:** ingredient search, measured stock coverage, due-soon food,
   favorites, and recently cooked meals.
 - **Weekly planning:** dated dinners, portions and amount overrides, copied or
-  locked meals, and suggestions that preserve existing plans.
+  locked meals, and a preview of dinners and shopping changes before filling empty days.
 - **Shopping:** combine requirements, reserve stock across dinners, flag unclear
   amounts, and review purchases before adding them to the pantry.
 - **Cooking:** original directions, multiple recoverable timers, optional screen

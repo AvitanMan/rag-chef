@@ -92,6 +92,7 @@ test("allergy aliases and diet conflicts agree across browsing, planning and Che
   await expect(cards.filter({ hasText: "Garden Soup" })).toContainText("Diet not verified");
   await navigate(page, "Plan");
   await page.getByRole("button", { name: "Fill empty days" }).click();
+  await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
   await expect.poll(async () => Object.values((await readKitchen(request)).state.meals).length).toBeGreaterThan(0);
   const titles = Object.values((await readKitchen(request)).state.meals).map((meal) => (meal as { title: string }).title);
   expect(titles).not.toContain("Cheese Pasta");

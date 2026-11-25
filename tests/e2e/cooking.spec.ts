@@ -1,6 +1,8 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { addDateDays, weekStart } from "../../app/lib/kitchen-state";
+import { householdDate } from "../../app/lib/private-storage";
 import { showPantryBatches } from "./pantry-helpers";
 
 const TODAY = "2026-10-22";
@@ -210,17 +212,21 @@ test("custom timer completion survives reload and an old cooking session cannot 
 });
 
 test("waste-aware filling preserves saved dinners and leaves past empty days untouched", async ({ page, request }) => {
+  await page.clock.setSystemTime(new Date());
+  const today = householdDate("Asia/Jerusalem");
   const recipe = await recipeFixture(request);
-  const savedDate = "2026-10-23";
+  const tomorrow = addDateDays(today, 1);
+  const savedDate = weekStart(tomorrow) === weekStart(today) ? tomorrow : addDateDays(today, -1);
   const saved = mealFixture(recipe, savedDate, { locked: true });
-  await saveFixture(request, { ...emptyState(), pantry: [{ id: "reserved-rice", name: "rice", measure: "200 g", useBy: savedDate }, { id: "beans-soon", name: "beans", measure: "400 g", useBy: TODAY }, { id: "garlic", name: "garlic", measure: "2 cloves" }], meals: { [savedDate]: saved } });
+  await saveFixture(request, { ...emptyState(), pantry: [{ id: "reserved-rice", name: "rice", measure: "200 g", useBy: savedDate }, { id: "beans-soon", name: "beans", measure: "400 g", useBy: today }, { id: "garlic", name: "garlic", measure: "2 cloves" }], meals: { [savedDate]: saved } });
   await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
   await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals).length).toBeGreaterThan(1);
   const meals = (await readKitchen(request)).state.meals;
   expect(meals[savedDate]).toEqual(saved);
-  expect(Object.keys(meals).every((date) => date >= TODAY)).toBeTruthy();
-  expect(meals[TODAY].recipeId).toBe("fixture-vegan-beans");
+  expect(Object.keys(meals).every((date) => date === savedDate || date >= today)).toBeTruthy();
+  expect(meals[today].recipeId).toBe("fixture-vegan-beans");
   expect(Object.values(meals).filter((meal) => (meal as PlannedMeal).recipeId === recipe.id)).toHaveLength(1);
 });
 
@@ -319,11 +325,13 @@ test("refilling cleared days draws a new plan while preserving locked dinners", 
     } });
   });
   const recipe = await recipeFixture(request);
-  const saved = mealFixture(recipe, "2026-10-26", { locked: true });
+  await page.clock.setSystemTime(new Date());
+  const saved = mealFixture(recipe, addDateDays(weekStart(householdDate("Asia/Jerusalem")), 7), { locked: true });
   await saveFixture(request, { ...emptyState(), meals: { [saved.date]: saved } });
   await page.goto("/"); await navigate(page, "Plan");
   await page.getByRole("button", { name: "Next week", exact: true }).click();
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
   await expect(page.locator(".day-card.filled")).toHaveCount(7);
   await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals).length).toBe(7);
   const first = (await readKitchen(request)).state.meals;
@@ -333,6 +341,7 @@ test("refilling cleared days draws a new plan while preserving locked dinners", 
   await expect(page.locator(".day-card.filled")).toHaveCount(1);
   await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals).length).toBe(1);
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
   await expect.poll(async () => Object.keys((await readKitchen(request)).state.meals).length).toBe(7);
   const second = (await readKitchen(request)).state.meals;
   const ids = (meals: Record<string, PlannedMeal>) => Object.keys(meals).sort().map((date) => meals[date].recipeId);

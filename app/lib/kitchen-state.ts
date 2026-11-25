@@ -22,16 +22,16 @@ export function weekStart(date = localDate()): string {
   return addDateDays(date, -((day + 6) % 7));
 }
 
-export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true, personal?: { amounts?: PersonalRecipeAmounts; contentHash?: string }): PlannedMeal {
+export function createPlannedMeal(date: string, recipe: Recipe, normalizeIngredients = true, options?: { amounts?: PersonalRecipeAmounts; contentHash?: string; id?: string }): PlannedMeal {
   const baseServings = recipe.servings && recipe.servings > 0 ? recipe.servings : null;
   const meal: PlannedMeal = {
-    id: crypto.randomUUID(), date, recipeId: recipe.id,
+    id: options?.id ?? crypto.randomUUID(), date, recipeId: recipe.id,
     recipe: structuredClone(recipe), title: recipe.title,
     baseServings, servings: baseServings, batches: 1, locked: false,
     status: "planned", ingredientOverrides: {},
     ...(normalizeIngredients ? { planningIngredients: recipe.ingredients.map(normalizePlanningIngredient) } : {}),
   };
-  return normalizeIngredients ? applyPersonalRecipeAmounts(meal, personal?.amounts, personal?.contentHash) : meal;
+  return normalizeIngredients ? applyPersonalRecipeAmounts(meal, options?.amounts, options?.contentHash) : meal;
 }
 
 export function dinnerSelectionStatus(meals: Record<string, PlannedMeal>, date: string, expectedId: string | null): "available" | "protected" | "changed" {

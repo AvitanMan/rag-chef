@@ -17,7 +17,7 @@ Hosted readiness requires an explicit release label. Standalone development
 defaults to `development` when the label is omitted.
 
 The checked-in `service-contracts.json` requires protocol 1, controls 1 and schema
-9 (`0009_catalog_job_recipe_receipts`). The source and build checks validate the three
+10 (`0010_reviewed_plan_catalog_revision`). The source and build checks validate the three
 configurations, shared database/queue bindings, private service routes and
 cancellation flags. They never deploy code or inspect production data.
 
@@ -65,13 +65,14 @@ Check the intended deployment settings before opening traffic:
    has stopped. Preserve queued D1 jobs and their identities.
 2. Back up the intended D1 database, including kitchens, command receipts, catalog
    jobs, recipe-write receipts, source permissions and admission tables. Apply the additive migrations
-   once through `0009_catalog_job_recipe_receipts.sql` to that database. Do not copy local
+   once through `0010_reviewed_plan_catalog_revision.sql` to that database. Do not copy local
    personal state into hosted storage or reset the migration journal.
    Migration 0009 marks previously attempted, unfinished recipe-writing jobs as
    `CATALOG_REVIEW_REQUIRED`: older attempts cannot prove which recipe writes
    already committed. Their payloads and progress remain available for review
    and explicit resubmission with a new request ID. Never-started jobs and jobs
-   that only build embeddings can continue normally.
+   that only build embeddings can continue normally. Migration 0010 starts tracking
+   catalog changes so a weekly plan can detect a change between preview and Apply.
 3. Deploy the matching private Catalog Worker, then the matching private Chef
    Worker, then the gateway. Use the candidate's generated configurations and
    deployment secret settings. Keep external traffic closed during this switch.
