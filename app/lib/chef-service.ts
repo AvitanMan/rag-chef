@@ -1,10 +1,13 @@
 import { RuntimeAdmissionError } from "./runtime-admission-types";
-import { partialRecipeAnswer } from "./chef-question-plan";
+import { focusedCookingFact, partialRecipeAnswer } from "./chef-question-plan";
+import { preparationHelp } from "./chef-preparation";
+import { focusedStepAdditionAnswer } from "./chef-step-additions";
+import { generateCookingTip } from "./chef-cooking-tip";
 import { ChefServiceError } from "./chef-errors";
 export { ChefServiceError } from "./chef-errors";
 import { householdDate, HouseholdAuthError, type HouseholdContext } from "./household";
 import { DEFAULT_COOKING_PROFILE } from "./kitchen-types";
-import { isPlanningQuantityQuestion, planningQuantityAnswer, originalIngredientAnswer, planningIngredientStepAnswer } from "./chef-planning-answer";
+import { isPlanningQuantityQuestion, planningQuantityAnswer, originalIngredientAnswer, planningIngredientStepAnswer, savedTotalsForDirection } from "./chef-planning-answer";
 import type { AnswerVerification } from "./chef-verification";
 import type { KitchenService } from "./kitchen-service";
 import type { CatalogReadService } from "./catalog-read-service";
@@ -24,7 +27,8 @@ import { catalogMatchReason, constraintsForRecipeQuery, focusedRecipeId, recipeQ
 import type { Recipe } from "./recipe-types";
 import { normalizeConstraints, proposedChangeConflicts } from "./recipe-constraints";
 import { mealAmountBasis, parseMeasure, resolvedMealIngredients } from "./quantities";
-import { chefMealHash, chefMealPreview, chefMealReadiness, chefPantryProjection, chefRecipeHash, cookingTechniqueGuides, focusedCookingStep, focusedCookingMeaningAnswer, recipeEvidence } from "./chef-context";
+import { cookingStepText } from "./recipe-instructions";
+import { asksAboutSourceTechnique, chefMealHash, chefMealPreview, chefMealReadiness, chefPantryProjection, chefRecipeHash, cookingTechniqueGuides, namedTechniqueGuides, focusedCookingStep, focusedCookingMeaningAnswer, isCookingMeaningQuestion, recipeEvidence } from "./chef-context";
 import { selectRecipeEvidence, type EvidenceSelection } from "./chef-evidence";
 import { RECIPE_STEP_EMBEDDING_KIND, buildRecipeQueryText } from "./recipe-embeddings";
 import { chefGroundingIssue, lacksRequestedTotalTime, lacksRequestedNutrition } from "./chef-grounding";
@@ -260,23 +264,66 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
     input.context = dinner;
   }
   const intent = recipeQueryIntent(input.query, Boolean(focus || dinner?.recipeId));
-  const allowChanges = intent.mode === "adaptation";
-  const factualQuestion = question && !allowChanges && !requestingRecipes && queryRequestsRecipeHelp(input.query);
-  const planningStepAnswer = previewMeal && ranked.length === 1 && !allowChanges ? planningIngredientStepAnswer(previewMeal, ranked[0].recipe, input.query) : undefined;
-  const planningAnswer = planningStepAnswer ?? (previewMeal && ranked.length === 1 && !allowChanges && isPlanningQuantityQuestion(input.query) ? planningQuantityAnswer(previewMeal, input.query) : undefined);
-  const planningStep = planningStepAnswer?.sourceStep;
+  const cookingHelp = dinner?.purpose === "cooking";
+  // A question about a recipe prohibition is not a request to rewrite it.
+  const asksAboutRestriction = cookingHelp && /^\s*why\b[^!?;.]*\b(?:not|never|avoid|don['’]t|without)\b/i.test(input.query)
+    && !/\b(?:instead|substitut\w*|swap|replace|adapt|change|but|and (?:can|could|how|what))\b/i.test(input.query);
+  const allowChanges = intent.mode === "adaptation" && !asksAboutRestriction;
   const cookingRecipe = dinner?.purpose === "cooking" ? ranked.find(item => item.recipe.id === dinner?.recipeId)?.recipe : undefined;
-  const stepFocus = cookingRecipe ? focusedCookingStep(cookingRecipe, input.query, dinner?.stepEvidenceId) : null;
+  const stepFocus = cookingRecipe ? focusedCookingStep(cookingRecipe, input.query, dinner?.stepEvidenceId, dinner?.methodStep) : null;
+  if (cookingRecipe && dinner?.methodStep && !stepFocus) {
+    await recheckContext();
+    return {
+      answer: `I couldn’t match step ${dinner.methodStep.number} in this cooking method to a source direction. Which instruction do you mean?`,
+      answerStatus: "needs_clarification", resolvedContext: dinner, recipes: ranked.map(item => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId,
+      recommendations: [], sourceFacts: [], chefChanges: [], citations: [], warnings: preWarnings, generation: "catalog_fallback",
+      provider: input.provider, model, outcome: retrieval.outcome, retrieval: retrievalMetadata(retrieval, embedModel),
+      timings: { retrievalMs: Math.round(performance.now() - started), generationMs: 0, verificationMs: 0, totalMs: Math.round(performance.now() - started) },
+    } satisfies ChefApiResponse;
+  }
+  const selectedRecipe = ranked.length === 1 && ranked[0].recipe.id === dinner?.recipeId ? ranked[0].recipe : undefined;
+  const preparation = selectedRecipe && !allowChanges && !requestingRecipes
+    ? preparationHelp(selectedRecipe, stepFocus, input.query, input.history) : undefined;
+  const asksForInstructions = /^(?:please\s+)?(?:how (?:do|should|can|would|to)\b|should (?:i|we)\b|(?:walk|talk) me through\b|explain\b)/i.test(input.query.trim());
+  const personalQuestion = selectedRecipe && (asksForInstructions || /^(?:please\s+)?(?:do|must|would) (?:i|we)\b/i.test(input.query.trim()));
+  const factualQuestion = question && !allowChanges && !requestingRecipes && (cookingHelp || Boolean(preparation || personalQuestion) || queryRequestsRecipeHelp(input.query));
+  const stepAddition = cookingRecipe && stepFocus && factualQuestion && ranked.length === 1
+    ? focusedStepAdditionAnswer({ recipe: cookingRecipe, meal: previewMeal, step: stepFocus, query: input.query, history: input.history }) : undefined;
+  const planningStepAnswer = !stepAddition && previewMeal && ranked.length === 1 && !allowChanges
+    ? planningIngredientStepAnswer(previewMeal, ranked[0].recipe, input.query, /\b(?:whole|entire) recipe\b/i.test(input.query) ? null : stepFocus) : undefined;
+  const planningAnswer = stepAddition ?? planningStepAnswer ?? (previewMeal && ranked.length === 1 && !allowChanges && isPlanningQuantityQuestion(input.query) ? planningQuantityAnswer(previewMeal, input.query) : undefined);
+  const planningStep = planningStepAnswer?.sourceStep;
+  const directAnswer = preparation ?? planningAnswer;
+  const directEvidenceIds = new Set([
+    ...(planningAnswer?.planningFacts.map(fact => fact.sourceEvidenceId) ?? []),
+    ...(preparation?.evidenceIds ?? stepAddition?.evidenceIds ?? []),
+    ...(planningStep ? [planningStep.evidenceId] : []),
+  ]);
+  // A numbered step has already been mapped from the visible cooking method.
+  const stepQuestion = stepFocus ? input.query.replace(/\b(?:step|direction|instruction)\s*#?\s*\d+\b/gi, "this step") : input.query;
+  const stepFact = stepFocus && factualQuestion && !directAnswer ? focusedCookingFact(stepFocus, stepQuestion) : undefined;
   let techniqueGuides: ReturnType<typeof cookingTechniqueGuides> = [];
-  if (stepFocus && factualQuestion && !planningAnswer) {
-    const candidates = cookingTechniqueGuides(stepFocus.text, input.query);
-    if (candidates.length) try {
+  const candidates = preparation?.technique ? namedTechniqueGuides(preparation.technique)
+    : stepFocus && factualQuestion && !directAnswer && !stepFact ? cookingTechniqueGuides(stepFocus.text, stepQuestion) : [];
+  if (candidates.length) {
+    try {
       const policy = await catalog.sourcePolicy("wikibooks");
       // Reviewed built-in references need no catalog import; explicit source restrictions still apply.
       if (!policy || policy.approval_status === "approved" && policy.allow_display && policy.allow_cache && policy.allow_index_text) techniqueGuides = candidates;
     } catch { /* Omit technique references when their permissions cannot be checked. */ }
   }
-  const techniqueAnswer = focusedCookingMeaningAnswer(stepFocus, input.query, techniqueGuides);
+  const techniqueAnswer = preparation ? undefined : focusedCookingMeaningAnswer(stepFocus, stepQuestion, techniqueGuides);
+  const genericMeaning = stepFocus && factualQuestion && (isCookingMeaningQuestion(stepQuestion) && !/\b(?:boil(?:ing)?|simmer(?:ing)?)\b/i.test(stepQuestion) || asksAboutSourceTechnique(stepFocus.text, stepQuestion));
+  const sourceDirection = stepFocus ? cookingStepText(stepFocus.text) : "";
+  const stepQuantity = stepQuestion.trim().match(/^how (?:much|many) (.+?) (?:is|are) (?:needed|required|used) (?:for|in) this step[?.!\s]*$/i);
+  const requestedAmount = stepQuantity && previewMeal ? planningQuantityAnswer(previewMeal, `How much ${stepQuantity[1]} do I need?`) : undefined;
+  const savedStepTotals = stepFocus && previewMeal && cookingRecipe ? savedTotalsForDirection(previewMeal, cookingRecipe, sourceDirection) : [];
+  const asksAdjustedAmount = requestedAmount?.answerStatus === "answered" && requestedAmount.planningFacts.length === 1 &&
+    savedStepTotals.some(fact => fact.ingredientIndex === requestedAmount.planningFacts[0].ingredientIndex);
+  const focusedAnswer = stepFact ?? (stepFocus && (techniqueAnswer || genericMeaning || asksAdjustedAmount) ? { answer: techniqueAnswer ?? sourceDirection, answerStatus: "answered" as const } : undefined);
+  const totalsText = savedStepTotals.map(row => row.needsReview ? `${row.name} (amount needs review)` : `${row.measure} ${row.name}`).join(", ");
+  const adjustedDirection = savedStepTotals.length ? `Original direction: ${sourceDirection}\n\nSaved dinner total: ${totalsText}. The saved dinner does not specify a separate amount for this step.` : undefined;
+  let showStepTotals = Boolean(adjustedDirection && focusedAnswer && (techniqueAnswer || focusedAnswer.answer.includes(sourceDirection)));
   const originalAnswer = factualQuestion && ranked.length === 1 && (!previewMeal || /\b(?:original|source)\b/i.test(input.query)) ? originalIngredientAnswer(ranked[0].recipe, input.query, stepFocus) : undefined;
   if (planningAnswer && previewMeal) dinner = { ...dinner, servings: previewMeal.servings ?? undefined, batches: previewMeal.batches };
   const recommendationLimit = factualQuestion ? 0 : Math.min(intent.requestedCount ?? (focus || dinner?.recipeId ? 1 : 3), ranked.length);
@@ -286,20 +333,20 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
   const selections = new Map<string, EvidenceSelection>();
   for (const item of ranked) {
     let vectors = new Map<number, number[]>(), queryVector: number[] | null = null;
-    if (household.mode === "local" && question && !planningAnswer && !originalAnswer && !partialAnswer && !missingTotalTime && !missingNutrition && recipeEvidence(item.recipe).length > 12) try {
+    if (household.mode === "local" && question && !directAnswer && !originalAnswer && !focusedAnswer && !partialAnswer && !missingTotalTime && !missingNutrition && recipeEvidence(item.recipe).length > 12) try {
       const chunks = await catalog.embeddings(embedModel, RECIPE_STEP_EMBEDDING_KIND, item.recipe.id);
       if (chunks.length) {
         queryVector = await models.embed(buildRecipeQueryText(input.query, []), embedModel, signal);
         vectors = new Map(chunks.filter((chunk) => Array.isArray(chunk.vector)).map((chunk) => [chunk.chunkIndex ?? 0, chunk.vector as number[]]));
       }
     } catch (error) { if (error instanceof RuntimeAdmissionError) throw error; if (signal.aborted) return fail(499, "cancelled", "Request cancelled."); }
-    if (planningAnswer) {
-      const ids = new Set(planningAnswer.planningFacts.map(fact => fact.sourceEvidenceId));
-      if (planningStep) ids.add(planningStep.evidenceId);
+    if (directAnswer || showStepTotals) {
+      const ids = new Set(directAnswer ? directEvidenceIds : savedStepTotals.map(fact => fact.sourceEvidenceId));
+      if (!preparation && !stepAddition && stepFocus && savedStepTotals.length) ids.add(stepFocus.evidenceId);
       selections.set(item.recipe.id, { items: recipeEvidence(item.recipe).filter(row => ids.has(row.evidenceId)), coreStepIds: [], method: "full_recipe", complete: false, indexedSteps: 0, totalSteps: item.recipe.instructions.length });
       continue;
     }
-    selections.set(item.recipe.id, selectRecipeEvidence(item.recipe, input.query, { stepId: dinner?.stepEvidenceId, vectors, queryVector, budget: Math.floor(16_000 / Math.max(ranked.length, 1)), full: !question || Boolean(partialAnswer) || Boolean(originalAnswer) || missingTotalTime || missingNutrition }));
+    selections.set(item.recipe.id, selectRecipeEvidence(item.recipe, input.query, { stepId: stepFocus?.evidenceId ?? dinner?.stepEvidenceId, stepResolved: Boolean(stepFocus), vectors, queryVector, budget: Math.floor(16_000 / Math.max(ranked.length, 1)), full: !question || Boolean(partialAnswer) || Boolean(originalAnswer) || missingTotalTime || missingNutrition }));
   }
   const selectedEvidence = new Map([...selections].map(([id, selection]) => [id, selection.items]));
   const retrievedAt = performance.now();
@@ -308,6 +355,9 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
   if (intent.adaptationDiets.length) preWarnings.push(`Requested ${intent.adaptationDiets.map((diet) => diet.replaceAll("_", " ")).join(", ")} changes are advisory. The original recipe is unchanged and is not verified as meeting that target.`);
   const generationSchema: { properties: Record<string, unknown>; required: readonly string[]; [key: string]: unknown } = { ...CHEF_RESPONSE_JSON_SCHEMA, properties: { ...CHEF_RESPONSE_JSON_SCHEMA.properties, chefChanges: { ...CHEF_RESPONSE_JSON_SCHEMA.properties.chefChanges, maxItems: allowChanges ? 3 : 0 } } };
   generationSchema.properties.recommendations = { ...CHEF_RESPONSE_JSON_SCHEMA.properties.recommendations, maxItems: recommendationLimit, ...(intent.requestedCount && !factualQuestion ? { minItems: recommendationLimit } : {}) };
+  const walkthrough = factualQuestion && asksForInstructions;
+  const answerLimit = walkthrough ? 1_000 : CHEF_RESPONSE_JSON_SCHEMA.properties.answer.maxLength;
+  if (walkthrough) generationSchema.properties.answer = { ...CHEF_RESPONSE_JSON_SCHEMA.properties.answer, maxLength: answerLimit };
   if (!factualQuestion && !allowChanges) generationSchema.properties.answer = { type: "string", enum: [RECOMMENDATION_SUMMARY] };
   if (dinner?.recipeId || factualQuestion) {
     Object.assign(generationSchema.properties, { answerStatus: { type: "string", enum: ["answered", "needs_clarification", "unsupported"] } });
@@ -317,6 +367,7 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
   let verification: AnswerVerification = { status: "not_required", checkedSentenceCount: 0 };
   let verificationMs = 0;
   let generationMs = 0;
+  let cookingTip: string | undefined;
   let answerValidation: ChefApiResponse["answerValidation"];
   let generation: ChefApiResponse["generation"] = "ai";
   let generated: ChefStructuredAnswer;
@@ -324,15 +375,28 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
     generation = "catalog_fallback";
     const answer = retrieval.outcome === "catalog_empty" ? "The approved recipe catalog is empty. Add approved recipes before asking the Chef." : retrieval.outcome === "no_match" ? "I could not find a relevant recipe in the approved catalog. Try a different dish or ingredient." : "No catalog recipe matches this request and your exclusions or requirements. Keep your exclusions and try another dish.";
     generated = { answer, recommendations: [], sourceFacts: [], chefChanges: [], citations: [], warnings: [] };
-  } else if (planningAnswer) {
+  } else if (directAnswer) {
     generation = "catalog_fallback";
-    generated = { answer: planningAnswer.answer, answerStatus: planningAnswer.answerStatus, recommendations: [], sourceFacts: [...planningAnswer.planningFacts.map(fact => ({ recipeId: fact.recipeId, evidenceId: fact.sourceEvidenceId, fact: selectedEvidence.get(fact.recipeId)!.find(row => row.evidenceId === fact.sourceEvidenceId)!.text })), ...(planningStep ? [{ recipeId: ranked[0].recipe.id, evidenceId: planningStep.evidenceId, fact: planningStep.text }] : [])], chefChanges: [], citations: [], warnings: [] };
+    const recipeId = ranked[0].recipe.id;
+    const evidence = selectedEvidence.get(recipeId)!;
+    const sourceFacts = [...directEvidenceIds].map(evidenceId => ({ recipeId, evidenceId, fact: evidence.find(row => row.evidenceId === evidenceId)!.text }));
+    cookingTip = preparation?.cookingTip;
+    generated = { answer: directAnswer.answer, answerStatus: directAnswer.answerStatus, recommendations: [], sourceFacts, chefChanges: [], citations: [], warnings: [] };
   } else if (originalAnswer && selectedEvidence.get(ranked[0].recipe.id)?.some(item => item.evidenceId === originalAnswer.evidenceId)) {
     generation = "catalog_fallback";
     generated = { answer: originalAnswer.answer, answerStatus: originalAnswer.answerStatus, sourceFacts: [{ recipeId: ranked[0].recipe.id, evidenceId: originalAnswer.evidenceId, fact: recipeEvidence(ranked[0].recipe).find(item => item.evidenceId === originalAnswer.evidenceId)!.text }], recommendations: [], chefChanges: [], citations: [], warnings: [] };
-  } else if (techniqueAnswer && stepFocus && cookingRecipe) {
+  } else if (focusedAnswer && stepFocus && cookingRecipe) {
     generation = "catalog_fallback";
-    generated = { answer: techniqueAnswer, answerStatus: "answered", sourceFacts: [{ recipeId: cookingRecipe.id, evidenceId: stepFocus.evidenceId, fact: stepFocus.text }], recommendations: [], chefChanges: [], citations: [], warnings: [] };
+    const amountFacts = showStepTotals ? selectedEvidence.get(cookingRecipe.id)!.filter(item => savedStepTotals.some(row => row.sourceEvidenceId === item.evidenceId)) : [];
+    generated = { answer: showStepTotals ? adjustedDirection! : focusedAnswer.answer, answerStatus: focusedAnswer.answerStatus,
+      sourceFacts: [{ recipeId: cookingRecipe.id, evidenceId: stepFocus.evidenceId, fact: stepFocus.text }, ...amountFacts.map(item => ({ recipeId: cookingRecipe.id, evidenceId: item.evidenceId, fact: item.text }))],
+      recommendations: [], chefChanges: [], citations: [], warnings: [] };
+    if (!adjustedDirection && household.mode === "local" && !techniqueGuides.length && (genericMeaning || stepFact?.missingCue)) {
+      const tip = await generateCookingTip({ models, provider: input.provider, model, verifierModel: input.provider === "ollama" ? model : env("OLLAMA_CHAT_MODEL", DEFAULT_OLLAMA_CHAT_MODEL), query: input.query, step: stepFocus.text, profile: input.profile, signal });
+      cookingTip = tip.cookingTip;
+      generationMs += tip.generationMs;
+      verificationMs += tip.verificationMs;
+    }
   } else if (partialAnswer && !partialAnswer.remainingQuery && partialAnswer.evidenceIds.every(id => selectedEvidence.get(ranked[0].recipe.id)?.some(item => item.evidenceId === id))) {
     generation = "catalog_fallback";
     generated = { answer: partialAnswer.answer, answerStatus: partialAnswer.answerStatus, sourceFacts: recipeEvidence(ranked[0].recipe).filter(item => partialAnswer.evidenceIds.includes(item.evidenceId)).map(item => ({ recipeId: ranked[0].recipe.id, evidenceId: item.evidenceId, fact: item.text })), recommendations: [], chefChanges: [], citations: [], warnings: [] };
@@ -358,7 +422,7 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
           throw new ProviderError(readiness.message, 503, "verification_preflight_unavailable");
         }
       }
-      const buildPrompt = (rejectedAnswer?: string) => buildUserPrompt(partialAnswer?.remainingQuery ? { ...input, query: partialAnswer.remainingQuery } : input, ranked, allowChanges, retrieval.metadataByRecipeId, planningAmounts, selectedEvidence, factualQuestion, recommendationLimit, techniqueGuides, rejectedAnswer, pantryContextWarning);
+      const buildPrompt = (rejectedAnswer?: string) => buildUserPrompt(partialAnswer?.remainingQuery ? { ...input, query: partialAnswer.remainingQuery } : input, ranked, allowChanges, retrieval.metadataByRecipeId, planningAmounts, selectedEvidence, factualQuestion, recommendationLimit, techniqueGuides, rejectedAnswer, pantryContextWarning, stepFocus, walkthrough);
       let prompt = buildPrompt();
       promptBytes = new TextEncoder().encode(prompt).length;
       // One local correction attempt can recover a bad paraphrase without
@@ -373,7 +437,7 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
               systemPrompt: input.provider === "openai"
                 ? `${CHEF_SYSTEM_PROMPT}\n\n${COOKING_STEP_RULES}`
                 : `${CHEF_SYSTEM_PROMPT}\n\nRequired JSON schema:\n${JSON.stringify(generationSchema)}\n\n${COOKING_STEP_RULES}`,
-            }), references);
+            }), references, answerLimit);
           } finally { generationMs += Math.round(performance.now() - generationStarted); }
           draftAnswer = generated.answer;
           if (!allowChanges && generated.chefChanges.length) invalidGeneratedOutput();
@@ -465,18 +529,35 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
       const preflightUnavailable = error instanceof ProviderError && error.code === "verification_preflight_unavailable";
       const unverified = preflightUnavailable || error instanceof ProviderError && ["unsupported_detail", "unsupported_total_time", "unlabeled_time_estimate", "unsupported_claim", "verification_unavailable", "adaptation_conflict"].includes(error.code);
       preWarnings.push(preflightUnavailable ? `No AI generation request was sent. ${error instanceof ProviderError ? error.message : "Start local Ollama with the verification model, then retry."}` : unverified ? "The AI answer was withheld because it could not be verified against the supplied evidence."
-        : "The AI provider is unavailable or its answer could not be used. These are catalog-ranked suggestions, not an AI answer.");
+        : cookingHelp ? "Chef could not complete the cooking answer." : "The AI provider is unavailable or its answer could not be used. These are catalog-ranked suggestions, not an AI answer.");
       generated = {
         answer: error instanceof ProviderError && error.code === "adaptation_conflict" ? "I withheld the proposed change because it conflicts with your ingredient requirements. Keep your exclusions and choose another substitution." : preflightUnavailable ? "Local answer verification is unavailable, so I did not request an AI answer. You can still read the original source evidence below." : unverified ? "I could not verify the AI answer against the source evidence. Check the original recipe excerpts below, or ask again."
-          : "Here are recipe suggestions from your approved catalog. Open a recipe to check its ingredients and directions.",
-        ...(unverified ? { answerStatus: "unverified" as const } : {}),
+          : cookingHelp ? (stepFocus ? `Chef couldn’t check that detail. This step says: ${stepFocus.text}` : "Chef couldn’t check that detail. Refer to the saved recipe directions.") : "Here are recipe suggestions from your approved catalog. Open a recipe to check its ingredients and directions.",
+        ...(unverified || cookingHelp ? { answerStatus: "unverified" as const } : {}),
         sourceFacts: stepFocus && cookingRecipe ? [{ recipeId: cookingRecipe.id, evidenceId: stepFocus.evidenceId, fact: stepFocus.text }] : [], chefChanges: [], citations: [], warnings: [],
         recommendations: ranked.slice(0, recommendationLimit).map((item) => ({ recipeId: item.recipe.id, reason: item.matchReason, pantryMatch: item.pantryMatch, missingIngredients: item.missingIngredients })),
       };
+      if (cookingRecipe && stepFocus && adjustedDirection && generated.answer.includes(stepFocus.text)) {
+        const evidence = selectedEvidence.get(cookingRecipe.id)!;
+        generated.answer = `Chef couldn’t check that detail.\n\nOriginal direction: ${sourceDirection}`;
+        if (savedStepTotals.every(fact => evidence.some(row => row.evidenceId === fact.sourceEvidenceId))) {
+          generated.answer = `Chef couldn’t check that detail.\n\n${adjustedDirection}`;
+          generated.sourceFacts.push(...evidence.filter(row => savedStepTotals.some(fact => fact.sourceEvidenceId === row.evidenceId)).map(row => ({ recipeId: cookingRecipe.id, evidenceId: row.evidenceId, fact: row.text })));
+          showStepTotals = true;
+        }
+      }
     }
   }
   if (partialAnswer?.remainingQuery) {
-    generated.answer = `${generated.answer}\n\n${partialAnswer.answer}`;
+    if (stepFocus && partialAnswer.evidenceIds.includes(stepFocus.evidenceId)) {
+      // Keep the grounded portion visible and the retry status for a failed
+      // residual question. Its fallback would otherwise repeat the same step.
+      const remaining = generation === "catalog_fallback" && generated.answerStatus === "unverified"
+        ? "Chef couldn’t check the remaining part of your question." : generated.answer;
+      generated.answer = [...new Set([partialAnswer.answer, remaining].flatMap(answer => answer.split("\n\n")))].join("\n\n");
+    } else {
+      generated.answer = `${generated.answer}\n\n${partialAnswer.answer}`;
+    }
     if (generation === "ai" && generated.answerStatus === "unsupported" && partialAnswer.answerStatus === "answered") generated.answerStatus = "answered";
     generated.sourceFacts.push(...recipeEvidence(ranked[0].recipe).filter(item => partialAnswer.evidenceIds.includes(item.evidenceId) && !generated.sourceFacts.some(fact => fact.evidenceId === item.evidenceId)).map(item => ({ recipeId: ranked[0].recipe.id, evidenceId: item.evidenceId, fact: item.text })));
   }
@@ -484,7 +565,7 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
     generated.answerStatus = "unsupported";
     generated.answer = "The supplied recipe evidence does not establish an answer to that question. Check the original directions below; I will not guess.";
   }
-  if (generated.answerStatus === "unsupported" || factualQuestion) generated.recommendations = [];
+  if (generated.answerStatus === "unsupported" || factualQuestion || cookingHelp) generated.recommendations = [];
   if (generated.answerStatus === "unsupported") generated.chefChanges = [];
   await recheckContext([...selections.values()].some((selection) => selection.method === "semantic_steps"), techniqueGuides.length > 0);
   const answer = sanitizeGeneratedAnswer(generated, ranked, preWarnings);
@@ -497,17 +578,21 @@ async function answerChef(input: ChefRequest, context: ChefServiceContext, depen
     readinessByRecipeId: Object.fromEntries(ranked.flatMap((item) => item.readiness ? [[item.recipe.id, item.readiness]] : [])),
     selectedEvidenceByRecipeId: Object.fromEntries([...selectedEvidence].map(([id, evidence]) => [id, evidence.map((item) => item.evidenceId)])), promptBytes,
     verification,
-    ...(techniqueAnswer ? { answerKind: "cooking_technique" as const } : {}),
-    ...(planningAnswer ? { ...(!planningStep ? { answerKind: "planning_quantities" as const } : {}), planningFacts: planningAnswer.planningFacts } : partialAnswer?.planningFacts.length ? { planningFacts: partialAnswer.planningFacts } : {}),
+    ...(techniqueAnswer && stepFocus ? { answerKind: "cooking_technique" as const, cookingInstruction: adjustedDirection ?? cookingStepText(stepFocus.text) } : {}),
+    ...(preparation ? { answerKind: "recipe_guidance" as const } : {}),
+    ...(cookingTip ? { cookingTip } : {}),
+    ...(planningAnswer ? { ...(!planningStep && !stepAddition ? { answerKind: "planning_quantities" as const } : {}), planningFacts: planningAnswer.planningFacts } : partialAnswer?.planningFacts.length ? { planningFacts: partialAnswer.planningFacts } : {}),
+    ...(showStepTotals ? { planningFacts: savedStepTotals } : {}),
     evidenceRetrieval: Object.fromEntries([...selections].map(([id, selection]) => [id, { method: selection.method, complete: selection.complete, coreStepIds: selection.coreStepIds, indexedSteps: selection.indexedSteps, totalSteps: selection.totalSteps }])),
     ...(answerValidation ? { answerValidation } : {}),
-    recipes: ranked.map((item) => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId, outcome: retrieval.outcome, generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs, verificationMs, totalMs: Math.round(finished - started) } } satisfies ChefApiResponse;
+    recipes: ranked.map(item => item.recipe), metadataByRecipeId: retrieval.metadataByRecipeId, outcome: retrieval.outcome, generation, provider: input.provider, model, retrieval: retrievalMetadata(retrieval, embedModel), timings: { retrievalMs: Math.round(retrievedAt - started), generationMs, verificationMs, totalMs: Math.round(finished - started) } } satisfies ChefApiResponse;
 }
 
-function buildUserPrompt(input: ChefRequest, ranked: RankedCandidate[], allowChanges: boolean, metadataByRecipeId: RecipeMetadataMap, savedDinnerAmounts?: ReturnType<typeof resolvedMealIngredients>, selectedEvidence?: Map<string, ReturnType<typeof recipeEvidence>>, factualQuestion = false, recommendationLimit = 3, techniqueGuides: ReturnType<typeof cookingTechniqueGuides> = [], rejectedAnswer?: string, pantryContextWarning?: string): string {
+function buildUserPrompt(input: ChefRequest, ranked: RankedCandidate[], allowChanges: boolean, metadataByRecipeId: RecipeMetadataMap, savedDinnerAmounts?: ReturnType<typeof resolvedMealIngredients>, selectedEvidence?: Map<string, ReturnType<typeof recipeEvidence>>, factualQuestion = false, recommendationLimit = 3, techniqueGuides: ReturnType<typeof cookingTechniqueGuides> = [], rejectedAnswer?: string, pantryContextWarning?: string, stepFocus: ReturnType<typeof focusedCookingStep> = null, walkthrough = false): string {
   const cookingRecipe = input.context?.purpose === "cooking" ? ranked.find(item => item.recipe.id === input.context?.recipeId)?.recipe : undefined;
-  const stepFocus = cookingRecipe ? focusedCookingStep(cookingRecipe, input.query, input.context?.stepEvidenceId) : null;
-  const answerLength = stepFocus && factualQuestion ? "Give a practical explanation in two to four short actions or sentences (at most 80 words). Do not merely repeat the source step" : "Keep answer to at most two short sentences (60 words)";
+  const answerLength = walkthrough
+    ? "Lead with what to do. Use up to five short sentences (140 words) when the evidence supports more detail: give the sequence, the cut or motion, and what to look for. Include a size, timing or endpoint only when it belongs to that action. Say which detail is missing if it matters. Address the cook directly and keep citation identifiers and commentary about evidence out of the prose"
+    : stepFocus && factualQuestion ? "Give a practical explanation in two to four short actions or sentences (at most 80 words). Do not merely repeat the source step" : "Keep answer to at most two short sentences (60 words)";
   const context = {
     responseTask: factualQuestion ? "factual_answer" : allowChanges ? "requested_adaptation" : "recipe_recommendation",
     recommendationCount: factualQuestion ? 0 : recommendationLimit,
@@ -641,7 +726,7 @@ function sanitizeGeneratedAnswer(
   };
 }
 
-function validateStructuredAnswer(value: unknown, references: ChefReferences): ChefStructuredAnswer {
+function validateStructuredAnswer(value: unknown, references: ChefReferences, answerLimit: number): ChefStructuredAnswer {
   if (!isRecord(value)) {
     throw new ProviderError(
       "The provider returned invalid structured output.",
@@ -656,7 +741,7 @@ function validateStructuredAnswer(value: unknown, references: ChefReferences): C
     if (!id) invalidGeneratedOutput();
     return id.id;
   };
-  const answer = boundedGeneratedString(value.answer, 640);
+  const answer = boundedGeneratedString(value.answer, answerLimit);
   const sourceFacts = generatedObjectArray(value.sourceFacts, ["recipeId", "evidenceId"], (item) => {
     const recipe = references.get(requiredGeneratedString(item.recipeId));
     if (!recipe) invalidGeneratedOutput();

@@ -38,6 +38,31 @@ test("hosted health returns explicit unavailable capabilities without any probe"
   assert.equal(result.body.providers, undefined);
 });
 
+test("cooking tip reviews use the local Ollama verification permit", async () => {
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  const operations = [];
+  const requests = [];
+  const transport = createChefModelTransport({
+    admission: { run: async (provider, operation, callback) => {
+      operations.push([provider, operation]);
+      return callback(new AbortController().signal);
+    } },
+    fetchImpl: async (url, init) => {
+      requests.push({ url, headers: new Headers(init.headers) });
+      return Response.json({ message: { content: '{"suitable":true}' } });
+    },
+  });
+  const request = { operation: "verification", provider: "ollama", model: "test", systemPrompt: "Review", userPrompt: "{}", schema: {} };
+  assert.deepEqual(await transport.generate(request), { suitable: true });
+  assert.deepEqual(operations, [["ollama", "verification"]]);
+  assert.equal(requests[0].headers.get("authorization"), null);
+  process.env.OLLAMA_BASE_URL = "https://provider.test";
+  for (const provider of ["ollama", "openai"]) {
+    await assert.rejects(transport.generate({ ...request, provider }), error => error.code === "verification_unavailable");
+  }
+  assert.equal(requests.length, 1);
+});
+
 test("local health probes model capabilities and sends the server key only to its configured cloud provider", async () => {
   const calls = [];
   const result = await checkChefHealth({ provider: "openai", model: "requested-cloud-model" }, { household: local }, {

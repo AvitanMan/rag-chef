@@ -21,7 +21,9 @@ export function fixtureSql({ grounding = false, journeys = false } = {}) {
   const groundingRecipes = grounding ? [{ id: "fixture-oven-dinner", title: "Source Oven Dinner", ingredients: [{ name: "rice", measure: "200 g" }, { name: "vegetable stock", measure: "400 ml" }], tags: ["vegan"], servings: 2,
     instructions: Array.from({ length: 30 }, (_, index) => index === 19 ? "Preheat the oven to 180°C. Bake for 25–30 minutes until golden." : `Source direction ${index + 1}: continue preparing the ingredients.`) },
     { id: "fixture-step-soup", title: "Step Help Soup", ingredients: [{ name: "carrot", measure: "1" }, { name: "onion", measure: "1" }, { name: "vegetable stock", measure: "400 ml" }, { name: "bread", measure: "1 slice" }], tags: ["vegan"], servings: 2,
-      instructions: ["Boil the carrot and onion in stock until cooked.", "Put the bread in a bowl, then pour the soup over it."] }] : [];
+      instructions: ["Boil the carrot and onion in stock until cooked.", "Put the bread in a bowl, then pour the soup over it."] },
+    { id: "fixture-beans-rice", title: "Baked Beans and Rice", ingredients: [{ name: "rice", measure: "1 cup" }, { name: "stock", measure: "2 cups" }, { name: "beans", measure: "1 cup" }], tags: ["vegan"], servings: 2,
+      instructions: ["Simmer the rice for 11 minutes until the liquid is absorbed.", "Cook the beans until ready.", "Fold the beans into the rice.", "Bake until golden. Rest for 9 minutes.", "Do not stir the beans. Simmer gently."] }] : [];
   for (const recipe of [...fixtureRecipes, ...groundingRecipes, ...(journeys ? journeyRecipes : [])]) {
     const contentHash = createHash("sha256").update(JSON.stringify(recipe)).digest("hex");
     const values = [recipe.id, "test-fixtures", recipe.id, `https://example.invalid/fixtures/${recipe.id}`, recipe.title, "Test", "Test", JSON.stringify(recipe.tags), `${recipe.title} ${recipe.ingredients.map((row) => row.name).join(" ")} ${recipe.instructions.join(" ")}`, contentHash, recipe.servings, 1, 1, 1];

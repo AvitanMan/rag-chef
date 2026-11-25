@@ -17,7 +17,7 @@ them. The default chat model is `qwen3.5:9b`; reports record its installed diges
 | `pnpm test:setup` | Empty disposable databases on desktop/mobile | Starter setup, retry, and dinner selection need no AI |
 | `pnpm test:smoke` | Chromium and WebKit with actual service workers | Offline reload/timer recovery and shopping copy/print behavior |
 | `pnpm recipes:test` | Python recipe collector | Parsing and import contracts pass |
-| `pnpm recipes:grounding-eval` | Eight fixed real-model/source checks | All expected answer, uncertainty, and guard contracts pass; useful answers and withholding are reported separately |
+| `pnpm recipes:grounding-eval` | Eight original grounding checks and six focused cooking checks | All expected answer, uncertainty, and guard contracts pass; useful answers and withholding are reported separately |
 | `pnpm recipes:rag-eval` | Forty synthetic retrieval/claim cases | Complete development and held-out splits independently meet retrieval and verification thresholds |
 | `pnpm recipes:journey-eval` | Nine fixed API journeys, 24 Chef turns | Full journey expectations, latency budget, and unchanged-data checks pass |
 | `pnpm recipes:relevance-eval` | Frozen 166-recipe corpus; 40 calibration and 40 held-out queries, plus 20 retrieval regressions | Deployed ranking and abstention behavior meet the fixed labels in both semantic and forced-lexical modes |
@@ -35,7 +35,7 @@ pnpm recipes:grounding-eval --model qwen3.5:9b
 ```
 
 The runner builds a disposable app, migrates an isolated database, and seeds
-original synthetic recipes. Its eight checks comprise:
+original synthetic recipes. The eight original checks comprise:
 
 - Four answerable questions: step duration, oven temperature, doneness, and an
   attributed explanation of a cooking term.
@@ -45,12 +45,20 @@ original synthetic recipes. Its eight checks comprise:
   withholding the draft also passes this guard when the canonical step remains
   visible and the verifier rejected the draft.
 
-Reports distinguish `checks`, `usefulAnswers`, `correctRefusals`, `guardChecks`,
+The `originalChecks` section distinguishes `checks`, `usefulAnswers`, `correctRefusals`, `guardChecks`,
 `withheldAnswers`, and `executionFailures`. The useful-answer denominator is five:
 the four answerable questions plus the guard question, which could receive a
 useful correction. If that guard withholds, a run can pass all eight contracts
 while providing only four of five useful answers. Report both numbers. Do not
 describe that result as eight correct generated answers.
+
+The `focusedCooking` section scores six selected-step questions separately.
+Two ask for an explicit time or doneness cue and require the exact direction
+with zero generation and verification time. A folding question requires a
+separate, actionable cooking tip. The other cases check a prohibited action,
+a duration belonging to a different action, and a vague doneness instruction.
+These six cases contribute four useful-answer opportunities and two source gaps.
+The combined `summary` covers all fourteen cases.
 
 Expected uncertainty responses are counted as correct refusals even when the API
 labels a factual statement of uncertainty `answered`. Unexpected withholding,
@@ -58,7 +66,7 @@ timeouts, missing results, malformed evidence, and other failed contracts fail
 the suite. A guard's permitted withholding never raises the useful-answer count.
 
 The result is saved under
-`output/playwright/chef-*/grounding-results.json`. Report version 2 includes model
+`output/playwright/chef-*/grounding-results.json`. Report version 3 includes model
 and corpus digests, exact evidence, per-call timings, complete case coverage, and
 source/evaluator fingerprints. The source manifest covers app, database, worker,
 build and migration files plus package/runtime configuration. Each manifest hashes

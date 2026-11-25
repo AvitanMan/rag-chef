@@ -210,7 +210,10 @@ test("cooking ignores discovery refinements while preserving saved profile exclu
   expect(body.refinements).toEqual([]);
   const answer = await result.json();
   expect(answer.answerStatus).toBe("answered");
-  expect(answer.verification.status).toBe("checked");
+  expect(answer.generation).toBe("catalog_fallback");
+  expect(answer.verification.status).toBe("not_required");
+  expect(answer.timings).toMatchObject({ generationMs: 0, verificationMs: 0 });
+  expect(answer.sourceFacts[0].evidenceId).toBe(body.context.stepEvidenceId);
   expect(answer.recipes.map((recipe: { id: string }) => recipe.id)).toEqual(["fixture-tomato-rice"]);
   await expect(cooking.locator(".step-chef-reply")).toBeVisible();
   const staleChips = await request.post("/api/chef", { data: { ...body, refinements: ["without rice"] } });
@@ -600,7 +603,7 @@ test("retrying a rejected cooking answer preserves timer, meal scope, and progre
   const modelURL = process.env.RAG_CHEF_TEST_MODEL_URL!;
   try {
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "verification_reject" }) });
-    await cooking.getByLabel("Question about this step", { exact: true }).fill("Explain the current source step.");
+    await cooking.getByLabel("Question about this step", { exact: true }).fill("Which ingredient does the current direction handle?");
     await cooking.getByRole("button", { name: "Ask Chef about step", exact: true }).click();
     await expect(cooking.getByRole("button", { name: "Retry step answer", exact: true })).toBeVisible();
     await fetch(`${modelURL}/__test/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "valid" }) });

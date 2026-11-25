@@ -24,7 +24,7 @@ const sources = await createSourceLoader({ name: "chef-context", externals: { "c
 const operationalSql = await createSqliteD1();
 after(async () => { operationalSql.close(); await sources.dispose(); });
 const load = name => sources.import(name === "chef-route" ? "app/api/chef/route.ts" : `app/lib/${name}.ts`);
-const { chefMealPreview, chefMealHash, chefMealReadiness, chefPantryProjection, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
+const { chefMealPreview, chefMealHash, chefMealReadiness, chefPantryProjection, chefRecipeHash, recipeEvidence, selectQuestionEvidence, cookingSourceStep, cookingMethodStep, focusedCookingStep, cookingTechniqueGuides, isCookingMeaningQuestion, focusedCookingMeaningAnswer } = await load("chef-context");
 const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema");
 const { mealReadiness } = await load("quantities");
 const { createPlannedMeal, localDate, addDateDays } = await load("kitchen-state");
@@ -92,6 +92,26 @@ test("cooking focus uses the current canonical step unless a valid numbered step
     assert.equal(focusedCookingStep(recipe, query, step), null);
   }
 });
+test("a numbered method question uses the displayed ordinal and retains its canonical source ID", () => {
+  const source = { ...recipe, instructions: ["Stovetop", "1. Warm broth.", "2. Simmer rice.", "Oven", "1. Slice squash.", "2. Roast squash."] };
+  const method = ["Slice squash.", "Roast squash."];
+  const query = "What does step 2 mean?";
+  const methodStep = cookingMethodStep(source, method, 0, "S5", query);
+  assert.deepEqual(methodStep, { number: 2, evidenceId: "S6" });
+  assert.deepEqual(focusedCookingStep(source, query, "S5", methodStep), { evidenceId: "S6", number: 2, text: source.instructions[5] });
+  assert.deepEqual(cookingMethodStep(source, method, 1, "S6", "Explain this step."), methodStep);
+  const context = { purpose: "cooking", recipeId: source.id, stepEvidenceId: "S5", methodStep };
+  assert.deepEqual(parseChefRequest({ query, context }).context.methodStep, methodStep);
+  for (const modified of [{ number: 1, evidenceId: "S6" }, { number: 2, evidenceId: "I1" }]) {
+    assert.throws(() => parseChefRequest({ query, context: { ...context, methodStep: modified } }), /numbered cooking step/);
+  }
+  assert.throws(() => parseChefRequest({ query: "Explain this step.", context }), /numbered cooking step/);
+  const missing = cookingMethodStep(source, method, 1, "S6", "Explain step 3");
+  assert.equal(missing.evidenceId, undefined);
+  assert.equal(focusedCookingStep(source, "Explain step 3", "S6", missing), null);
+  assert.equal(cookingMethodStep(source, ["Legacy directions"], 0, undefined, "What does the original recipe say?"), undefined);
+});
+
 test("reviewed technique definitions explain only verbs present in the focused source step", () => {
   const [boiling] = cookingTechniqueGuides("Boil the vegetables in water until cooked.", "What does this instruction mean?");
   assert.equal(boiling.term, "Boiling"); assert.match(boiling.explanation, /large bubbles/);
@@ -332,8 +352,8 @@ function chefHarness(t, state, source = routeRecipe, onGeneration) {
     onGeneration?.(document);
     return Response.json({ error: "Provider deliberately offline in context tests" }, { status: 503 });
   });
-  return { document, prompts, async ask(context, pantry = [{ name: "client-only", quantity: "999 kg" }], query = "Can I cook this dinner with my pantry?") {
-    const response = await POST(new Request("http://localhost/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, provider: "ollama", context, pantry }) }));
+  return { document, prompts, async ask(context, pantry = [{ name: "client-only", quantity: "999 kg" }], query = "Can I cook this dinner with my pantry?", history) {
+    const response = await POST(new Request("http://localhost/api/chef", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, provider: "ollama", context, pantry, history }) }));
     return { status: response.status, body: await response.json() };
   } };
 }
@@ -470,4 +490,191 @@ test("a kitchen revision change during the answer still rejects the result", asy
   assert.equal(result.status, 409); assert.equal(result.body.error.code, "context_changed");
   assert.equal(harness.prompts.length, 1); assert.equal(kitchenFixture.reads, 2);
   assert.deepEqual(state, before);
+});
+
+test("focused cooking answers the action's time and cue even when generation is offline", async t => {
+  const source = { ...routeRecipe, instructions: ["Simmer the rice for 11 minutes, until the liquid is absorbed.", "Rest for 3 minutes."] };
+  const h = chefHarness(t, kitchenState([], []), source);
+  const context = { purpose: "cooking", recipeId: source.id, stepEvidenceId: "S1", kitchenRevision: 7, today };
+  for (const [query, detail] of [
+    ["How long do I simmer it?", /^Simmer for 11 minutes, until the liquid is absorbed\.$/],
+    ["How do I know when it is ready?", /^Continue until the liquid is absorbed\.$/],
+    ["How long do I simmer it, and how do I know when it is ready?", /11 minutes.*liquid is absorbed/is],
+    ["How many calories per serving, and how long do I simmer it?", /nutrition.*11 minutes/is],
+  ]) {
+    const { body } = await h.ask(context, [], query);
+    assert.equal(body.answerStatus, "answered", query);
+    assert.match(body.answer, detail);
+    assert.deepEqual(body.sourceFacts.map(f => f.evidenceId), ["S1"]);
+    assert.deepEqual(body.recommendations, []);
+    assert.equal(body.cookingTechniques, undefined, query);
+    assert.equal(body.cookingTip, undefined);
+    assert.equal(h.prompts.length, 0, query);
+  }
+});
+
+test("focused cooking states a missing bake duration and never borrows the rest time", async t => {
+  const source = { ...routeRecipe, instructions: ["Bake until golden. Rest for 10 minutes."] };
+  const h = chefHarness(t, kitchenState([], []), source);
+  const context = { purpose: "cooking", recipeId: source.id, stepEvidenceId: "S1", kitchenRevision: 7, today };
+  const { body } = await h.ask(context, [], "How long do I bake it?");
+  assert.equal(body.answerStatus, "unsupported");
+  assert.match(body.answer, /(?:no|does not|doesn.t).*?(?:duration|time|minutes)/i);
+  assert.match(body.answer, /until golden/i);
+  assert.doesNotMatch(body.answer, /10 minutes|suggestions/i);
+  assert.equal(body.sourceFacts[0].fact, source.instructions[0]);
+  assert.equal(h.prompts.length, 0);
+});
+
+test("short stove questions use factual verification and a step-specific provider fallback", async t => {
+  const source = { ...routeRecipe, instructions: ["Warm the rice gently. Do not let it boil."] };
+  const h = chefHarness(t, kitchenState([], []), source);
+  const context = { purpose: "cooking", recipeId: source.id, stepEvidenceId: "S1", kitchenRevision: 7, today };
+  for (const query of ["Should I cover it", "Why not boil the rice?"]) {
+    const { body } = await h.ask(context, [], query);
+    assert.deepEqual(body.recommendations, []);
+    assert.doesNotMatch(body.answer, /suggestions|open a recipe/i);
+    assert.match(body.answer, /step|direction/i);
+    assert.equal(body.sourceFacts[0].fact, source.instructions[0]);
+    assert.match(h.prompts.at(-1).text, /Explain the user's question about the focused cooking step/);
+  }
+  const { body } = await h.ask(context, [], "Explain this step");
+  assert.match(body.cookingInstruction, /not let it boil|avoid boiling/i);
+  assert.doesNotMatch(body.cookingInstruction, /large bubbles/);
+  assert.equal(body.cookingTechniques[0].term, "Boiling");
+});
+
+test("compound cooking help retains the known detail when a second question cannot be checked", async t => {
+  const source = { ...routeRecipe, instructions: ["Simmer the rice for 11 minutes."] };
+  const h = chefHarness(t, kitchenState([], []), source);
+  const context = { purpose: "cooking", recipeId: source.id, stepEvidenceId: "S1", kitchenRevision: 7, today };
+  const { body } = await h.ask(context, [], "How long do I simmer it, and why does it foam?");
+  assert.equal(h.prompts[0]?.data.request, "why does it foam?");
+  assert.equal(body.answerStatus, "unverified");
+  assert.match(body.answer, /^Simmer for 11 minutes\./);
+  assert.match(body.answer, /couldn.t check|could not verify/i);
+  assert.equal(body.answer.match(/11 minutes/g)?.length, 1);
+  assert.deepEqual(body.sourceFacts.map(f => f.evidenceId), ["S1"]);
+  const repeated = await h.ask(context, [], "How long do I simmer it, and how long does it take?");
+  assert.equal(repeated.body.answer, "Simmer for 11 minutes.");
+  assert.equal(h.prompts.length, 1, "both duration questions have already been answered");
+});
+
+test("method help distinguishes original step measures from final saved dinner totals", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "rice", measure: "200 g" }, { name: "milk", measure: "100 ml" }],
+    instructions: ["Stovetop:", "Add the rice and stir.", "Oven:", "Rinse the rice.", "Pour in 100 ml milk."] };
+  const saved = { ...createPlannedMeal(today, source), ingredientOverrides: { "1": "175 ml" } };
+  const h = chefHarness(t, kitchenState([], [saved]), source);
+  const context = await savedContext(saved, { stepEvidenceId: "S5", methodStep: { number: 2, evidenceId: "S5" } });
+  for (const query of ["What do I do in step 2?", "What does step 2 mean?", "How much milk is needed for step 2?"]) {
+    const { body } = await h.ask(context, [], query);
+    assert.match(body.answer, /original direction.*100 ml milk/is);
+    assert.match(body.cookingInstruction ?? body.answer, /saved dinner total.*175 ml.*milk/is);
+    assert.equal(body.planningFacts[0].measure, "175 ml");
+    assert.equal(body.sourceFacts.find(f => f.evidenceId === "S5").fact, source.instructions[4]);
+    assert.equal(body.cookingTip, undefined);
+    assert.equal(h.prompts.length, 0);
+  }
+  const { body } = await h.ask(context, [], "How much rice do I need, and when do I add it?");
+  assert.equal(body.planningFacts[0].measure, "200 g");
+  assert.match(body.answer, /does not (?:say|specify|state|establish)|couldn.t (?:find|identify)/i);
+  assert.doesNotMatch(body.answer, /Add the rice and stir/i);
+  assert.ok(!body.sourceFacts.some(f => f.evidenceId === "S2"));
+  assert.equal(h.prompts.length, 0);
+  const whole = await h.ask(context, [], "How much rice do I need, and when do I add it in the whole recipe?");
+  assert.ok(whole.body.sourceFacts.some(f => f.evidenceId === "S2"));
+  const scoped = await h.ask(context, [], "How much milk do I need, and when do I add it?");
+  assert.match(scoped.body.answer, /175 ml.*Source step 2: Pour in 100 ml milk.*whole dinner/is);
+  const fallback = await h.ask(context, [], "Should I pour it quickly?");
+  assert.equal(fallback.body.answerStatus, "unverified");
+  assert.match(fallback.body.answer, /original direction.*100 ml milk.*saved dinner total.*175 ml milk/is);
+  assert.ok(fallback.body.sourceFacts.some(f => f.evidenceId === "I2"));
+});
+
+test("a divided amount remains source evidence alongside the scaled total and technique lead", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "milk", measure: "200 ml" }],
+    instructions: ["Boil 50 ml milk gently.", "Stir in the remaining milk."] };
+  const saved = { ...createPlannedMeal(today, source), servings: 4 };
+  const h = chefHarness(t, kitchenState([], [saved]), source);
+  const context = await savedContext(saved, { stepEvidenceId: "S1", methodStep: { number: 1, evidenceId: "S1" } });
+  const { body } = await h.ask(context, [], "What does this step mean?");
+  assert.equal(body.answerKind, "cooking_technique");
+  assert.match(body.cookingInstruction, /original direction.*boil 50 ml milk.*saved dinner total.*400 ml milk/is);
+  assert.doesNotMatch(body.cookingInstruction, /boil (?:100|400) ml/i);
+  assert.match(body.cookingInstruction, /does not specify a separate amount for this step/);
+  assert.equal(body.sourceFacts[0].fact, source.instructions[0]);
+  assert.equal(body.cookingTip, undefined);
+  const original = await h.ask(context, [], "How much milk does the original recipe use?");
+  assert.match(original.body.answer, /200 ml milk/i);
+  assert.doesNotMatch(original.body.answer, /400 ml/);
+  const unchangedMeal = { ...saved, servings: saved.baseServings };
+  const plain = chefHarness(t, kitchenState([], [unchangedMeal]), source);
+  const same = await plain.ask(await savedContext(unchangedMeal, { stepEvidenceId: "S1" }), [], "What does this step mean?");
+  assert.doesNotMatch(same.body.cookingInstruction, /saved dinner total/i);
+  assert.equal(plain.prompts.length, 0);
+});
+
+test("a short ingredient reply completes Chef's cutting clarification in the selected recipe", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "carrots", measure: "2" }, { name: "onion", measure: "1" }],
+    instructions: ["Slice the carrots into rounds and dice the onion."] };
+  const h = chefHarness(t, kitchenState([]), source);
+  const context = { purpose: "planning", recipeId: source.id, kitchenRevision: 7, today };
+  const query = "how should i cut the";
+  const first = await h.ask(context, [], query);
+  assert.equal(first.body.answerStatus, "needs_clarification");
+  const history = [{ role: "user", content: query }, { role: "assistant", content: first.body.answer }];
+  const { body } = await h.ask(context, [], "the onion", history);
+  assert.equal(body.answerKind, "recipe_guidance");
+  assert.equal(body.answerStatus, "answered");
+  assert.match(body.cookingTip, /strips.*cubes/i);
+  assert.deepEqual(body.sourceFacts.map(fact => fact.evidenceId), ["I2", "S1"]);
+  assert.deepEqual(body.recommendations, []);
+  assert.equal(h.prompts.length, 0);
+});
+
+test("an unpunctuated water-order question in recipe discussion retains source facts and the boiling reference", async t => {
+  const source = { ...routeRecipe, instructions: ["Bring the water to a boil.", "Add the rice."],
+    ingredients: [...routeRecipe.ingredients, { name: "water", measure: "1 l" }] };
+  const h = chefHarness(t, kitchenState([]), source);
+  const { body } = await h.ask({ purpose: "planning", recipeId: source.id, kitchenRevision: 7, today }, [], "should i boil the water before");
+  assert.equal(body.answerKind, "recipe_guidance");
+  assert.equal(body.answerStatus, "answered");
+  assert.match(body.answer, /yes/i);
+  assert.deepEqual(body.sourceFacts.map(fact => fact.fact), source.instructions);
+  assert.match(body.cookingTechniques[0].explanation, /bubbles/);
+  assert.deepEqual(body.recommendations, []);
+  assert.equal(h.prompts.length, 0);
+});
+
+test("clarifying the ingredient preserves the cook's requested technique when the recipe gives no cut", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "carrots", measure: "2" }, { name: "onion", measure: "1" }],
+    instructions: ["Warm the vegetables in the pan."] };
+  const h = chefHarness(t, kitchenState([]), source);
+  const context = { purpose: "planning", recipeId: source.id, kitchenRevision: 7, today };
+  const query = "How do I dice them?";
+  const { body: first } = await h.ask(context, [], query);
+  assert.equal(first.answerStatus, "needs_clarification");
+  const { body } = await h.ask(context, [], "the onion", [
+    { role: "user", content: query }, { role: "assistant", content: first.answer },
+  ]);
+  assert.equal(body.answerStatus, "unsupported");
+  assert.deepEqual(body.sourceFacts.map(fact => fact.evidenceId), ["I2"]);
+  assert.match(body.cookingTip, /strips.*cubes/i);
+  assert.equal(h.prompts.length, 0);
+});
+
+test("naming the ingredient after a water-order clarification preserves a genuine source gap", async t => {
+  const source = { ...routeRecipe, instructions: ["Cook the rice in water until tender."] };
+  const h = chefHarness(t, kitchenState([]), source);
+  const context = { purpose: "planning", recipeId: source.id, kitchenRevision: 7, today };
+  const query = "should i boil the water before";
+  const { body: first } = await h.ask(context, [], query);
+  assert.equal(first.answerStatus, "needs_clarification");
+  const { body } = await h.ask(context, [], "before adding the rice", [
+    { role: "user", content: query }, { role: "assistant", content: first.answer },
+  ]);
+  assert.equal(body.answerStatus, "unsupported");
+  assert.deepEqual(body.sourceFacts.map(fact => fact.fact), source.instructions);
+  assert.equal(body.cookingTechniques, undefined);
+  assert.equal(h.prompts.length, 0);
 });

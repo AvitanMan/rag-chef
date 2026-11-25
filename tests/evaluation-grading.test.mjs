@@ -107,3 +107,27 @@ test("evaluation fingerprints detect changed source and renamed paths without de
     assert.notEqual((await fingerprintFiles(root, ["renamed.ts", "b.ts"])).sha256, edited.sha256);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("focused cooking grades separate a useful tip, supported fact, and a timing gap", async () => {
+  const { cookingAnswerCases, gradeCookingAnswer } = await import("../tools/recipes/cooking-answer-cases.mjs");
+  const grade = (id, overrides) => {
+    const item = cookingAnswerCases.find(row => row.id === id);
+    const checks = gradeCookingAnswer(item, { answerStatus: "answered", generation: "catalog_fallback", verification: { status: "not_required" },
+      timings: { generationMs: 0, verificationMs: 0 }, resolvedContext: { stepEvidenceId: item.step },
+      citations: [{ recipeId: item.recipeId, sourceUrl: `https://example.invalid/fixtures/${item.recipeId}` }], sourceFacts: [], chefChanges: [], recommendations: [], ...overrides });
+    return Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  };
+  assert.deepEqual(grade("focused-duration", { answer: "Simmer for 11 minutes." }), []);
+  assert.deepEqual(grade("focused-duration", { answer: "Simmer for 11 minutes.", timings: { generationMs: 20, verificationMs: 0 } }), ["checkedOrDirect"]);
+  const answer = "Fold the beans into the rice.";
+  const tipTimings = { generationMs: 50, verificationMs: 20 };
+  assert.deepEqual(grade("focused-folding-tip", { answer, cookingTip: "Lift and turn the mixture.", timings: tipTimings }), []);
+  assert.deepEqual(grade("focused-vague-cue", { answer: "The source does not describe a cue.", cookingTip: "Try pressing a cooked bean with a fork.", timings: tipTimings }), []);
+  assert.ok(grade("focused-vague-cue", { answer: "The source does not describe a cue. Beans must be tender." }).includes("noContradiction"));
+  assert.deepEqual(grade("focused-folding-tip", { answer }), ["usefulTip"]);
+  assert.deepEqual(grade("focused-folding-tip", { answer, cookingTip: "Gently lift and turn the mixture." }), ["tipChecked"]);
+  assert.deepEqual(grade("focused-folding-tip", { answer, cookingTip: "Lift and turn for 5 minutes.", timings: tipTimings }), ["noForbiddenTip"]);
+  assert.deepEqual(grade("focused-rest-is-not-baking", { answer: "No baking time is given. Rest for 9 minutes." }), []);
+  assert.ok(grade("focused-rest-is-not-baking", { answer: "No time is given. Bake it for 9 minutes." }).includes("restTimeScoped"));
+  assert.ok(grade("focused-prohibited-action", { answer: "Do not stir.", cookingTip: "Keep stirring." }).includes("noForbiddenTip"));
+});
