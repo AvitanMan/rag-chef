@@ -1,0 +1,13 @@
+# Reviewed Wikibooks mains; inspect each source again if its content changes.
+https://en.wikibooks.org/wiki/Cookbook:Beef_Stir-Fry
+https://en.wikibooks.org/wiki/Cookbook:Chicken_Cacciatore
+https://en.wikibooks.org/wiki/Cookbook:Chicken_Tagine_with_Lemon_and_Olives
+https://en.wikibooks.org/wiki/Cookbook:Koshary_%28Egyptian_Pasta_Salad_with_Rice_and_Lentils%29
+https://en.wikibooks.org/wiki/Cookbook:Matar_Paneer
+https://en.wikibooks.org/wiki/Cookbook:Moqueca_de_Peixe_%28Brazilian_Seafood_Stew%29
+https://en.wikibooks.org/wiki/Cookbook:Shakshuka_I
+https://en.wikibooks.org/wiki/Cookbook:Tofu_Saltado
+https://en.wikibooks.org/wiki/Cookbook:Tofu_and_Couscous
+https://en.wikibooks.org/wiki/Cookbook:Tofu_in_Spiced_Coconut_Sauce
+https://en.wikibooks.org/wiki/Cookbook:Yetsom_Shiro_%28Ethiopian_Vegan_Chickpea_Stew%29
+https://en.wikibooks.org/wiki/Cookbook:Zambian_Fish_Stew

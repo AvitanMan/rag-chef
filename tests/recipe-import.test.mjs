@@ -1169,6 +1169,35 @@ test("the curated manifest has exactly 30 reviewed main dinners, source attribut
   }
 });
 
+test("additional dinner worksheets match their source lists, catalog identities and reviewed metadata", async () => {
+  const recipeIds = new Set();
+  const batches = [["extra-dinners", 12, 12], ["extra-dinners-2", 13, 10], ["extra-dinners-3", 12, 11]];
+  for (const [name, count, mains] of batches) {
+    const prefix = `../tools/recipes/${name}.v1`;
+    const manifest = JSON.parse(await readFile(new URL(prefix + ".json", import.meta.url), "utf8"));
+    const links = (await readFile(new URL(prefix + ".txt", import.meta.url), "utf8")).split(/\r?\n/)
+      .map(line => line.trim()).filter(line => line && !line.startsWith("#"));
+    assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.entries.length, count, name);
+    assert.equal(manifest.coreDinnerCount, mains, name);
+    assert.deepEqual(manifest.entries.map(entry => entry.sourceUrl).sort(), links.sort(), name);
+    let reviewedMains = 0;
+    for (const entry of manifest.entries) {
+      const url = importer.canonicalRecipeUrl(entry.sourceUrl);
+      assert.equal(url, entry.sourceUrl);
+      assert.equal(entry.recipeId, `wikibooks:${await embeddings.sha256Hex(url)}`, entry.title);
+      assert.ok(!recipeIds.has(entry.recipeId), `Repeated recipe: ${entry.title}`);
+      recipeIds.add(entry.recipeId);
+      assert.equal(entry.reviewed, true, entry.title);
+      if (store.validateRecipeMetadata(entry.metadata).coreDinner) reviewedMains++;
+      assert.equal(entry.source.licenseId, "CC-BY-SA-4.0");
+      assert.equal(entry.source.licenseUrl, "https://creativecommons.org/licenses/by-sa/4.0/");
+      assert.match(entry.source.attributionText, /Wikibooks contributors/i);
+    }
+    assert.equal(reviewedMains, mains, name);
+  }
+});
+
 test("the refreshed dinner review binds original source notes to all 30 mains and withholds incomplete totals", async () => {
   const original = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v1.json", import.meta.url), "utf8"));
   const refreshed = JSON.parse(await readFile(new URL("../tools/recipes/core-dinners.v2.json", import.meta.url), "utf8"));

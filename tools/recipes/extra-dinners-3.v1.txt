@@ -1,0 +1,13 @@
+# Reviewed Wikibooks recipes; inspect each source again if its content changes.
+https://en.wikibooks.org/wiki/Cookbook:Baked_Eggplant
+https://en.wikibooks.org/wiki/Cookbook:Chicken_Madras
+https://en.wikibooks.org/wiki/Cookbook:Chicken_with_Orange%2C_Spinach_and_Cherry_Tomatoes
+https://en.wikibooks.org/wiki/Cookbook:Egg_Roast
+https://en.wikibooks.org/wiki/Cookbook:Estofado_de_Pollo_%28Chicken_Stew%29
+https://en.wikibooks.org/wiki/Cookbook:Faten_Wake_%28Hausa_Bean_Porridge%29
+https://en.wikibooks.org/wiki/Cookbook:Lasagne_with_Bean_Sauce
+https://en.wikibooks.org/wiki/Cookbook:Monterey_Jack_Chicken_Breasts
+https://en.wikibooks.org/wiki/Cookbook:Peanut_Chicken_Stir-Fry
+https://en.wikibooks.org/wiki/Cookbook:Potato_Gnocchi_with_Basil_and_Sun-dried_Tomatoes
+https://en.wikibooks.org/wiki/Cookbook:Steak_and_Pepper_Stir-Fry
+https://en.wikibooks.org/wiki/Cookbook:Yemiser_Selatta_%28Ethiopian_Lentil_Salad%29

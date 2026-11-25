@@ -23,6 +23,42 @@ test("allergies expand the same aliases used across browsing, Chef and planning"
   assert.equal(decide(["eggplant", "rice vinegar"], { allergies: ["egg", "peanut"] }).eligible, true);
 });
 
+test("finfish and shellfish exclusions distinguish tilapia and halibut from crayfish", () => {
+  for (const [ingredient, family, other] of [
+    ["fresh whole tilapia", "fish", "shellfish"],
+    ["halibut fillet", "fish", "shellfish"],
+    ["ground crayfish (optional)", "shellfish", "fish"],
+  ]) {
+    assert.equal(decide([ingredient], { allergies: [family] }).eligible, false, ingredient);
+    assert.equal(decide([ingredient], { excludedIngredients: [family] }).eligible, false, ingredient);
+    assert.equal(decide([ingredient], { allergies: [other] }).eligible, true, ingredient);
+    for (const diet of ["Vegan", "Vegetarian"]) assert.equal(decide([ingredient], { diet }).eligible, false, ingredient);
+  }
+});
+
+test("wheat and gluten filters recognize bulgur spellings and unqualified gnocchi and soy sauce", () => {
+  for (const ingredient of ["bulgur", "bulghur", "potato gnocchi", "soy sauce"]) {
+    for (const family of ["wheat", "gluten"]) {
+      assert.equal(decide([ingredient], { allergies: [family] }).eligible, false, ingredient);
+      assert.equal(decide([ingredient], { excludedIngredients: [family] }).eligible, false, ingredient);
+    }
+    assert.equal(decide([ingredient], { diet: "Gluten-free" }).eligible, false, ingredient);
+  }
+  assert.equal(decide(["rice", "potato"], { allergies: ["wheat", "gluten"] }).eligible, true);
+});
+
+test("a gluten-free gnocchi label informs the diet check and leaves unspecified egg and dairy unknown", () => {
+  for (const gnocchi of ["gluten-free gnocchi", "gluten-free potato gnocchi"]) {
+    assert.equal(ingredientDietConflicts(recipe(gnocchi), "gluten_free"), false);
+    assert.equal(ingredientDietConflicts(recipe(gnocchi, "wheat flour"), "gluten_free"), true);
+  }
+  const gnocchi = decide(["potato gnocchi"], { diet: "Vegan", excludedIngredients: ["egg", "dairy"] });
+  assert.deepEqual(gnocchi.dietUnknowns, ["vegan"]);
+  assert.deepEqual(gnocchi.dietConflicts, []);
+  assert.deepEqual(gnocchi.excludedIngredientMatches, []);
+  assert.equal(decide(["gnocchi with egg and ricotta"], { diet: "Vegan" }).eligible, false);
+});
+
 test("generic nut allergies cover peanuts and tree nuts without broadening explicit families", () => {
   for (const allergy of ["nut", "nuts", "Nut allergy"]) {
     for (const name of ["peanut butter", "peanuts", "groundnuts", "almonds", "walnuts"]) {
