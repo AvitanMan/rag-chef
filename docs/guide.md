@@ -1006,6 +1006,11 @@ Apply migrations before using reviewed metadata. Reviews live in a separate,
 versioned table bound to the source content hash. Stale reviews become unknown;
 metadata changes do not rewrite source recipes, embeddings or saved dinners.
 
+Three optional Wikibooks worksheets cover another 33 mains and four sides.
+See [Additional reviewed dinners](additional-dinners.md) for the source lists,
+the limitations recorded during review, and how to apply the metadata to
+matching recipes in your catalog.
+
 The current **v2 dinner review** covers the same 30 Wikibooks mains. Refresh the
 matching sources with the current collector before applying it. The two explicit
 link lists stay within the collector's 20-page limit; each recipe still requires

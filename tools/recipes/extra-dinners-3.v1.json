@@ -1,0 +1,952 @@
+{
+  "schemaVersion": 1,
+  "description": "November 4, 2026 third batch: 11 additional Wikibooks mains and 1 side. Source text is collected separately. Review is bound to captured source content and is not allergy or nutritional certification.",
+  "coreDinnerCount": 11,
+  "reviewedAt": "2026-11-04T14:09:27.574Z",
+  "entries": [
+    {
+      "recipeId": "wikibooks:6ece02c97bbb756777eae0c4ddd114150572e443242decd10e8dd6f71b993c17",
+      "title": "Baked Eggplant",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Baked_Eggplant",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "8aad5a0b0e7ef34048d33f975b4dcdbd470dd4f95450caedfdf564ca3771cf58",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Baked Eggplant."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The source lists vegetables, walnuts, capers, oil and seasonings with no named animal ingredients. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify all ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The walnuts are listed and used in the filling. The source gives a numeric yield but no complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop, Oven. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The walnuts are listed and used in the filling. The source gives a numeric yield but no complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The walnuts are listed and used in the filling. The source gives a numeric yield but no complete total.",
+        "amountReviewCount": 4
+      }
+    },
+    {
+      "recipeId": "wikibooks:2eb0c241d12b19cd553e4945c65d59daddff48a34f9a9fb12fa4313c661e76e4",
+      "title": "Chicken Madras",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chicken_Madras",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "db9e64628a4d8363a2f49004b44c6fd57d4b79fa74e5c013c987ef8bbb8d9bc2",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Chicken Madras."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The prepared tomato purée and spice blend are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source method calls for cooking oil although oil is absent from its ingredient list; the size of the jar of tomato purée is unspecified."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source method calls for cooking oil although oil is absent from its ingredient list; the size of the jar of tomato purée is unspecified."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source method calls for cooking oil although oil is absent from its ingredient list; the size of the jar of tomato purée is unspecified.",
+        "amountReviewCount": 11
+      }
+    },
+    {
+      "recipeId": "wikibooks:31656862992db8c8bf7296caa088e1b54c17c7c74b9a7764d12f705dc9796c92",
+      "title": "Chicken with Orange, Spinach and Cherry Tomatoes",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Chicken_with_Orange%2C_Spinach_and_Cherry_Tomatoes",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "e68a359d89a88677cdd78686c07c2a73d7b6630e8b361d0404384778c9a4b2f0",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Chicken with Orange, Spinach and Cherry Tomatoes."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify all ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source supplies separate preparation and cooking figures but no complete total explicitly. Rice appears only as an optional source note."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Oven. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source supplies separate preparation and cooking figures but no complete total explicitly. Rice appears only as an optional source note."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: prep 5 min, cooking 20 min"
+        ],
+        "decision": "The source supplies separate preparation and cooking figures but no complete total explicitly. Rice appears only as an optional source note.",
+        "amountReviewCount": 0
+      }
+    },
+    {
+      "recipeId": "wikibooks:fd0380704ae18856b7cc7ea243c00baccd8451552ab7b2a4f6cfd46aa9411469",
+      "title": "Egg Roast",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Egg_Roast",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "6b39bc183b92c0e186120513ef1f9d99497b96d27d07c768d8e40a9474a9057b",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Egg Roast."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains eggs. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The prepared ginger-garlic paste and spices are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. A light egg main. Eggs are already hard-boiled in the ingredient list; the source provides no complete total or fixed yield."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. A light egg main. Eggs are already hard-boiled in the ingredient list; the source provides no complete total or fixed yield."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "A light egg main. Eggs are already hard-boiled in the ingredient list; the source provides no complete total or fixed yield.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:4945461c492366371d35215beae764f5e3b8bbb925768f05879b9d1852015f19",
+      "title": "Estofado de Pollo (Chicken Stew)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Estofado_de_Pollo_%28Chicken_Stew%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "dae54872cb86e2a254375a3b9298e54901aa49fa35bc9ac64ae46dd1eb5fa7ae",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Estofado de Pollo (Chicken Stew)."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken and chicken bouillon. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken and chicken bouillon. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The bouillon and other ingredients are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source suggests white rice as a separate accompaniment, without listing its quantity or preparation. No complete total is stated."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source suggests white rice as a separate accompaniment, without listing its quantity or preparation. No complete total is stated."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source suggests white rice as a separate accompaniment, without listing its quantity or preparation. No complete total is stated.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:69a08b436970dedc775672dbccc8ebd8dac82aea7ec24bcbc03552595599f96f",
+      "title": "Faten Wake (Hausa Bean Porridge)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Faten_Wake_%28Hausa_Bean_Porridge%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "83e8ca223c9a96c3eb5c6d23f9571ecb98367e8ede5e4a720a7bb4bc2ff2f4b4",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Faten Wake (Hausa Bean Porridge)."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The ingredient list includes optional crayfish. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "The ingredient list includes optional crayfish. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Prepared seasoning cubes are not certified gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. Groundnut oil and optional crayfish are listed. Source step ranges can exceed its 1 hour 15 minute label, so the complete total remains unknown."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. Groundnut oil and optional crayfish are listed. Source step ranges can exceed its 1 hour 15 minute label, so the complete total remains unknown."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: 1 hour 15 minutes"
+        ],
+        "decision": "Groundnut oil and optional crayfish are listed. Source step ranges can exceed its 1 hour 15 minute label, so the complete total remains unknown.",
+        "amountReviewCount": 7
+      }
+    },
+    {
+      "recipeId": "wikibooks:8095f9a062792d728de83b3509a38f5346abf6e34900bef1cd164d32a9021e3e",
+      "title": "Lasagne with Bean Sauce",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Lasagne_with_Bean_Sauce",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "1484dfac79dc58758f7ad295ff22f4e632b5f61b674f037f5f8a57ad7d254c69",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop",
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Lasagne with Bean Sauce."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains cottage or ricotta cheese, mozzarella and Parmesan. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains lasagna noodles. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source requires boiling the lasagna noodles and then baking; it does not provide a complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop, Oven. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source requires boiling the lasagna noodles and then baking; it does not provide a complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source requires boiling the lasagna noodles and then baking; it does not provide a complete total.",
+        "amountReviewCount": 6
+      }
+    },
+    {
+      "recipeId": "wikibooks:f06fb8faaaffc7106c490b0c4e8dad85303601b92a378c8a10ddfafea0c4eef4",
+      "title": "Monterey Jack Chicken Breasts",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Monterey_Jack_Chicken_Breasts",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "114e301ade2e556f91f7f038772983b9cf0f7f0b574928ad53013f186747803f",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Oven"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Monterey Jack Chicken Breasts."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken and cheese. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains chicken. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify all ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The method specifies a probe thermometer. The source provides no numeric servings or complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Oven. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The method specifies a probe thermometer. The source provides no numeric servings or complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The method specifies a probe thermometer. The source provides no numeric servings or complete total.",
+        "amountReviewCount": 3
+      }
+    },
+    {
+      "recipeId": "wikibooks:508093f6faf54138f87cd780b12baa25c28cd89cfe48f136bee0091f44836ea2",
+      "title": "Peanut Chicken Stir-Fry",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Peanut_Chicken_Stir-Fry",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "5d7df5d227a857bf23171aa5bf1d398e9328634666a296af517fa903b289db2e",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Peanut Chicken Stir-Fry."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains cooked chicken or turkey, chicken broth and butter. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains cooked chicken or turkey and chicken broth. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains ordinary soy sauce; a wheat-free product is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source requires already-cooked poultry and rice, outside the directions, so its separate preparation and cooking figures do not establish a complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "source",
+            "evidence": "Servings: 4"
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source requires already-cooked poultry and rice, outside the directions, so its separate preparation and cooking figures do not establish a complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [
+          "Time: Prep: 15 minutes Cooking: 15 minutes"
+        ],
+        "decision": "The source requires already-cooked poultry and rice, outside the directions, so its separate preparation and cooking figures do not establish a complete total.",
+        "amountReviewCount": 1
+      }
+    },
+    {
+      "recipeId": "wikibooks:6325fe60889a54f7cbec5b02483155e5667b1587962bccb9a7ea00235e67025e",
+      "title": "Potato Gnocchi with Basil and Sun-dried Tomatoes",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Potato_Gnocchi_with_Basil_and_Sun-dried_Tomatoes",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "1a7fcbda8bb434423cca11edf2e2e61119d0f419153f8da1c7e425ed85c90a01",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "unknown",
+          "vegetarian": "fits",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Potato Gnocchi with Basil and Sun-dried Tomatoes."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not specify whether the prepared gnocchi contains egg or dairy. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Ordinary potato gnocchi commonly contains wheat flour; a gluten-free product is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. Prepared potato gnocchi may contain egg, dairy or wheat depending on the product. The source provides no numeric servings or complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. Prepared potato gnocchi may contain egg, dairy or wheat depending on the product. The source provides no numeric servings or complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "Prepared potato gnocchi may contain egg, dairy or wheat depending on the product. The source provides no numeric servings or complete total.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:071cee89818e68f2fbc5b53bbc65021314bda6608ce19f0a2e1b28d24f10832c",
+      "title": "Steak and Pepper Stir-Fry",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Steak_and_Pepper_Stir-Fry",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "d0e20247d62281055a8cf30341b5fbdd98821c1abccbf326bdf5ab376281580a",
+        "coreDinner": true,
+        "dinnerRole": "main",
+        "diets": {
+          "vegan": "conflicts",
+          "vegetarian": "conflicts",
+          "gluten_free": "conflicts",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a main or light main; this is not a nutritional-completeness certification."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a main: Steak and Pepper Stir-Fry."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "Contains beef. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "Contains beef. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "Contains ordinary soy sauce; a wheat-free product is not specified. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source lists peanut oil and soy sauce. It provides no numeric servings or complete total."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source lists peanut oil and soy sauce. It provides no numeric servings or complete total."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source lists peanut oil and soy sauce. It provides no numeric servings or complete total.",
+        "amountReviewCount": 2
+      }
+    },
+    {
+      "recipeId": "wikibooks:c9317121aa4f2100603d42d913d554e338a6f6f7376ed351a84eee0d6bc59fa5",
+      "title": "Yemiser Selatta (Ethiopian Lentil Salad)",
+      "sourceUrl": "https://en.wikibooks.org/wiki/Cookbook:Yemiser_Selatta_%28Ethiopian_Lentil_Salad%29",
+      "source": {
+        "name": "Wikibooks Cookbook",
+        "url": "https://en.wikibooks.org/wiki/Cookbook:Recipes",
+        "licenseId": "CC-BY-SA-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attributionText": "Wikibooks contributors (see source page and its history). Ingredients and directions extracted; formatting normalized. Source wording retained. Normalized recipe text is available under CC BY-SA 4.0."
+      },
+      "reviewed": true,
+      "metadata": {
+        "revision": 1,
+        "sourceContentHash": "ce5251c9953048d6891a0a0d72072fc8ee17e0eaccd4f97cb749b5e950882d0b",
+        "coreDinner": false,
+        "dinnerRole": "side",
+        "diets": {
+          "vegan": "fits",
+          "vegetarian": "fits",
+          "gluten_free": "unknown",
+          "low_carb": "unknown"
+        },
+        "totalMinutes": null,
+        "equipment": [
+          "Stovetop"
+        ],
+        "provenance": {
+          "coreDinner": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed as a side or light meal and left out of the main-dinner selection."
+          },
+          "dinnerRole": {
+            "basis": "curator_assessment",
+            "evidence": "The captured source and dish were reviewed as a side: Yemiser Selatta (Ethiopian Lentil Salad)."
+          },
+          "diets.vegan": {
+            "basis": "curator_assessment",
+            "evidence": "The source lists lentils, vegetables, herbs, oil and spices with no named animal ingredients. Product composition and cross-contact are not certified."
+          },
+          "diets.vegetarian": {
+            "basis": "curator_assessment",
+            "evidence": "No meat or fish is named in the ingredients or directions. Product composition and cross-contact are not certified."
+          },
+          "diets.gluten_free": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not certify all ingredients gluten-free. Product composition and cross-contact are not certified."
+          },
+          "diets.low_carb": {
+            "basis": "curator_assessment",
+            "evidence": "Unknown: the source does not provide reviewed carbohydrate values or a threshold."
+          },
+          "totalMinutes": {
+            "basis": "curator_assessment",
+            "evidence": "Complete total unknown. The source describes this as a side dish or light meal and requires at least 30 minutes refrigeration after preparation."
+          },
+          "equipment": {
+            "basis": "curator_assessment",
+            "evidence": "Appliances required by the captured directions: Stovetop. Ordinary utensils, thermometers and optional equipment are not appliance exclusions."
+          },
+          "servings": {
+            "basis": "curator_assessment",
+            "evidence": "The source does not state one unambiguous numeric serving count; use recipe batches."
+          },
+          "ingredients": {
+            "basis": "curator_assessment",
+            "evidence": "Reviewed the captured source ingredients and directions. Ambiguous amounts, omissions and alternatives are preserved rather than inferred. The source describes this as a side dish or light meal and requires at least 30 minutes refrigeration after preparation."
+          }
+        },
+        "reviewedBy": "Codex manual review of source ingredients, method and prerequisites",
+        "reviewedAt": "2026-11-04T14:09:27.574Z"
+      },
+      "sourceReview": {
+        "sourceNotes": [],
+        "decision": "The source describes this as a side dish or light meal and requires at least 30 minutes refrigeration after preparation.",
+        "amountReviewCount": 3
+      }
+    }
+  ]
+}
