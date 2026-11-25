@@ -40,8 +40,10 @@ jobs:
         run: pnpm test
       - name: Install browser
         run: pnpm exec playwright install --with-deps chromium webkit
-      - name: Desktop and mobile browser checks
-        run: pnpm test:e2e
+      - name: Desktop browser checks
+        run: pnpm test:e2e --project=desktop
+      - name: Mobile browser checks
+        run: pnpm test:e2e --project=mobile
       - name: Hosted household isolation and pantry checks
         run: pnpm test:hosted
       - name: Hosted development authorization
