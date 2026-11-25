@@ -179,7 +179,7 @@ test("cooking answers follow the selected method and a late reply stays on its o
   const kitchenBefore = await read(request);
   await page.goto("/");
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
-  await page.getByRole("button", { name: "Cook with Oven", exact: true }).click();
+  await page.getByRole("button", { name: "Cook · Oven", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking " + source.title });
   await expect(cooking).toContainText("Rinse the rice.");
   await cooking.getByRole("button", { name: "Set timer", exact: true }).click();
@@ -244,7 +244,7 @@ test("Chef distinguishes the saved milk amount from the original numbered direct
   const before = await read(request);
   await page.goto("/");
   await page.getByRole("button", { name: "Cook dinner", exact: true }).click();
-  await page.getByRole("button", { name: "Cook with Oven", exact: true }).click();
+  await page.getByRole("button", { name: "Cook · Oven", exact: true }).click();
   const cooking = page.getByRole("dialog", { name: "Cooking " + source.title });
   await expect(cooking).toContainText("Rinse the rice.");
   await cooking.getByText("Ask about this step", { exact: true }).click();

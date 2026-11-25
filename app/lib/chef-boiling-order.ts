@@ -43,6 +43,35 @@ function answer(status: PreparationAnswer["answerStatus"], text: string, steps: 
   return { answer: text, answerStatus: status, evidenceIds: [...new Set(steps.map(step => step.evidenceId))] };
 }
 
+// A note may qualify the method for a particular form of the ingredient.
+// An unnamed start can qualify for clarification, but cannot establish which food it refers to.
+function conflictingWaterNote(notes: string[], order: Order, foods: string[]): PreparationAnswer | undefined {
+  const hasFood = (text: string, name: string) => ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `.includes(` ${name} `);
+  for (const [index, note] of notes.entries()) {
+    for (const clause of note.split(/[.,;!?]/)) {
+      const starts = /\b(?:start|put|place|add|cook|cover)(?:\s+(.+?))?\s+(?:in|into|to|with) (?:the )?(cold|boiling) water\b/gi;
+      for (const match of clause.matchAll(starts)) {
+        const object = match[1]?.trim();
+        if (object && !/^(?:it|them)$/i.test(object)) {
+          if (!hasFood(object, order.food)) continue;
+        } else {
+          const named = foods.filter(food => hasFood(note, food));
+          if (named.length && !named.includes(order.food)) continue;
+        }
+        const prohibited = /\b(?:do not|never|avoid|don't|don’t)\s*$/i.test(clause.slice(0, match.index));
+        const usesBoilingWater = match[2].toLowerCase() === "boiling";
+        const conflicts = prohibited ? usesBoilingWater === order.waterFirst : usesBoilingWater !== order.waterFirst;
+        if (!conflicts) continue;
+        return {
+          answerStatus: "needs_clarification",
+          answer: `The directions say: ${directionsText(order.actions)} The recipe also notes: “${note}” Does that note apply to the ${order.food} you’re preparing?`,
+          evidenceIds: [...new Set(order.actions.map(action => action.step.evidenceId)), `N${index + 1}`],
+        };
+      }
+    }
+  }
+}
+
 export function boilingOrderHelp({ recipe, query, step }: { recipe: Recipe; query: string; step?: SourceDirection | null }): PreparationAnswer | undefined {
   const request = query.trim().replace(/[?!.]+$/, "").trim();
   const question = orderQuestion.exec(request);
@@ -80,6 +109,8 @@ export function boilingOrderHelp({ recipe, query, step }: { recipe: Recipe; quer
       || /\b(?:put|place|cover|add|cook|combine) .+ (?:in|into|to|with) (?:the )?(?:cold|boiling) water\b/i.test(action.text)));
   if (matches.length === 1 && !ban && !alternative) {
     const order = matches[0];
+    const exception = conflictingWaterNote(recipe.sourceNotes ?? [], order, foods);
+    if (exception) return exception;
     const decision = order.waterFirst ? "yes" : "no";
     const lead = requested ? `${decision[0].toUpperCase()}${decision.slice(1)}.` : `If you mean before adding the ${order.food}, ${decision}.`;
     const result = answer("answered", `${lead} ${directionsText(order.actions)}`, order.actions.map(action => action.step));

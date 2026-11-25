@@ -87,7 +87,8 @@ export function chefMealReadiness(meal: PlannedMeal, stock: NonNullable<RecipeSe
 }
 
 export async function chefRecipeHash(recipe: Recipe): Promise<string> {
-  const text = JSON.stringify([recipe.id, recipe.title, recipe.ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
+  const ingredients = recipe.ingredients.map(({ name, measure }) => ({ name, measure }));
+  const text = JSON.stringify([recipe.id, recipe.title, ingredients, recipe.instructions, recipe.servings ?? null, recipe.sourceUrl, ...(recipe.sourceNotes?.length ? [recipe.sourceNotes] : [])]);
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

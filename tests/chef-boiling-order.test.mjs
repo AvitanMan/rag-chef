@@ -92,3 +92,28 @@ test("a later sauce adjustment does not override the pasta's boiling-water instr
   }
   assert.equal(ask(["Do not boil the water.", "Add potatoes to the stock."]).answerStatus, "unsupported");
 });
+
+test("recipe notes can qualify a boiling-water or cold-start instruction for the selected ingredient", () => {
+  const instructions = ["Bring the water to a boil.", "Add the pasta."];
+  const askWithNote = (note, steps = instructions) => boilingOrderHelp({
+    recipe: { ingredients, instructions: steps, sourceNotes: [note] },
+    query: "Should I boil the water before adding the pasta?",
+  });
+  for (const note of ["If using fresh pasta, start the pasta in cold water.", "If using fresh pasta, start in cold water.", "Start in cold water."]) {
+    const result = askWithNote(note);
+    assert.equal(result.answerStatus, "needs_clarification");
+    assert.ok(result.answer.includes(note));
+    assert.match(result.answer, /Does that note apply/);
+    assert.deepEqual(result.evidenceIds, ["S1", "S2", "N1"]);
+    assert.equal(result.technique, undefined);
+  }
+  for (const note of ["Start the potatoes in cold water.", "For the potatoes, start in cold water.",
+    "If making the pasta, start the potatoes in cold water.", "Rinse the colander in cold water.", "Do not start the pasta in cold water."]) {
+    const unchanged = askWithNote(note);
+    assert.match(unchanged.answer, /^Yes\./);
+    assert.deepEqual(unchanged.evidenceIds, ["S1", "S2"]);
+  }
+  const opposite = askWithNote("If using dried pasta, add the pasta to boiling water.", ["Cover the pasta with cold water."]);
+  assert.equal(opposite.answerStatus, "needs_clarification");
+  assert.deepEqual(opposite.evidenceIds, ["S1", "N1"]);
+});

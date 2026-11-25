@@ -29,6 +29,7 @@ const { parseChefRequest, CHEF_RESPONSE_JSON_SCHEMA } = await load("chef-schema"
 const { mealReadiness } = await load("quantities");
 const { createPlannedMeal, localDate, addDateDays } = await load("kitchen-state");
 const { plannedDinnerFingerprint } = await load("cooking-session");
+const { parseKitchenBackup } = await load("kitchen-backup");
 const { fixture: kitchenFixture } = await load("kitchen-store");
 const { fixture: catalogFixture } = await load("recipe-store");
 const { env } = await sources.import("cloudflare:workers");
@@ -360,6 +361,24 @@ function chefHarness(t, state, source = routeRecipe, onGeneration) {
 function kitchenState(pantry, meals = []) {
   return { schemaVersion: 2, pantry, meals: Object.fromEntries(meals.map(meal => [meal.date, meal])), shoppingChecked: {}, migratedLegacy: false };
 }
+
+test("a restored dinner can ask about unchanged ingredients regardless of JSON field order", async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "carrots", measure: "2" }], instructions: ["Slice the carrots into rounds."] };
+  const snapshot = { ...source, ingredients: source.ingredients.map(({ name, measure }) => ({ measure, name })) };
+  const saved = createPlannedMeal(today, snapshot);
+  const backup = { backupVersion: 1, exportedAt: "2026-10-25T00:00:00.000Z", state: kitchenState([], [saved]) };
+  const { state } = parseKitchenBackup(JSON.stringify(backup));
+  const h = chefHarness(t, state, source);
+  const context = await savedContext(state.meals[today], { stepEvidenceId: "S1", methodStep: { number: 1, evidenceId: "S1" } });
+  const result = await h.ask(context, [], "How should I cut the carrots?");
+  assert.equal(result.status, 200);
+  assert.equal(result.body.answerStatus, "answered");
+  assert.match(result.body.answer, /rounds/);
+  catalogFixture.records = [{ recipe: { ...source, ingredients: [{ name: "carrots", measure: "3" }] }, contentHash: "changed" }];
+  const changed = await h.ask(context, [], "How should I cut the carrots?");
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.error.code, "context_changed");
+});
 
 for (const useBy of [today, "2026-11-04"]) test(`early cross-week cooking ignores planned reservations and uses stock eligible today (use-by ${useBy})`, async t => {
   const saved = savedDinner("2026-11-03");
