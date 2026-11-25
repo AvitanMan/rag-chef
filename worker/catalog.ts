@@ -15,7 +15,7 @@ function validReadArgs(method: string, args: unknown[]): boolean {
     case "list": return args.length <= 2
       && (args[0] == null || typeof args[0] === "number" && Number.isFinite(args[0]))
       && (args[1] == null || typeof args[1] === "object" && !Array.isArray(args[1])
-        && Object.entries(args[1]).every(([key, value]) => key === "forEmbedding" && typeof value === "boolean"));
+        && Object.entries(args[1]).every(([key, value]) => ["forEmbedding", "forKitchen"].includes(key) && typeof value === "boolean"));
     case "embeddings": return args.length <= 3 && args.every(optionalText);
     case "sourcePolicy": return args.length === 1 && typeof args[0] === "string" && args[0].length > 0 && args[0].length <= 200;
     case "search": return args.length === 2 && Boolean(args[0]) && typeof args[0] === "object" && !Array.isArray(args[0])

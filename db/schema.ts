@@ -398,3 +398,9 @@ export const invitation = sqliteTable("invitation", {
 export const householdSettings = sqliteTable("household_settings", {
   organizationId: text("organizationId").primaryKey().references(() => organization.id, { onDelete: "cascade" }), timezone: text("timezone").notNull().default("UTC"), assistantEnabled: integer("assistantEnabled", { mode: "boolean" }).notNull().default(false),
 });
+
+// The catalog migration advances this singleton on every change to a reviewed planning input.
+export const recipeCatalogRevision = sqliteTable("recipe_catalog_revision", {
+  id: integer("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+}, table => [check("recipe_catalog_revision_singleton", sql`${table.id} = 1`)]);

@@ -506,7 +506,7 @@ export async function upsertCatalogRecipe(input: {
 
 export async function listCatalogRecipes(
   limit = DEFAULT_CATALOG_LIMIT,
-  options: { forEmbedding?: boolean } = {},
+  options: { forEmbedding?: boolean; forKitchen?: boolean } = {},
 ): Promise<StoredCatalogRecipe[]> {
   await ensureRecipeCatalogSchema();
   const boundedLimit = Math.min(
@@ -518,7 +518,8 @@ export async function listCatalogRecipes(
   const selection = `FROM recipes r JOIN recipe_sources s ON s.id = r.source_id
     WHERE r.status = 'active' AND s.approval_status = 'approved'
       AND s.allow_display = 1 AND s.allow_index_text = 1 ${scope.clause}
-      ${options.forEmbedding ? "AND s.allow_embed = 1 AND s.allow_cache = 1" : ""}
+      ${options.forEmbedding || options.forKitchen ? "AND s.allow_cache = 1" : ""}
+      ${options.forEmbedding ? "AND s.allow_embed = 1" : ""}
     ORDER BY r.updated_at DESC, r.id ASC LIMIT ?`;
   const selectedIds = `SELECT r.id ${selection}`;
   const selected = (query: string) => db.prepare(query).bind(...scope.values, boundedLimit);
@@ -526,7 +527,8 @@ export async function listCatalogRecipes(
   // and annotations coherent while another job replaces or revokes a recipe.
   const statements = [
     selected(`SELECT r.id, r.source_id, r.source_record_id, r.source_url, r.title, r.servings,
-          r.image_url, r.category, r.cuisine, r.tags_json, r.search_text, r.source_notes_json,
+          CASE WHEN s.allow_images = 1 THEN r.image_url END AS image_url,
+          r.category, r.cuisine, r.tags_json, r.search_text, r.source_notes_json,
           r.normalized_content_sha256, r.version, s.name AS source_name,
           s.url AS source_homepage, s.license_id, s.license_url, s.attribution_text
       ${selection}`),

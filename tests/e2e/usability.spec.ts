@@ -1,6 +1,8 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import type { KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import type { Recipe } from "../../app/lib/recipe-types";
+import { householdDate } from "../../app/lib/private-storage";
+import { eggplantReviewFixture } from "./metadata-helpers";
 import { openPantryAdd, showPantryBatches } from "./pantry-helpers";
 
 async function discussFirstRecipe(page: Page) {
@@ -508,24 +510,33 @@ test("pantry date controls show a full date with a separate readable label at al
 });
 
 test("automatic filling prefers reviewed mains and the wider collection is an explicit choice", async ({ page, request }) => {
-  const catalog = await (await request.get("/api/recipes/catalog")).json();
-  const mains = ["fixture-vegan-beans", "fixture-eggplant"];
-  const metadataByRecipeId = Object.fromEntries(catalog.recipes.map((r: Recipe) => [r.id, { coreDinner: mains.includes(r.id), dinnerRole: mains.includes(r.id) ? "main" : "side", diets: {}, equipment: [], totalMinutes: null, provenance: {} }]));
-  await page.route("**/api/recipes/catalog", route => route.fulfill({ json: { ...catalog, metadataByRecipeId } }));
-  await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
-  await page.goto("/"); await navigate(page, "Plan");
-  await page.locator(".fill-options > summary").click();
-  const preference = page.getByRole("checkbox", { name: "Prefer reviewed mains", exact: true });
-  await expect(preference).toBeChecked();
-  await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
-  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toMatch(/fixture-(vegan-beans|eggplant)/);
-  await expect(page.getByRole("article", { name: "Sun, Oct 25", exact: true })).toContainText("Reviewed main.");
-  await page.getByRole("region", { name: "Plan actions", exact: true }).getByText("More", { exact: true }).click();
-  await page.getByRole("button", { name: "Clear unlocked", exact: true }).click();
-  await page.getByRole("button", { name: "Remove unlocked meals", exact: true }).click();
-  await preference.uncheck();
-  await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
-  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toMatch(/fixture-(tomato-rice|fish-bowl)/);
+  await page.clock.setSystemTime(new Date());
+  const today = householdDate("Asia/Jerusalem");
+  const { entry, metadata, restore } = await eggplantReviewFixture(request);
+  try {
+    const applied = await request.post("/api/admin/recipes/metadata", { data: { entries: [
+      { recipeId: entry.recipeId, reviewed: true, metadata: { ...metadata, coreDinner: true, dinnerRole: "main" } },
+    ] } });
+    expect(applied.ok()).toBeTruthy();
+    await save(request, { ...empty(), pantry: [{ id: "rice", name: "rice", measure: "500 g" }] });
+    await page.goto("/"); await navigate(page, "Plan");
+    await page.locator(".fill-options > summary").click();
+    const preference = page.getByRole("checkbox", { name: "Prefer reviewed mains", exact: true });
+    await expect(preference).toBeChecked();
+    await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+    await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
+    await expect.poll(async () => (await read(request)).state.meals[today]?.recipeId).toBe("fixture-eggplant");
+    await expect(page.locator(`#dinner-${today}`)).toContainText("Reviewed main.");
+    await page.getByRole("region", { name: "Plan actions", exact: true }).getByText("More", { exact: true }).click();
+    await page.getByRole("button", { name: "Clear unlocked", exact: true }).click();
+    await page.getByRole("button", { name: "Remove unlocked meals", exact: true }).click();
+    await preference.uncheck();
+    await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+    await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
+    await expect.poll(async () => (await read(request)).state.meals[today]?.recipeId).toMatch(/fixture-(tomato-rice|fish-bowl)/);
+  } finally {
+    await restore();
+  }
 });
 
 test("Chef puts choices in view with one composer and applies refinements in one submission", async ({ page, request }) => {

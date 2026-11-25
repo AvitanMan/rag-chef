@@ -9,7 +9,7 @@ const roots = [];
 after(async () => { await Promise.all(roots.map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture(built = false) {
   const root = await mkdtemp(join(tmpdir(), "jff-service-contract-")); roots.push(root);
-  const files = ["service-contracts.json", "wrangler.jsonc", "wrangler.catalog.jsonc", "wrangler.chef.jsonc", "drizzle/meta/_journal.json", "drizzle/0009_catalog_job_recipe_receipts.sql"];
+  const files = ["service-contracts.json", "wrangler.jsonc", "wrangler.catalog.jsonc", "wrangler.chef.jsonc", "drizzle/meta/_journal.json", "drizzle/0010_reviewed_plan_catalog_revision.sql"];
   for (const file of files) { await mkdir(dirname(join(root, file)), { recursive: true }); await writeFile(join(root, file), await readFile(new URL(`../${file}`, import.meta.url))); }
   const manifest = JSON.parse(await readFile(join(root, "service-contracts.json"), "utf8"));
   const configs = {}, paths = {};
@@ -63,7 +63,7 @@ test("missing migration and source or built entry points cannot pass deployment 
     await rm(join(setup.root, dirname(setup.paths.chef), setup.configs.chef.main));
     const result = await checkServiceConfiguration({ root: setup.root, built }); assert.equal(result.ok, false); assert.ok(result.errors.some(error => /entry point/.test(error)));
   }
-  const setup = await fixture(); await rm(join(setup.root, "drizzle/0009_catalog_job_recipe_receipts.sql"));
+  const setup = await fixture(); await rm(join(setup.root, "drizzle/0010_reviewed_plan_catalog_revision.sql"));
   assert.equal((await checkServiceConfiguration({ root: setup.root })).ok, false);
   const missingJournal = await fixture();
   await writeFile(join(missingJournal.root, "drizzle/meta/_journal.json"), JSON.stringify({ entries: [] }));

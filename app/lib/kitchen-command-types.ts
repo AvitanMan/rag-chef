@@ -14,4 +14,5 @@ export interface KitchenCommandCommit {
   current: KitchenDocument;
   state: KitchenState;
   applied: boolean;
+  reviewedPlan?: { catalogRevision: number; expiresAt: number };
 }

@@ -48,7 +48,7 @@ import { useKitchen } from "../lib/use-kitchen";
 import type { DinnerAmountsPatch } from "../lib/kitchen-commands";
 import { DEFAULT_COOKING_PROFILE, DINNER_AMOUNT_LIMITS, mealScale, type CookingProfile, type KitchenState, type PantryLocation, type PantryStock, type PlannedMeal, type PersonalRecipeAmounts } from "../lib/kitchen-types";
 import { addDateDays, createPlannedMeal, dinnerSelectionStatus, LEGACY_STORAGE_KEY, PREFERENCES_STORAGE_KEY, weekStart } from "../lib/kitchen-state";
-import { fillEmptyDays, planningRandom } from "../lib/kitchen-planning";
+import { FillEmptyDaysDialog, readPendingDinnerSave, PENDING_DINNER_SAVE_KEY, type DinnerReviewRequest, type PendingDinnerSave } from "./FillEmptyDaysDialog";
 import { mealAmountLabel, consumptionPreview, resolvedMealIngredients, undoMealProblem, allocateStockForMeals, mealReadiness, canonicalIngredient, normalizePlanningIngredient } from "../lib/quantities";
 import { dateLabel, DinnerAmounts, DurablePlanView, DurableShoppingView } from "./WeeklyKitchenViews";
 import { browseRecipes, normalizeRecipeSearch, recipeCompleteness, recipePantryDetails as pantryDetails, RECIPE_PAGE_SIZE } from "../lib/recipe-browser";
@@ -413,6 +413,10 @@ export default function RagChefApp() {
   const [contentHashesByRecipeId, setContentHashesByRecipeId] = useState<Record<string, string>>({});
   const [metadataByRecipeId, setMetadataByRecipeId] = useState<RecipeMetadataMap>({});
   const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
+  const [reviewFill, setReviewFill] = useState<DinnerReviewRequest | null>(null);
+  const [pendingFill, setPendingFill] = useState<PendingDinnerSave | null>(null);
+  const [fillSaving, setFillSaving] = useState(false);
+  const [fillError, setFillError] = useState("");
   const [planningNotice, setPlanningNotice] = useState("");
   const [preferReviewedMains, setPreferReviewedMains] = useState(true);
   const [focusDate, setFocusDate] = useState<string | null>(null);
@@ -429,6 +433,8 @@ export default function RagChefApp() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [metric, setMetric] = useState(true);
   const [week, setWeek] = useState(() => weekStart(householdDate(session.household?.timezone)));
+  const fillLocation = useRef({ view, week });
+  useEffect(() => { fillLocation.current = { view, week }; }, [view, week]);
   const [selectionNotice, setSelectionNotice] = useState("");
   const [pendingChoice, setPendingChoice] = useState<{ date: string; recipe: Recipe; expectedId: string; preview?: DinnerCandidate; selectedKeys?: string[] } | null>(null);
   const [reviewDate, setReviewDate] = useState<string | null>(null);
@@ -489,10 +495,11 @@ export default function RagChefApp() {
         setRenderedCookingSnapshot(cookingSnapshot.current);
       }
       catch { /* Cooking recovery never prevents the kitchen from opening. */ }
+      setPendingFill(readPendingDinnerSave(privateTabStorage));
       setHydrated(true);
     }, 0);
     return () => window.clearTimeout(id);
-  }, [privateStorage]);
+  }, [privateStorage, privateTabStorage]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -612,7 +619,7 @@ export default function RagChefApp() {
       }
       setSelectedRecipe(null); setPendingChoice(null); setShoppingReviewDate(null); setMethodDate(null);
       focusHeadingOnEntry.current = null;
-      setPantryPreview(null); setPurchaseItems(null); setPurchaseNotice("");
+      setPantryPreview(null); setPurchaseItems(null); setPurchaseNotice(""); setReviewFill(null);
       if (restored.week) setWeek(restored.week);
       setShoppingDinner(restored.shoppingDinner ?? null);
       setToday(currentDate); setView(restored.view); setChefFlow(restored.flow); setFocusPantryPicks(false);
@@ -952,20 +959,36 @@ export default function RagChefApp() {
     setChefBusyContext(null);
   }
 
-  function generatePlan() {
-    setView("plan");
-    if (catalogState !== "ready") {
-      setPlanningNotice("Load the full catalog before filling empty days. Your saved dinners are unchanged.");
-      return;
-    }
-    const candidates = catalogRecipes.filter(recipeAllowed);
-    const options = { metadataByRecipeId, preferReviewedMains, contentHashesByRecipeId, personalRecipeAmounts: kitchen.state.personalRecipeAmounts };
-    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-    const proposed = fillEmptyDays(candidates, kitchen.state.pantry, week, kitchen.state.meals, today, planningRandom(seed), options);
-    const emptyDays = weekDates.filter((date) => date >= today && !kitchen.state.meals[date]).length;
-    setPlanningReasons(proposed.reasons);
-    setPlanningNotice(emptyDays === 0 ? "No upcoming empty days in this week. Past dinners can be added manually." : proposed.additions.length < emptyDays ? `Added ${proposed.additions.length} different eligible dinners. Remaining days were left empty.` : "Upcoming empty days filled without repeats. Saved dinners reserve their pantry stock first.");
-    kitchen.update((state) => ({ ...state, meals: fillEmptyDays(candidates, state.pantry, week, state.meals, today, planningRandom(seed), { ...options, personalRecipeAmounts: state.personalRecipeAmounts }).meals }));
+  async function submitReviewedDinners(attempt: PendingDinnerSave) {
+    setPendingFill(attempt);
+    setFillSaving(true);
+    setFillError("");
+    // Persist the exact approved request before sending. A tab reload may occur
+    // after the kitchen commits but before this browser receives the receipt.
+    let recoverableAfterReload = true;
+    try { privateTabStorage.setItem(PENDING_DINNER_SAVE_KEY, JSON.stringify(attempt)); }
+    catch { recoverableAfterReload = false; }
+    try {
+      const result = await kitchen.applyEmptyDays(attempt.request.review, attempt.request.commandId);
+      setPendingFill(null);
+      try { privateTabStorage.removeItem(PENDING_DINNER_SAVE_KEY); } catch { /* A retained receipt is safe to replay. */ }
+      if (result.current) {
+        const current = result.current.state?.meals;
+        const matching = attempt.dinners.filter(meal => current?.[meal.date]?.id === meal.id);
+        setPlanningReasons(result.current.revision === result.receiptRevision ? Object.fromEntries(matching.map(meal => [meal.id, meal.reason])) : {});
+        if (fillLocation.current.view === "plan" && fillLocation.current.week === attempt.request.review.week) setFocusDate(matching[0]?.date ?? null);
+        setPlanningNotice(matching.length === attempt.dinners.length
+          ? `Saved ${matching.length} ${matching.length === 1 ? "dinner" : "dinners"} to the week plan.`
+          : "Dinner save confirmed. The week also includes later edits.");
+      } else setPlanningNotice(result.stale);
+      return result;
+    } catch (error) {
+      setFillError(recoverableAfterReload ? "The dinner save is unconfirmed. Reconnect and retry to check the receipt."
+        : "The dinner save is unconfirmed. Keep this tab open and retry when connected.");
+      // Update an older local view even if the cook closes the dialog before retrying.
+      void kitchen.refreshSavedKitchen();
+      throw error;
+    } finally { setFillSaving(false); }
   }
 
   function patchDinner(date: string, expectedId: string, patch: DinnerAmountsPatch) {
@@ -1073,6 +1096,7 @@ export default function RagChefApp() {
   }
 
   function navigate(next: View) {
+    setReviewFill(null);
     if (next === "chef" && (view === "plan" || view === "recipes")) setChefFlow(current => ({ ...current, origin: view }));
     setSelectionNotice(""); setPendingChoice(null); setReviewDate(null); setFocusPantryPicks(false); setView(next);
   }
@@ -1329,6 +1353,14 @@ export default function RagChefApp() {
           <button className="secondary-button" onClick={() => kitchen.resolveConflict(false)}>Load saved version</button>
           <button className={kitchen.combineAvailable ? "secondary-button" : "primary-button"} onClick={() => kitchen.resolveConflict(true)}>Save this draft</button>
         </div>}
+        {pendingFill && !reviewFill && <div className="inline-confirm" role="status">
+          <span>{fillSaving ? "Checking dinner save…" : fillError || "A dinner save needs confirmation."} Week of {dateLabel(pendingFill.request.review.week)}.</span>
+          <button className="secondary-button" disabled={fillSaving || !kitchen.ready} onClick={() => {
+            navigate("plan");
+            setWeek(pendingFill.request.review.week);
+            void submitReviewedDinners(pendingFill).catch(() => { /* The recovery action remains available. */ });
+          }}>Retry dinner save</button>
+        </div>}
         {cookingStorageNotice && <p className="quantity-note" role="alert">{cookingStorageNotice}</p>}
         {cookingSession && !cooking && <div className="inline-confirm" role="status"><span>{[cookingSession.timer, ...(cookingSession.extraTimers ?? [])].some(timer => timer.status === "finished") ? "Timer finished. " : "Saved cooking session: "}{cookingSession.recipe.title}</span><button className="primary-button" onClick={() => setCooking(true)}>Resume cooking</button><button className="secondary-button" onClick={() => persistCookingSession(null)}>Discard cooking session</button></div>}
         {kitchen.recoveryCandidates.length > 0 && <details className="panel recovery-panel"><summary>Unsaved kitchens found ({kitchen.recoveryCandidates.length})</summary><p>Review a saved browser draft before replacing the kitchen in this tab. Other tabs keep their work.</p>{kitchen.recoveryCandidates.map((draft) => <article className="recovery-candidate" key={draft.id}><strong>{draft.updatedAt ? new Date(draft.updatedAt).toLocaleString() : "Time unknown"}</strong><p>{draft.pantryCount} pantry rows · {draft.mealCount} dinners</p><p className="quantity-note">Compared with this kitchen: {draft.differences.pantryAdded} pantry rows added, {draft.differences.pantryRemoved} removed, {draft.differences.pantryChanged} changed; {draft.differences.mealsAdded} dinners added, {draft.differences.mealsRemoved} removed, {draft.differences.mealsChanged} changed; {draft.differences.favoritesChanged} favorites changed; {draft.differences.personalAmountsChanged} personal amount sets changed; {draft.differences.shoppingCyclesChanged} purchase cycles changed; {draft.differences.shoppingPurchasesChanged} purchase receipts changed.{draft.differences.cookingProfileChanged && " Cooking preferences differ."}{!draft.differences.cookingProfileChanged ? "" : " Review allergies and equipment after recovery."}</p><div className="modal-actions"><button className="secondary-button" disabled={kitchen.busy} onClick={() => { if (kitchen.recoverDraft(draft.id)) setView("plan"); }}>Recover this draft</button><button className="text-button" disabled={kitchen.busy} onClick={() => kitchen.discardDraft(draft.id)}>Discard this draft</button></div></article>)}</details>}
@@ -1485,6 +1517,8 @@ export default function RagChefApp() {
         )}
 
         {view === "plan" && hydrated && kitchen.ready && !weekMeals.length && <section className="onboarding-next" aria-label="Get started"><p>Choose tonight’s dinner to get started. Your shopping list builds itself.</p><button className="text-button" onClick={() => navigate("settings")}>Review preferences</button><button className="text-button" onClick={() => navigate("pantry")}>Add pantry ingredients</button></section>}
+        {view === "plan" && reviewFill?.week === week && <FillEmptyDaysDialog {...reviewFill}
+          apply={submitReviewedDinners} close={() => setReviewFill(null)} />}
         {view === "plan" && (
           <DurablePlanView
             focusDate={focusDate}
@@ -1504,7 +1538,8 @@ export default function RagChefApp() {
             cookMeal={cookMeal}
             reviewDate={reviewDate}
             setReviewDate={setReviewDate}
-            generatePlan={generatePlan}
+            generatePlan={() => setReviewFill({ week, preview: signal => kitchen.previewEmptyDays(week, preferReviewedMains, signal) })}
+            fillReady={kitchen.saveState === "saved" && !pendingFill}
             preferReviewedMains={preferReviewedMains}
             setPreferReviewedMains={setPreferReviewedMains}
             openMeal={(date) => { const meal = kitchen.state.meals[date]; if (meal?.recipe) { setCookingMealDate(date); setSelectedRecipe(meal.recipe); } }}

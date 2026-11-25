@@ -5,6 +5,7 @@ import { useAppSession } from "./app-session";
 import { combineKitchenEdits } from "./kitchen-merge";
 import { applyKitchenCommand, type KitchenCommand, type KitchenCommandInput } from "./kitchen-commands";
 import { parseKitchenCommand } from "./kitchen-command-validation";
+import type { FillEmptyDaysReview, FillEmptyDaysPreviewResponse } from "./fill-empty-days-contract";
 import type { KitchenCommandResult } from "./kitchen-command-types";
 import { appendKitchenCommand, appendKitchenSnapshot, hasAttemptedKitchenCommand, prepareKitchenWrite, projectKitchenWrites, type PendingKitchenWrite } from "./kitchen-write-queue";
 import type { KitchenDocument, KitchenState } from "./kitchen-types";
@@ -486,6 +487,45 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     }
   }, [cache, ready, kitchenFetch, savedLocation, hosted, pauseForConflict]);
 
+  const previewEmptyDays = useCallback(async (week: string, preferReviewedMains: boolean, signal: AbortSignal): Promise<FillEmptyDaysPreviewResponse> => {
+    const current = await refreshSavedKitchen(signal);
+    if (!current || writes.current.length || saving.current || paused.current || JSON.stringify(latest.current) !== savedJson.current) {
+      throw new Error("Finish saving your kitchen and reconnect before reviewing dinners.");
+    }
+    const response = await kitchenFetch("/api/kitchen/fill-empty-days/preview", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ week, preferReviewedMains, expectedRevision: current.revision, seed: crypto.getRandomValues(new Uint32Array(1))[0],
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+    });
+    if (!response.ok) {
+      const result = await response.json() as { error?: { message?: string } };
+      throw new Error(result.error?.message || "The dinner preview could not be loaded.");
+    }
+    return await response.json() as FillEmptyDaysPreviewResponse;
+  }, [kitchenFetch, refreshSavedKitchen]);
+
+  // Reviewed plans are authoritative writes. Keep an uncertain attempt replayable
+  // with the original command ID even if another tab has since changed the kitchen.
+  const applyEmptyDays = useCallback(async (review: FillEmptyDaysReview, commandId: string) => {
+    const response = await kitchenFetch("/api/kitchen/fill-empty-days/apply", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ review, commandId }), signal: AbortSignal.timeout(15_000),
+    });
+    const result = await response.json() as KitchenCommandResult & { error?: { message?: string } };
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500 && ![408, 429].includes(response.status)) {
+        void refreshSavedKitchen();
+        return { stale: result.error?.message || "This dinner preview has expired. Review the week again." };
+      }
+      throw new Error("Could not confirm the save. Retry this plan to check its receipt.");
+    }
+    if (result.commandId !== commandId || !Number.isSafeInteger(result.document?.revision)) throw new Error("Could not confirm the plan receipt.");
+    const saved = await refreshSavedKitchen();
+    if (!saved || saved.revision < result.document.revision) throw new Error("The plan was saved. Retry to refresh your week.");
+    return { stale: null, current: saved, receiptRevision: result.document.revision };
+  }, [kitchenFetch, refreshSavedKitchen]);
+
   useEffect(() => {
     if (!ready) return;
     const refresh = () => { if (!hosted || document.visibilityState === "visible") void refreshSavedKitchen(); };
@@ -496,12 +536,14 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
     };
     window.addEventListener("storage", changed);
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     const poll = hosted ? window.setInterval(refresh, 5_000) : undefined;
     if (hosted) document.addEventListener("visibilitychange", refresh);
     return () => {
       if (poll !== undefined) window.clearInterval(poll);
       if (hosted) document.removeEventListener("visibilitychange", refresh);
       window.removeEventListener("storage", changed); window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
     };
   }, [ready, refreshSavedKitchen, hosted, storageKey]);
 
@@ -641,6 +683,6 @@ export function useKitchen(fallbackRecipes: Recipe[]) {
   }, [refreshRecovery, privateStorage]);
 
   const saveState: KitchenSaveState = savePhase === "saved" && JSON.stringify(state) !== savedSnapshot ? "pending" : savePhase;
-  return { state, update, dispatch, command, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, backupAvailable, conflict, resolveConflict, combineConflict, combineAvailable: Boolean(combination.state), combineReason: combination.reason ?? "", retrySave: () => setRetry((value) => value + 1),
+  return { state, update, dispatch, command, ready, status, saveState, recoverable: JSON.stringify(state) === browserSnapshot || JSON.stringify(state) === savedSnapshot, getRevision: () => revision.current, refreshSavedKitchen, previewEmptyDays, applyEmptyDays, backupAvailable, conflict, resolveConflict, combineConflict, combineAvailable: Boolean(combination.state), combineReason: combination.reason ?? "", retrySave: () => setRetry((value) => value + 1),
     busy: savePhase === "saving" || Boolean(conflict), recoveryCandidates, recoverDraft, discardDraft, restoreBackup };
 }

@@ -109,6 +109,7 @@ test("Back from another section preserves the same recipe answer and conversatio
 });
 
 test("a generic nuts allergy excludes peanut recipes in browsing, planning and Chef", async ({ page, request }) => {
+  await page.clock.setSystemTime(new Date());
   await page.goto("/");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const allergies = page.getByRole("textbox", { name: "Allergies", exact: true });
@@ -118,6 +119,7 @@ test("a generic nuts allergy excludes peanut recipes in browsing, planning and C
   await expect(page.locator(".recipe-card").filter({ hasText: "Tomato Rice" })).toBeVisible();
   await navigate(page, "Plan");
   await page.getByRole("button", { name: "Fill empty days", exact: true }).click();
+  await page.getByRole("dialog", { name: "Review dinners" }).getByRole("button", { name: "Apply dinners" }).click();
   await expect.poll(async () => Object.keys((await (await request.get("/api/kitchen")).json()).state.meals).length).toBeGreaterThan(0);
   const titles = Object.values((await (await request.get("/api/kitchen")).json()).state.meals).map(meal => (meal as PlannedMeal).title);
   expect(titles).not.toContain("Peanut Noodles");

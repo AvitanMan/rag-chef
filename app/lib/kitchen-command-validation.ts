@@ -1,3 +1,4 @@
+import type { FillEmptyDaysApplyRequest, FillEmptyDaysPreviewRequest, FillEmptyDaysReview } from "./fill-empty-days-contract";
 import type { KitchenCommand } from "./kitchen-commands";
 import { EMPTY_KITCHEN } from "./kitchen-types";
 import { KitchenValidationError, MAX_KITCHEN_BODY_BYTES, measureInputProblem, pantryLocationInputProblem, validateCookingProfile, validateKitchenState } from "./kitchen-validation";
@@ -137,8 +138,42 @@ export function parseKitchenCommand(value: unknown): KitchenCommand {
   }
 }
 
+const previewFields = ["week", "seed", "preferReviewedMains", "expectedRevision"];
+function checkPlanOptions(entry: Entry) {
+  date(entry.week);
+  if (new Date(entry.week + "T12:00:00Z").getUTCDay() !== 1 || entry.week > "9999-12-25") invalid("Choose a week starting on Monday.");
+  bool(entry.preferReviewedMains);
+  if (typeof entry.seed !== "number" || !Number.isInteger(entry.seed) || entry.seed < 0 || entry.seed > 0xffffffff) invalid("Invalid plan seed.");
+  if (typeof entry.expectedRevision !== "number" || !Number.isSafeInteger(entry.expectedRevision) || entry.expectedRevision < 0 || entry.expectedRevision >= Number.MAX_SAFE_INTEGER) invalid("Invalid kitchen revision.");
+  if (Object.hasOwn(entry, "timezone")) {
+    text(entry.timezone, 100);
+    try { new Intl.DateTimeFormat("en", { timeZone: entry.timezone }); }
+    catch { invalid("Invalid planning timezone."); }
+  }
+}
+
+export function parseFillEmptyDaysPreview(value: unknown): FillEmptyDaysPreviewRequest {
+  const entry = object(value);
+  fields(entry, previewFields, ["timezone"]);
+  checkPlanOptions(entry);
+  return entry as unknown as FillEmptyDaysPreviewRequest;
+}
+
+export function parseFillEmptyDaysApply(value: unknown): FillEmptyDaysApplyRequest {
+  const entry = object(value);
+  fields(entry, ["commandId", "review"]);
+  id(entry.commandId);
+  const review = object(entry.review);
+  fields(review, [...previewFields, "timezone", "today", "catalogRevision", "digest"]);
+  checkPlanOptions(review);
+  date(review.today);
+  if (typeof review.catalogRevision !== "number" || !Number.isSafeInteger(review.catalogRevision) || review.catalogRevision < 0) invalid("Invalid reviewed catalog revision.");
+  if (typeof review.digest !== "string" || !/^[a-f0-9]{64}$/.test(review.digest)) invalid("Invalid plan review.");
+  return { commandId: entry.commandId as string, review: review as unknown as FillEmptyDaysReview };
+}
+
 /** Stable across JSON object-key order; arrays and every precondition retain identity. */
-export async function kitchenCommandHash(command: KitchenCommand): Promise<string> {
+export async function kitchenCommandHash(command: object): Promise<string> {
   function canonical(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(canonical);
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => [key, canonical(value)]));

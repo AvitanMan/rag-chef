@@ -1,7 +1,7 @@
 import { isKitchenWrite, kitchenWriteRevision } from "./kitchen-requests";
 import { createHmac } from "node:crypto";
 import { test, expect, type BrowserContext, type APIRequestContext, type Page } from "@playwright/test";
-import type { KitchenDocument, KitchenState } from "../../app/lib/kitchen-types";
+import type { KitchenDocument, KitchenState, PlannedMeal } from "../../app/lib/kitchen-types";
 import { openPantryManagement, showPantryBatches } from "./pantry-helpers";
 
 test.skip(process.env.RAG_CHEF_HOSTED_TEST !== "1", "Requires disposable hosted identities and signed sessions.");
@@ -116,6 +116,50 @@ test("owner creation and invitations share one kitchen while protecting requirem
     expect(await document(context.request)).toEqual(changed);
     await page.screenshot({ path: info.outputPath("hosted-household.png"), fullPage: true });
   } finally { await memberContext.close(); await otherContext.close(); }
+});
+
+test("a member applies the reviewed dinners once in the household that opened the preview", async ({ context, browser }, info) => {
+  const member = await browser.newContext({ baseURL });
+  const other = await browser.newContext({ baseURL });
+  try {
+    const owner = await createKitchen(context, `owner-plan-review-${info.project.name}`);
+    const memberIdentity = await joinKitchen(context, member, `member-plan-review-${info.project.name}`);
+    const otherOwner = await createKitchen(other, `other-plan-review-${info.project.name}`);
+    const before = await save(context.request, owner.headers, emptyState());
+    const otherBefore = await save(other.request, otherOwner.headers, emptyState());
+    expect(otherBefore.revision).toBe(before.revision);
+
+    // Both UTC households have the same kitchen contents and catalog.
+    const monday = new Date();
+    monday.setUTCDate(monday.getUTCDate() + 7 - (monday.getUTCDay() + 6) % 7);
+    const preview = await member.request.post("/api/kitchen/fill-empty-days/preview", {
+      headers: memberIdentity,
+      data: { week: monday.toISOString().slice(0, 10), expectedRevision: before.revision, seed: 9, preferReviewedMains: false },
+    });
+    expect(preview.status(), await preview.text()).toBe(200);
+    const result = await preview.json();
+    const additions: PlannedMeal[] = result.preview.additions;
+    expect(additions.length).toBeGreaterThan(0);
+    expect(await document(context.request)).toEqual(before);
+
+    const applyPath = "/api/kitchen/fill-empty-days/apply";
+    const apply = { review: result.review, commandId: "reviewed-household-dinners" };
+    for (const [session, identity] of [[other, otherOwner.headers], [context, owner.headers]] as const) {
+      const response = await session.request.post(applyPath, { headers: identity, data: apply });
+      expect(response.status()).toBe(409);
+    }
+    expect(await document(other.request)).toEqual(otherBefore);
+    expect(await document(context.request)).toEqual(before);
+
+    const applied = await member.request.post(applyPath, { headers: memberIdentity, data: apply });
+    expect(applied.status(), await applied.text()).toBe(200);
+    const confirmed = await document(context.request);
+    expect(confirmed.revision).toBe(before.revision + 1);
+    expect(confirmed.state?.meals).toEqual(Object.fromEntries(additions.map(meal => [meal.date, meal])));
+    const retry = await member.request.post(applyPath, { headers: memberIdentity, data: apply });
+    expect(await retry.json()).toMatchObject({ replayed: true, document: confirmed });
+    expect(await document(context.request)).toEqual(confirmed);
+  } finally { await member.close(); await other.close(); }
 });
 
 test("Combine safe edits preserves independent pantry corrections from two household members", async ({ page, browser, context }, info) => {

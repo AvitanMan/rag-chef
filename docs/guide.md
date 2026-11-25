@@ -603,9 +603,14 @@ entered **Use by** date do not count as available. The entered date is inclusive
 and is not a judgment that food is safe or unsafe; no date means unknown, not fresh.
 Past-dated stock stays excluded for unfinished historical dinners. Cooking
 deductions use the actual cooking date, including when a dinner is cooked early.
-Automatic planning reserves measured stock for saved dinners, then fills upcoming
-empty days in date order without spending the same stock twice. **Prefer reviewed
-mains** is on by default: eligible reviewed mains lead, then unreviewed recipes
+On **Plan**, **Fill empty days** previews dinners for upcoming empty dates.
+Review the dates, portions or batches, pantry shortages, amounts that need checking,
+and changes to the weekly shopping list. **Apply dinners** saves the displayed
+dinners together. **Cancel** closes the preview. If the kitchen or catalog changes,
+use **Review again** to see the current choices. Saved dinners keep their measured
+pantry reservations.
+
+**Prefer reviewed mains** is on by default. Eligible reviewed mains lead, then unreviewed recipes
 if mains run out; known sides, components and desserts stay out. Turn it off to
 use the wider collection. Within that dinner group, stock due within three days
 leads, then meals using remaining measured stock. Each fill makes a

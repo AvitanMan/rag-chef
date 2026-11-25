@@ -5,19 +5,16 @@ planning, owner-managed invitations, and account-scoped browser recovery. It is
 opt-in. The default local application keeps its existing pantry, stocktake,
 shopping, cooking, model configuration, and revision-conflict behavior.
 
-This integration selectively reuses the auth and household work from
-`codex/planning-assistant`. It does not include the planner/assistant actions,
-personal AI connections, browser inference tasks, or LAN launchers from that
-branch. Hosted Chef supports deterministic answers and source/catalog fallbacks;
+The household integration includes a reviewed **Fill empty days** action.
+Members can preview proposed dinners and shopping changes, then apply the whole
+selection to their shared kitchen. Hosted Chef supports deterministic answers and source/catalog fallbacks;
 hosted requests never use the operator's local models or server AI credentials.
 
 ## Configuration
 
 Use a separate D1 database for a hosted installation. Keep the binding name `DB`.
-Apply all migrations, including `0005_households_auth.sql`,
-`0006_kitchen_command_receipts.sql`, `0007_catalog_jobs.sql` and
-`0008_runtime_admission.sql` and `0009_catalog_job_recipe_receipts.sql`, to the intended database before enabling
-hosted mode. The authentication migration adds authentication and
+Apply all migrations through `0010_reviewed_plan_catalog_revision.sql` to the
+intended database before enabling hosted mode. The authentication migration adds authentication and
 household tables without modifying existing `local-household` kitchen state.
 Local data is not automatically assigned to a signed-in household.
 The command migration adds durable retry receipts for both local and hosted

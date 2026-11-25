@@ -16,16 +16,31 @@ export class KitchenCommandReuseError extends Error {
   }
 }
 
-function accessGuard(household: HouseholdContext, now: string): SqlGuard {
+export class KitchenReviewStaleError extends Error {
+  constructor() {
+    super("This dinner plan has changed. Review a fresh plan before applying it.");
+    this.name = "KitchenReviewStaleError";
+  }
+}
+
+export async function getPlanningCatalogRevision(): Promise<number> {
+  const db = await householdDb();
+  const row = await db.prepare("SELECT revision FROM recipe_catalog_revision WHERE id=1").first<{ revision: number }>();
+  if (!row || !Number.isSafeInteger(row.revision) || row.revision < 0) throw new Error("The planning catalog revision is unavailable.");
+  return row.revision;
+}
+
+function accessGuard(household: HouseholdContext): SqlGuard {
   if (household.mode === "local") return { sql: "1=1", bindings: [] };
+  // Better Auth stores ISO timestamps. Compare at statement execution, including milliseconds.
   return {
-    sql: `EXISTS(SELECT 1 FROM member m JOIN session s ON s.userId=m.userId JOIN user u ON u.id=m.userId JOIN household_settings h ON h.organizationId=m.organizationId WHERE m.organizationId=? AND m.userId=? AND m.role=? AND s.id=? AND s.expiresAt>? AND u.emailVerified=1 AND h.timezone=? AND h.assistantEnabled=?)`,
-    bindings: [household.householdId, household.userId, household.role, household.sessionId ?? "", now, household.timezone, Number(household.assistantEnabled)],
+    sql: `EXISTS(SELECT 1 FROM member m JOIN session s ON s.userId=m.userId JOIN user u ON u.id=m.userId JOIN household_settings h ON h.organizationId=m.organizationId WHERE m.organizationId=? AND m.userId=? AND m.role=? AND s.id=? AND julianday(s.expiresAt)>julianday('now') AND u.emailVerified=1 AND h.timezone=? AND h.assistantEnabled=?)`,
+    bindings: [household.householdId, household.userId, household.role, household.sessionId ?? "", household.timezone, Number(household.assistantEnabled)],
   };
 }
 
-function receiptQuery(db: D1Database, household: HouseholdContext, commandId: string, now: string): D1PreparedStatement {
-  const access = accessGuard(household, now);
+function receiptQuery(db: D1Database, household: HouseholdContext, commandId: string): D1PreparedStatement {
+  const access = accessGuard(household);
   return db.prepare(`SELECT request_hash,document_json,applied,attempt_token FROM kitchen_command_receipt WHERE household_id=? AND actor_id=? AND command_id=? AND ${access.sql}`)
     .bind(household.householdId, household.userId, commandId, ...access.bindings);
 }
@@ -45,7 +60,7 @@ function resultFromRow(commandId: string, requestHash: string, row: ReceiptRow, 
 export async function findKitchenCommand(commandId: string, requestHash: string, context?: HouseholdContext): Promise<KitchenCommandResult | null> {
   const household = await validateHouseholdContext(context);
   const db = await householdDb();
-  const row = await receiptQuery(db, household, commandId, new Date().toISOString()).first<ReceiptRow>();
+  const row = await receiptQuery(db, household, commandId).first<ReceiptRow>();
   if (row) return resultFromRow(commandId, requestHash, row);
   // A revoked session must not look like an unused command after the preflight.
   await validateHouseholdContext(household);
@@ -67,7 +82,7 @@ export async function commitKitchenCommand(input: KitchenCommandCommit, context?
   const document: KitchenDocument = applied
     ? { revision: current.revision + 1, state, updatedAt }
     : current;
-  const access = accessGuard(household, updatedAt);
+  const access = accessGuard(household);
   const revisionGuard = current.revision === 0
     ? "NOT EXISTS(SELECT 1 FROM kitchen_state WHERE id=?)"
     : "EXISTS(SELECT 1 FROM kitchen_state WHERE id=? AND revision=?)";
@@ -79,11 +94,16 @@ export async function commitKitchenCommand(input: KitchenCommandCommit, context?
       bindings: [household.householdId, JSON.stringify(DEFAULT_COOKING_PROFILE), profile],
     }
     : { sql: "1=1", bindings: [] };
+  // An accepted receipt is the sole authority for writing meals. A catalog edit
+  // or household midnight during preview verification must prevent that claim.
+  const plan: SqlGuard = input.reviewedPlan
+    ? { sql: "EXISTS(SELECT 1 FROM recipe_catalog_revision WHERE id=1 AND revision=?) AND unixepoch() < ?", bindings: [input.reviewedPlan.catalogRevision, input.reviewedPlan.expiresAt] }
+    : { sql: "1=1", bindings: [] };
   const insertReceipt = db.prepare(`INSERT INTO kitchen_command_receipt(household_id,actor_id,command_id,request_hash,document_json,applied,attempt_token,created_at)
-    SELECT ?,?,?,?,?,?,?,? WHERE ${revisionGuard} AND ${access.sql} AND ${requirements.sql}
+    SELECT ?,?,?,?,?,?,?,? WHERE ${revisionGuard} AND ${access.sql} AND ${requirements.sql} AND ${plan.sql}
     ON CONFLICT(household_id,actor_id,command_id) DO NOTHING`)
     .bind(household.householdId, household.userId, commandId, requestHash, JSON.stringify(document), Number(applied), attemptToken, updatedAt,
-      ...revisionBindings, ...access.bindings, ...requirements.bindings);
+      ...revisionBindings, ...access.bindings, ...requirements.bindings, ...plan.bindings);
   const claimed = "EXISTS(SELECT 1 FROM kitchen_command_receipt WHERE household_id=? AND actor_id=? AND command_id=? AND attempt_token=?)";
   const claimBindings = [household.householdId, household.userId, commandId, attemptToken];
   const writeKitchen = current.revision === 0
@@ -94,7 +114,7 @@ export async function commitKitchenCommand(input: KitchenCommandCommit, context?
   const results = await db.batch<ReceiptRow>([
     insertReceipt,
     writeKitchen,
-    receiptQuery(db, household, commandId, updatedAt),
+    receiptQuery(db, household, commandId),
   ]);
   const row = results[2].results[0];
   if (row) return resultFromRow(commandId, requestHash, row, attemptToken);
@@ -106,5 +126,6 @@ export async function commitKitchenCommand(input: KitchenCommandCommit, context?
     && JSON.stringify(latest.state?.cookingProfile ?? DEFAULT_COOKING_PROFILE) !== profile) {
     throw new HouseholdAuthError("OWNER_REQUIRED", "Only the household owner can change shared cooking requirements.");
   }
+  if (input.reviewedPlan && latest.revision === current.revision) throw new KitchenReviewStaleError();
   throw new KitchenConflictError(latest);
 }

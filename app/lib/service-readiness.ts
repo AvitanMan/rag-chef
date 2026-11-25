@@ -3,7 +3,7 @@ import { householdDb, householdSetting, initializeHouseholdRuntime } from "./hou
 import { chefUsageLimits, modelPermitLimits } from "./runtime-admission";
 import { serviceResponseHeaders, type ServiceName } from "./service-observability";
 
-export const SERVICE_SCHEMA_VERSION = 9;
+export const SERVICE_SCHEMA_VERSION = 10;
 /** Private/operator readiness checks inspect schema and policy, never providers. */
 export async function serviceReadiness(service: ServiceName, bindings?: object): Promise<Response> {
   await initializeHouseholdRuntime();
@@ -18,6 +18,7 @@ export async function serviceReadiness(service: ServiceName, bindings?: object):
       ? ["SELECT id,approval_status FROM recipe_sources LIMIT 0", "SELECT id,version FROM recipes LIMIT 0", "SELECT id,lease_token FROM catalog_jobs LIMIT 0"]
       : ["SELECT id,revision FROM kitchen_state LIMIT 0", "SELECT household_id,command_id FROM kitchen_command_receipt LIMIT 0", "SELECT id,expiresAt FROM session LIMIT 0"];
     await db.batch(checks.concat([
+      "SELECT id,revision FROM recipe_catalog_revision LIMIT 0",
       "SELECT id,provider,expires_at FROM runtime_model_permits LIMIT 0",
       "SELECT household_id,window_kind,used FROM runtime_chef_usage LIMIT 0",
       "SELECT job_id,catalog_id,request_hash,content_hash,recipe_version,result_json FROM catalog_job_recipe_receipts LIMIT 0",

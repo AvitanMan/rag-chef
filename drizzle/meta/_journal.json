@@ -71,6 +71,13 @@
       "when": 1794556863963,
       "tag": "0009_catalog_job_recipe_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795620158674,
+      "tag": "0010_reviewed_plan_catalog_revision",
+      "breakpoints": true
     }
   ]
 }

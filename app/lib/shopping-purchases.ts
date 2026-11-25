@@ -7,9 +7,13 @@ export interface PurchaseDraft { key: string; cycleId?: string; name: string; me
 
 export interface ShoppingPurchaseSelection { purchaseId: string; key: string; cycleId?: string; pantryId: string }
 
-export function shoppingForWeek(state: KitchenState, week: string, today: string): ShoppingItem[] {
+export function mealsForShoppingWeek(meals: KitchenState["meals"], week: string) {
   const end = addDateDays(week, 7);
-  return buildShoppingList(Object.values(state.meals).filter((meal) => meal.date >= week && meal.date < end), state.pantry, today)
+  return Object.values(meals).filter(meal => meal.date >= week && meal.date < end);
+}
+
+export function shoppingForWeek(state: KitchenState, week: string, today: string): ShoppingItem[] {
+  return buildShoppingList(mealsForShoppingWeek(state.meals, week), state.pantry, today)
     .map((item) => ({ ...item, key: `${week}:${item.key}` }));
 }
 
