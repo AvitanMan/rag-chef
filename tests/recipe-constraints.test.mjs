@@ -71,6 +71,20 @@ test("generic nut allergies cover peanuts and tree nuts without broadening expli
   assert.equal(decide(["walnuts"], { allergies: ["tree nuts"] }).eligible, false);
 });
 
+test("individual allergies match known singular and plural forms while preserving the saved label", () => {
+  for (const [allergy, ingredient] of [
+    ["almond", "sliced almonds"], ["Almonds", "almond flour"],
+    ["walnut allergy", "crushed walnuts"], ["hazelnuts", "hazelnut paste"],
+  ]) {
+    const result = decide([ingredient], { allergies: [allergy] });
+    assert.equal(result.eligible, false, ingredient);
+    assert.deepEqual(result.allergyMatches, [allergy]);
+  }
+  const declared = { ...recipe("topping"), allergens: ["almonds"] };
+  assert.equal(evaluateRecipeConstraints(declared, undefined, normalizeConstraints({ allergies: ["almond"] })).eligible, false);
+  assert.equal(decide(["walnuts", "peanuts", "nutmeg"], { allergies: ["almonds"] }).eligible, true);
+});
+
 test("known diet conflicts are excluded while unknowns stay eligible and labeled", () => {
   for (const [diet, names] of [["Vegetarian", ["chicken stock"]], ["Vegan", ["butter"]], ["Vegan", ["mozzarella"]], ["Gluten-free", ["farfalle"]]]) assert.equal(decide(names, { diet }).eligible, false);
   const unknown = decide(["rice", "tomatoes"], { diet: "Vegan" });
@@ -79,6 +93,16 @@ test("known diet conflicts are excluded while unknowns stay eligible and labeled
   assert.deepEqual(decide(["rice"], { diet: "Low-carb" }).dietUnknowns, ["low_carb"]);
   assert.equal(ingredientDietConflicts(recipe("coconut milk", "peanut butter", "vegan cheese"), "vegan"), false);
   assert.equal(ingredientDietConflicts(recipe("rice flour", "gluten-free pasta"), "gluten_free"), false);
+});
+
+test("diet checks recognize ingredient phrases only within a single row", () => {
+  for (const [diet, first, second] of [["Vegan", "rice", "milk"], ["Gluten-free", "rice", "flour"]]) {
+    assert.equal(decide([first, second], { diet }).eligible, false);
+    assert.equal(decide([second, first], { diet }).eligible, false);
+    assert.equal(decide([`${first} ${second}`], { diet }).eligible, true);
+  }
+  assert.equal(decide(["flax egg", "commercial egg replacer"], { diet: "Vegan" }).eligible, false);
+  assert.equal(decide(["soy", "sauce"], { diet: "Gluten-free" }).eligible, true);
 });
 
 test("ingredient evidence overrides reviewed fits and a diet review never overrides an allergy", () => {

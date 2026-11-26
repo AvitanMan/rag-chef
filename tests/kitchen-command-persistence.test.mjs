@@ -324,6 +324,28 @@ test("a read-only plan saves exactly the reviewed meals, then concurrent and los
   assert.equal((await plan.apply({ ...proposal.review, seed: 9 })).error.code, "COMMAND_ID_REUSED");
 });
 
+test("reviewed Fill reopens a reappearing purchased shortage on Apply and preserves pending checkmarks", async () => {
+  const plan = await planFixture();
+  const { preview, review } = await plan.preview();
+  const { shoppingForWeek } = await app.sources.import("app/lib/shopping-purchases.ts");
+  const planned = { ...baseState(), meals: Object.fromEntries(preview.additions.map(meal => [meal.date, meal])) };
+  const [reappears, pending] = shoppingForWeek(planned, review.week, review.today);
+  const state = { ...baseState(), shoppingChecked: { [reappears.key]: true, [pending.key]: true },
+    shoppingPurchases: [{ id: "old-receipt", week: review.week, at: "2026-10-26T12:00:00.000Z", items: [
+      { key: reappears.key, pantry: { id: "used-batch", name: reappears.name, measure: reappears.measure } },
+    ] }] }; // Legacy receipt with no cycle ID.
+  const seeded = await app.service.kitchenService.save(0, state);
+  const proposal = await plan.preview({ ...plan.options, expectedRevision: seeded.revision });
+  assert.deepEqual((await saved()).state, state);
+  const result = await plan.apply(proposal.review);
+  assert.equal(result.status, 200);
+  assert.equal(Boolean(result.document.state.shoppingChecked[reappears.key]), false);
+  assert.equal(result.document.state.shoppingChecked[pending.key], true);
+  assert.deepEqual(result.document.state.shoppingPurchases, state.shoppingPurchases);
+  assert.deepEqual(result.document.state.pantry, state.pantry);
+  assert.deepEqual((await plan.apply(proposal.review)).document, result.document);
+});
+
 test("reviewed fills with competing IDs advance only one revision, leaving the other review stale", async () => {
   const plan = await planFixture();
   const { review } = await plan.preview();

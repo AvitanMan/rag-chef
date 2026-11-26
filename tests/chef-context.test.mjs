@@ -311,6 +311,12 @@ test("mixed amount and cooking questions keep their entire request on the eviden
     "How much pasta do I need, and should it be drained?",
     "How much rice do I need? Is it rinsed first?",
     "How much rice do I need; explain the next step.",
+    "How much milk for the next instruction?",
+    "How much milk for here?",
+    "How much milk for now?",
+    "How much milk goes in now for this dinner?",
+    "How much milk for this step in my saved dinner now?",
+    "How much milk is in my saved dinner now, and when do I add it?",
     "How much rice do I need, could it be rinsed first?",
     "How much milk do I need, then stir it in?",
     "How much pasta do I need, help me get it tender?",
@@ -383,6 +389,46 @@ test("a legacy cooking request resolves its source ID in the selected method", a
   ]);
   assert.match(rest.body.answer, /step 3: Add 150 ml milk/i);
   assert.ok(rest.body.sourceFacts.some(fact => fact.evidenceId === "S6"));
+  assert.equal(h.prompts.length, 0);
+});
+
+for (const [instruction, status] of [
+  ["Whisk 50 ml of milk with the cornstarch.", "answered"],
+  ["Whisk some of the milk with the cornstarch.", "unsupported"],
+]) test(`step-scoped ingredient quantities use the selected direction: ${instruction}`, async t => {
+  const source = { ...routeRecipe, ingredients: [{ name: "milk", measure: "200 ml" }, { name: "cornstarch", measure: "10 g" }],
+    instructions: [instruction, "Stir in the remaining milk."] };
+  const meal = { ...createPlannedMeal(today, source), ingredientOverrides: { "0": "300 ml" } };
+  const h = chefHarness(t, kitchenState([], [meal]), source);
+  const context = await savedContext(meal, { stepEvidenceId: "S1", methodStep: { number: 1, evidenceId: "S1" } });
+  for (const query of ["How much milk for this step?", "How much milk is used in this step?"]) {
+    const { body } = await h.ask(context, [], query);
+    assert.equal(body.answerStatus, status, query);
+    assert.ok(body.answer.includes(instruction), query);
+    assert.deepEqual(body.sourceFacts.map(fact => fact.evidenceId), ["I1", "S1"]);
+    assert.match(body.answer, /saved dinner total: 300 ml milk for the whole dinner/i);
+    if (status === "unsupported") assert.match(body.answer, /no measured amount of milk for this step/i);
+  }
+  const { body: total } = await h.ask(context, [], "How much milk do I need for this dinner?");
+  assert.equal(total.answerKind, "planning_quantities");
+  assert.equal(total.planningFacts[0].measure, "300 ml");
+  assert.equal(h.prompts.length, 0);
+});
+
+test("explicit dinner totals stay available offline when the cook asks about the saved amount now", async t => {
+  const meal = savedDinner(today);
+  const h = chefHarness(t, kitchenState([], [meal]));
+  for (const context of [await savedContext(meal, { purpose: "planning" }), await savedContext(meal, { stepEvidenceId: "S1" })]) {
+    for (const query of [
+      "How much rice is in my saved dinner now?",
+      "How much rice is in the whole dinner here?",
+      "Now how much rice do I need for this dinner?",
+    ]) {
+      const { body } = await h.ask(context, [], query);
+      assert.equal(body.answerKind, "planning_quantities", query);
+      assert.equal(body.planningFacts[0].measure, "250 g", query);
+    }
+  }
   assert.equal(h.prompts.length, 0);
 });
 

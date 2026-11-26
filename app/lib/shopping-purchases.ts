@@ -1,4 +1,4 @@
-import type { KitchenState, PantryLocation, PantryStock, ShoppingPurchase } from "./kitchen-types";
+import type { KitchenState, PantryLocation, PantryStock, PlannedMeal, ShoppingPurchase } from "./kitchen-types";
 import { buildShoppingList, parseMeasure, type ShoppingItem } from "./quantities";
 import { addDateDays } from "./kitchen-state";
 import { measureInputProblem, pantryLocationInputProblem } from "./kitchen-validation";
@@ -15,6 +15,32 @@ export function mealsForShoppingWeek(meals: KitchenState["meals"], week: string)
 export function shoppingForWeek(state: KitchenState, week: string, today: string): ShoppingItem[] {
   return buildShoppingList(mealsForShoppingWeek(state.meals, week), state.pantry, today)
     .map((item) => ({ ...item, key: `${week}:${item.key}` }));
+}
+
+/** A newly placed dinner can bring back a shortage already purchased and used earlier this week. */
+export function placeDinnersInWeek(state: KitchenState, dinners: PlannedMeal[], week: string, today?: string): KitchenState {
+  const meals = { ...state.meals, ...Object.fromEntries(dinners.map(meal => [meal.date, meal])) };
+  const next = { ...state, meals };
+  // Older queued placement commands have no captured shopping date. Replay their original behavior.
+  if (!today || !state.shoppingPurchases?.length) return next;
+
+  const purchasedKeys = new Set<string>();
+  for (const receipt of state.shoppingPurchases) {
+    if (receipt.week !== week) continue;
+    for (const item of receipt.items) {
+      if (state.shoppingChecked[item.key] && item.cycleId === state.shoppingCycles?.[item.key]) purchasedKeys.add(item.key);
+    }
+  }
+  if (!purchasedKeys.size) return next;
+  for (const item of shoppingForWeek(state, week, today)) purchasedKeys.delete(item.key);
+  if (!purchasedKeys.size) return next;
+
+  for (const item of shoppingForWeek(next, week, today)) {
+    if (!purchasedKeys.has(item.key)) continue;
+    if (next.shoppingChecked === state.shoppingChecked) next.shoppingChecked = { ...state.shoppingChecked };
+    delete next.shoppingChecked[item.key];
+  }
+  return next;
 }
 
 export function unappliedBoughtItems(state: KitchenState, items: ShoppingItem[]): ShoppingItem[] {

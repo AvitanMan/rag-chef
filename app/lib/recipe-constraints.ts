@@ -41,21 +41,24 @@ export function normalizeConstraints(input: ConstraintInput = {}): RecipeConstra
 /** Negative evidence can exclude a recipe; absence of a match never certifies it. */
 export function ingredientDietConflicts(recipe: Pick<Recipe, "ingredients">, diet: Diet): boolean {
   if (diet === "low_carb") return false;
-  const text = normalizeIngredientText(recipe.ingredients.map((x) => x.name).join(" | "));
-  const animalText = text.replace(/\b(?:vegan|vegetarian|plant based|meat free) (?:chicken|beef|pork|sausage|bacon|ham|meat)\b/g, "");
+  const ingredients = recipe.ingredients.map(({ name }) => normalizeIngredientText(name));
+  // Apply qualifiers within each ingredient and keep row boundaries during the term scan.
   if (diet === "vegetarian" || diet === "vegan") {
+    const animalText = ingredients.map(text => text.replace(/\b(?:vegan|vegetarian|plant based|meat free) (?:chicken|beef|pork|sausage|bacon|ham|meat)\b/g, "")).join(" | ");
     if (MEAT_TERMS.some((term) => containsIngredientTerm(animalText, term))) return true;
     if (diet === "vegetarian") return false;
-    const plantBinderContext = /\b(?:(?:flax(?:seed)?|chia(?: seed)?) eggs?|plant (?:based )?binders?)\b/.test(text);
-    const dairyText = (plantBinderContext ? text.replace(/\b(?:commercial )?egg replacers?\b/g, "") : text)
-      .replace(/\b(?:flax(?:seed)?|chia(?: seed)?|vegan|plant based) eggs?\b/g, "")
-      .replace(/\b(?:coconut|soy|soya|oat|almond|rice|cashew|plant based) (?:milk|cream)\b/g, "")
-      .replace(/\b(?:peanut|almond|cashew|apple|cocoa|vegan|plant based) butter\b/g, "")
-      .replace(/\b(?:vegan|dairy free|plant based) (?:cheese|yogurt|yoghurt|cream|milk)\b/g, "");
+    const dairyText = ingredients.map(text => {
+      const plantBinderContext = /\b(?:(?:flax(?:seed)?|chia(?: seed)?) eggs?|plant (?:based )?binders?)\b/.test(text);
+      return (plantBinderContext ? text.replace(/\b(?:commercial )?egg replacers?\b/g, "") : text)
+        .replace(/\b(?:flax(?:seed)?|chia(?: seed)?|vegan|plant based) eggs?\b/g, "")
+        .replace(/\b(?:coconut|soy|soya|oat|almond|rice|cashew|plant based) (?:milk|cream)\b/g, "")
+        .replace(/\b(?:peanut|almond|cashew|apple|cocoa|vegan|plant based) butter\b/g, "")
+        .replace(/\b(?:vegan|dairy free|plant based) (?:cheese|yogurt|yoghurt|cream|milk)\b/g, "");
+    }).join(" | ");
     return [...DAIRY_TERMS, "egg", "eggs", "mayonnaise", "meringue", "albumen", "honey"].some((term) => containsIngredientTerm(dairyText, term));
   }
-  const glutenText = text.replace(/\bgluten free (?:flour|bread|pasta|noodles|soy sauce|spaghetti|penne|lasagne|lasagna|(?:potato )?gnocchi)\b/g, "")
-    .replace(/\b(?:rice|corn|maize|chickpea|gram|almond|coconut|buckwheat|tapioca|potato) flour\b/g, "");
+  const glutenText = ingredients.map(text => text.replace(/\bgluten free (?:flour|bread|pasta|noodles|soy sauce|spaghetti|penne|lasagne|lasagna|(?:potato )?gnocchi)\b/g, "")
+    .replace(/\b(?:rice|corn|maize|chickpea|gram|almond|coconut|buckwheat|tapioca|potato) flour\b/g, "")).join(" | ");
   return GLUTEN_TERMS.some((term) => containsIngredientTerm(glutenText, term));
 }
 

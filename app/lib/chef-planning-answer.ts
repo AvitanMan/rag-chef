@@ -7,15 +7,21 @@ import { mealAmountBasis, canonicalIngredient, normalizePlanningIngredient, pars
 export function isPlanningQuantityQuestion(query: string): boolean {
   // The shortcut answers the whole request. A second question or instruction
   // needs source evidence even when the first clause asks about an amount.
-  const request = query.trim().replace(/[?.!]+$/, "");
+  const question = query.trim().replace(/[?.!]+$/, "");
+  // "Now how much for this dinner?" still asks for a total. Keep "add now"
+  // and other step references inside the question so they retain their scope.
+  const dinnerScope = /\b(?:for|in)\s+(?:(?:this|the|my|our)\s+)?(?:(?:whole|entire)\s+)?(?:(?:saved|planned)\s+)?(?:dinner|meal|recipe|batch)(?:\s+(?:now|here))?(?=\s*(?:,?\s*please)?$)/i;
+  const request = dinnerScope.test(question)
+    ? question.replace(dinnerScope, "for dinner").replace(/^now,?\s+(?=how (?:much|many)\b)/i, "") : question;
   const extraRequest = /[?!;]|[.:]\s+\S|(?:\b(?:and|or|also|but|then|plus)\s+|,\s*)(?:how|why|what|when|where|whether|should|can|could|would|will|do|does|is|are|must|explain|describe|show|tell)\b/i.test(request);
   const quantityTail = request.match(/\b(?:(?:do|will|would|should|must)\s+(?:i|we|you)\s+(?:need|use|require)|(?:does|will|would)\s+(?:this|the|my|our)\s+(?:dinner|meal|recipe)\s+(?:need|use|require)|(?:is|are)\s+(?:needed|required|planned|saved))\b([\s\S]*)$/i)?.[1];
   // Only a dinner scope or polite closing may follow the quantity request.
   // Otherwise the ingredient parser would stop early and drop the rest.
-  const unexpectedTail = quantityTail !== undefined && !/^\s*(?:(?:(?:for|in)\s+(?:(?:this|the|my|our)\s+)?(?:(?:saved|planned)\s+)?(?:dinner|meal|recipe|batch))|(?:(?:for\s+)?(?:tonight|today|tomorrow)))?\s*(?:,?\s*please)?\s*$/i.test(quantityTail);
+  const unexpectedTail = quantityTail !== undefined && !/^\s*(?:for dinner|(?:for\s+)?(?:tonight|today|tomorrow))?\s*(?:,?\s*please)?\s*$/i.test(quantityTail);
   return /\bhow (?:much|many)\b|\b(?:ingredient amounts?|quantities)\b|\bwhat (?:are )?(?:the )?amounts?\b/i.test(query)
     && !extraRequest
     && !unexpectedTail
+    && !/\b(?:steps?|directions?|instructions?|now|here)\b/i.test(request)
     && !/\b(?:cook|prepare|drain|stir|rinse|mix|whisk|chop|slice|dice|grate|serve|store|reheat)\b/i.test(query)
     && !/\b(?:original|source|servings?|yield|minutes?|seconds?|hours?|time|temperature|degrees?|calories?|kcal|protein|carbs?|fat|sodium|nutrition|why|when|bake|boil|fry|warm|heat|method|technique|substitut\w*|swap\w*|instead)\b|\b(?:can|should|could) i\b/i.test(query);
 }
