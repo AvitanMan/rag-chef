@@ -53,6 +53,7 @@ test("nested unknown fields, duplicate identities and impossible dates are rejec
     { ...variants[0], patch: { servings: -1 } },
     { ...variants[1], locked: "true" },
     { ...variants[2], meal: { ...meal, admin: true } },
+    { ...variants[2], today: "2026-02-30" },
     { ...variants[3], occurredAt: "2026-02-30T12:00:00.000Z" },
     { ...variants[3], occurredAt: "2026-11-12T12:00:00Z" },
     { ...variants[3], today: "2026-02-30" },
@@ -76,7 +77,9 @@ test("nested unknown fields, duplicate identities and impossible dates are rejec
   assert.throws(() => parseKitchenCommand(Object.assign(Object.create({ inherited: true }), command(variants[0]))), KitchenCommandValidationError);
 });
 
-test("normal blank purchase dates are allowed and the serialized command remains byte bounded", () => {
+test("placement dates and blank purchase dates are accepted and the serialized command remains byte bounded", () => {
+  const placement = command({ ...variants[2], today: date });
+  assert.deepEqual(parseKitchenCommand(placement), placement);
   const purchase = command({ ...variants[5], drafts: [{ ...variants[5].drafts[0], useBy: "" }] });
   assert.deepEqual(parseKitchenCommand(purchase), purchase);
   assert.throws(() => parseKitchenCommand(command({ ...variants[3], expectedFingerprint: "é".repeat(1_000_000) })), KitchenCommandValidationError);

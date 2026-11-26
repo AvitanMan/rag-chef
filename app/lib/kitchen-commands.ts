@@ -1,8 +1,8 @@
 import type { CookingProfile, KitchenState, PantryStock, PersonalRecipeAmounts, PlannedMeal } from "./kitchen-types";
-import { dinnerSelectionStatus } from "./kitchen-state";
+import { dinnerSelectionStatus, weekStart } from "./kitchen-state";
 import { plannedDinnerFingerprint } from "./cooking-session";
 import { completeMeal, undoMeal } from "./quantities";
-import { applyBoughtItems, beginShoppingPurchaseCycle, setShoppingItemBought, undoPurchase, type PurchaseDraft, type ShoppingPurchaseSelection } from "./shopping-purchases";
+import { applyBoughtItems, beginShoppingPurchaseCycle, placeDinnersInWeek, setShoppingItemBought, undoPurchase, type PurchaseDraft, type ShoppingPurchaseSelection } from "./shopping-purchases";
 import { replacePantryBatch, samePantryBatch, undoPantryBatch, type PantryBatchChange } from "./pantry-browser";
 import { pantryInputProblem } from "./pantry-input";
 import { validateKitchenState } from "./kitchen-validation";
@@ -11,7 +11,7 @@ export type DinnerAmountsPatch = Partial<Pick<PlannedMeal, "baseServings" | "ser
 export type KitchenCommandInput =
   | { type: "ChangeDinnerAmounts"; date: string; expectedMealId: string; patch: DinnerAmountsPatch }
   | { type: "SetDinnerLocked"; date: string; expectedMealId: string; locked: boolean }
-  | { type: "PlaceDinner"; meal: PlannedMeal; expectedMealId: string | null }
+  | { type: "PlaceDinner"; meal: PlannedMeal; expectedMealId: string | null; today?: string }
   | { type: "CompleteDinner"; date: string; expectedMealId: string; expectedFingerprint: string; deductStock: boolean; occurredAt: string; today: string }
   | { type: "UndoDinner"; date: string; expectedMealId: string; expectedCompletionId: string | null }
   | { type: "RecordPurchase"; week: string; today: string; drafts: PurchaseDraft[]; occurredAt: string }
@@ -82,9 +82,10 @@ function reduceKitchenCommand(state: KitchenState, command: KitchenCommand, cont
     case "PlaceDinner": {
       const meal = structuredClone(command.meal);
       if (!validId(meal.id) || !validDate(meal.date) || meal.id === command.expectedMealId
+        || (command.today !== undefined && !validDate(command.today))
         || dinnerSelectionStatus(state.meals, meal.date, command.expectedMealId) !== "available") return state;
       meal.status = "planned"; meal.locked = false; delete meal.completion;
-      return { ...state, meals: { ...state.meals, [meal.date]: meal } };
+      return placeDinnersInWeek(state, [meal], weekStart(meal.date), command.today);
     }
     case "CompleteDinner": {
       const meal = state.meals[command.date];

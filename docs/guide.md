@@ -665,6 +665,11 @@ for addition. Enter what you actually purchased, including a smaller amount if
 needed. Switch to **Whole week** to review purchases across all dinners, uncheck
 all items, or undo a pantry addition from its receipt.
 
+If you buy rice, confirm it in Pantry, and cook it all, saving another dinner
+that needs rice puts the new shortage in **To buy**. This also applies when you
+choose **Apply dinners** in Fill empty days. Copy and Print include the rice on
+your next shopping list.
+
 For a bought item still on the shopping list whose current cycle was already
 added to Pantry, **Need to buy again** returns it to To buy, while **Record another
 purchase** keeps it bought under a new cycle. Neither action adds stock: review

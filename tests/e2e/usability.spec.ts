@@ -767,13 +767,15 @@ test("a second bought batch of the same shortage can reach pantry after the firs
   await expect.poll(async () => (await read(request)).state.pantry[0]?.measure).toBe("0 g");
   const used = (await read(request)).state as KitchenState;
   expect(used.meals[firstDate].status).toBe("cooked");
-  await save(request, { ...used, meals: { ...used.meals, [TODAY]: meal(source) } });
-  await page.reload(); await navigate(page, "Shopping");
+  await page.goto("/"); await navigate(page, "Recipes");
+  await page.getByRole("searchbox", { name: "Search recipes", exact: true }).fill("Tomato Rice");
+  await page.getByRole("button", { name: "Choose for tonight: Tomato Rice", exact: true }).click();
+  await expect.poll(async () => (await read(request)).state.meals[TODAY]?.recipeId).toBe(source.id);
+  await navigate(page, "Shopping");
   await expect(page.getByRole("button", { name: "Add bought items to pantry", exact: true })).toHaveCount(0);
-  await page.locator(".bought-items > summary").click();
-  const bought = page.getByRole("checkbox", { name: "Bought rice 200 g", exact: true });
-  await expect(bought).toBeChecked();
-  await bought.click();
+  const bought = page.getByRole("region", { name: "To buy", exact: true })
+    .getByRole("checkbox", { name: "Bought rice 200 g", exact: true });
+  await expect(bought).not.toBeChecked();
   await bought.click();
   await page.getByRole("button", { name: "Add bought items to pantry", exact: true }).click();
   await page.getByRole("dialog", { name: "Add bought items to pantry", exact: true }).getByRole("button", { name: "Confirm pantry additions", exact: true }).click();

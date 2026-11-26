@@ -27,11 +27,12 @@ export function containsIngredientTerm(haystack: string, term: string): boolean 
 }
 
 export function matchedRecipeAllergies(recipe: { ingredients: RecipeIngredient[]; allergens?: string[] }, allergies: string[]): string[] {
-  const text = normalizeIngredientText([...recipe.ingredients.map((item) => item.name), ...(recipe.allergens ?? [])].join(" | "));
+  if (!allergies.length) return [];
+  const text = [...recipe.ingredients.map((item) => item.name), ...(recipe.allergens ?? [])].map(ingredientTermIdentity).join(" | ");
   return allergies.filter((raw) => {
     const allergy = normalizeIngredientText(raw).replace(/\b(?:allergy|allergies|allergic|intolerance|intolerant|to)\b/g, " ").replace(/\s+/g, " ").trim();
     if (!allergy) return false;
-    return allergyTerms(allergy).some((term) => containsIngredientTerm(text, term));
+    return allergyTerms(allergy).some((term) => containsIngredientTerm(text, ingredientTermIdentity(term)));
   });
 }
 
@@ -61,23 +62,30 @@ const EXCLUSION_FAMILIES: Record<string, string[]> = {
   shellfish: allergyTerms("shellfish"),
   sesame: allergyTerms("sesame"),
 };
-const INGREDIENT_PLURALS: Record<string, string> = { tomatoes: "tomato", onions: "onion", mushrooms: "mushroom", eggs: "egg", peanuts: "peanut", potatoes: "potato", carrots: "carrot", beans: "bean", chickpeas: "chickpea", peppers: "pepper", walnuts: "walnut", almonds: "almond", cashews: "cashew", cheeses: "cheese", nut: "nuts" };
+const INGREDIENT_PLURALS: Record<string, string> = {
+  tomatoes: "tomato", onions: "onion", mushrooms: "mushroom", eggs: "egg", potatoes: "potato",
+  carrots: "carrot", beans: "bean", chickpeas: "chickpea", peppers: "pepper", cheeses: "cheese",
+  peanuts: "peanut", groundnuts: "groundnut", walnuts: "walnut", almonds: "almond", cashews: "cashew",
+  pistachios: "pistachio", pecans: "pecan", hazelnuts: "hazelnut", macadamias: "macadamia", nut: "nuts",
+  anchovies: "anchovy", sardines: "sardine", prawns: "prawn", clams: "clam", mussels: "mussel",
+  oysters: "oyster", scallops: "scallop",
+};
 
-function exclusionIdentity(text: string): string {
-  return normalizeIngredientText(text).split(" ").map((word) => INGREDIENT_PLURALS[word] ?? word).join(" ");
+function ingredientTermIdentity(text: string): string {
+  return normalizeIngredientText(text).split(" ").map((word) => Object.hasOwn(INGREDIENT_PLURALS, word) ? INGREDIENT_PLURALS[word] : word).join(" ");
 }
 
 /** Request exclusions are separate from saved allergies and never certify suitability. */
 export function matchedRecipeIngredientExclusions(recipe: { ingredients: RecipeIngredient[]; title?: string }, exclusions: string[]): string[] {
-  const names = recipe.ingredients.map((ingredient) => exclusionIdentity(ingredient.name));
+  const names = recipe.ingredients.map((ingredient) => ingredientTermIdentity(ingredient.name));
   return exclusions.filter((raw) => {
-    const identity = exclusionIdentity(raw);
-    if (identity && recipe.title && exclusionIdentity(recipe.title) === identity) return true;
+    const identity = ingredientTermIdentity(raw);
+    if (identity && recipe.title && ingredientTermIdentity(recipe.title) === identity) return true;
     const terms = EXCLUSION_FAMILIES[identity] ?? [identity];
     const checkedNames = identity === "dairy" ? names.map((name) => name
       .replace(/\b(?:coconut|soy|soya|oat|almond|rice|cashew|plant based) (?:milk|cream)\b/g, "")
       .replace(/\b(?:peanut|almond|cashew|apple|cocoa|vegan|plant based) butter\b/g, "")
       .replace(/\b(?:vegan|dairy free|plant based) (?:cheese|yogurt|yoghurt|cream|milk)\b/g, "")) : names;
-    return terms.some((term) => checkedNames.some((name) => containsIngredientTerm(name, exclusionIdentity(term))));
+    return terms.some((term) => checkedNames.some((name) => containsIngredientTerm(name, ingredientTermIdentity(term))));
   });
 }

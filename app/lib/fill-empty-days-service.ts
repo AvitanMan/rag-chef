@@ -7,6 +7,7 @@ import { kitchenCommandHash } from "./kitchen-command-validation";
 import { KitchenConflictError, kitchenService } from "./kitchen-service";
 import { validateKitchenWrite } from "./kitchen-validation";
 import { EMPTY_KITCHEN } from "./kitchen-types";
+import { placeDinnersInWeek } from "./shopping-purchases";
 import { householdDate } from "./private-storage";
 
 function planningTimezone(input: FillEmptyDaysPreviewRequest, context: HouseholdContext): string {
@@ -47,8 +48,7 @@ async function prepare(input: FillEmptyDaysPreviewRequest, context: HouseholdCon
     .map(item => ({ id: item.recipe.id, sourceId: item.sourceId, version: item.version, hash: item.contentHash, metadata: item.metadata ?? null }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const applied = preview.additions.length > 0;
-  const additions = Object.fromEntries(preview.additions.map(meal => [meal.date, meal]));
-  const next = applied ? { ...state, meals: { ...state.meals, ...additions } } : state;
+  const next = applied ? placeDinnersInWeek(state, preview.additions, week, today) : state;
   // The review must fit the same recipe, meal and document limits as the final write.
   validateKitchenWrite({ revision: current.revision, state: next });
   const digest = await kitchenCommandHash({ options, preview, sources, householdId: context.householdId, actorId: context.userId });

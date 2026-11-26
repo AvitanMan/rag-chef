@@ -757,7 +757,11 @@ function previewMealUndo(state: KitchenState, date: string): { state: KitchenSta
     const currentStock = index >= 0 ? pantry[index] : undefined;
     const current = currentStock ? parseMeasure(currentStock.measure) : null;
     if (currentStock && current && current.dimension === before.dimension && canonicalIngredient(currentStock.name) === canonicalIngredient(name)) {
-      pantry[index] = { ...currentStock, measure: formatMeasure(cleanNumber(current.quantity + quantity), current.unit) };
+      const restored = formatMeasure(cleanNumber(current.quantity + quantity), current.unit);
+      // An untouched batch can recover its original fraction when formatting rounds it.
+      const measure = current.quantity === after.quantity && parseMeasure(restored)?.quantity !== before.quantity
+        ? deduction.before : restored;
+      pantry[index] = { ...currentStock, measure };
       continue;
     }
     // A deleted row restores only the consumed delta, not the stock the user

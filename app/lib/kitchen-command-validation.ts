@@ -80,7 +80,10 @@ export function parseKitchenCommand(value: unknown): KitchenCommand {
         break;
       }
       case "SetDinnerLocked": shape(["date", "expectedMealId", "locked"]); date(command.date); id(command.expectedMealId); bool(command.locked); break;
-      case "PlaceDinner": shape(["meal", "expectedMealId"]); nullableId(command.expectedMealId); meals([command.meal]); break;
+      case "PlaceDinner":
+        shape(["meal", "expectedMealId"], ["today"]); nullableId(command.expectedMealId); meals([command.meal]);
+        if (Object.hasOwn(command, "today")) date(command.today);
+        break;
       case "CompleteDinner":
         shape(["date", "expectedMealId", "expectedFingerprint", "deductStock", "occurredAt", "today"]);
         date(command.date); id(command.expectedMealId); text(command.expectedFingerprint, MAX_KITCHEN_COMMAND_BYTES); bool(command.deductStock); timestamp(command.occurredAt); date(command.today); break;

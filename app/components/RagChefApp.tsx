@@ -1077,7 +1077,7 @@ export default function RagChefApp() {
     const fresh = createPlannedMeal(date, recipe, true, { amounts: kitchen.state.personalRecipeAmounts?.[recipe.id], contentHash });
     const chosenTemplate = template ?? (current || validPortions ? chefMealPreview(current ?? fresh, { purpose: "planning", targetDate: date, ...(validPortions ? { servings: portions } : {}) }) : undefined);
     const meal = chosenTemplate ? { ...structuredClone(chosenTemplate), id: fresh.id, date } : fresh;
-    if (!kitchen.command({ type: "PlaceDinner", meal, expectedMealId: expectedId })) {
+    if (!kitchen.command({ type: "PlaceDinner", meal, expectedMealId: expectedId, today })) {
       setSelectionNotice("Dinner was not saved. Your choices are kept. Resolve pending kitchen changes and try again.");
       return false;
     }

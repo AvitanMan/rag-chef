@@ -105,7 +105,7 @@ test("purchase history is optional in old backups and validates duplicate identi
   assert.throws(() => validateKitchenState({ ...added, shoppingPurchases: [added.shoppingPurchases[0], added.shoppingPurchases[0]] }));
 });
 
-test("a fresh shopping cycle allows the same shortage again after the earlier dinner is cooked", () => {
+test("saving a dinner returns a previously purchased shortage to To buy and export, ready for a fresh purchase cycle", () => {
   const monday = week, tuesday = today;
   let state = { ...kitchen(), pantry: [], meals: { [monday]: createPlannedMeal(monday, recipe) } };
   const first = shoppingForWeek(state, week, monday)[0];
@@ -113,12 +113,30 @@ test("a fresh shopping cycle allows the same shortage again after the earlier di
   const firstDraft = { key: first.key, cycleId: "cycle-one", name: first.name, measure: first.measure, pantryId: "first-purchase" };
   state = applyBoughtItems(state, week, monday, [firstDraft], "receipt-one", "2026-10-26T12:00:00.000Z");
   state = completeMeal(state, monday, true, "2026-10-26T12:30:00.000Z");
-  state = { ...state, meals: { ...state.meals, [tuesday]: createPlannedMeal(tuesday, recipe) } };
+  const previous = state;
+  const place = { type: "PlaceDinner", meal: createPlannedMeal(tuesday, { ...recipe, id: "test:another-rice" }),
+    today: tuesday, expectedMealId: null, commandId: "place-tuesday", expectedRevision: 1 };
+  state = applyKitchenCommand(previous, place, { revision: 1 });
   const second = shoppingForWeek(state, week, tuesday)[0];
   assert.equal(second.key, first.key);
   assert.equal(state.pantry[0].measure, "0 g");
   assert.equal(applyBoughtItems(state, week, tuesday, [firstDraft], "replayed-receipt", at), state);
-  state = setShoppingItemBought(state, second.key, false, "ignored");
+  assert.equal(Boolean(state.shoppingChecked[second.key]), false);
+  const tree = elements(DurableShoppingView(shoppingProps(state)));
+  const toBuy = tree.find(node => node.props?.["aria-label"] === "To buy");
+  assert.ok(elements(toBuy).some(node => node.props?.["aria-label"] === "Bought rice 200 g"));
+  const exportControl = tree.find(node => node.type?.name === "ShoppingExport");
+  assert.deepEqual(exportControl.props.items.map(item => [item.name, item.measure]), [["rice", "200 g"]]);
+  assert.deepEqual(state.shoppingPurchases, previous.shoppingPurchases);
+  assert.equal(applyKitchenCommand(state, place, { revision: 2 }), state);
+  // Replacing a dinner that already has this shortage must keep its checkbox and repeat actions.
+  const existing = { ...previous, meals: { ...previous.meals, [tuesday]: createPlannedMeal(tuesday, recipe) } };
+  const replaced = applyKitchenCommand(existing, { ...place, expectedMealId: existing.meals[tuesday].id }, { revision: 1 });
+  assert.equal(replaced.meals[tuesday].id, place.meal.id);
+  assert.equal(replaced.shoppingChecked[first.key], true);
+  // A new pending purchase has no matching receipt for its cycle, even if the same key appeared before.
+  const pending = setShoppingItemBought(setShoppingItemBought(previous, first.key, false, "unchecked"), first.key, true, "pending");
+  assert.equal(applyKitchenCommand(pending, place, { revision: 1 }).shoppingChecked[first.key], true);
   state = setShoppingItemBought(state, second.key, true, "cycle-two");
   assert.equal(setShoppingItemBought(state, second.key, true, "duplicate-event"), state);
   assert.equal(unappliedBoughtItems(state, [second]).length, 1);
@@ -320,15 +338,18 @@ test("unknown purchase notes must match exactly, not just share an unparseable a
   }
 });
 
-test("purchase, cook, undo cook, undo purchase compose without losing entered dates or unrelated stock", () => {
+for (const [purchased, afterCooking, afterUndo] of [
+  ["1 kg", "800 g", "1000 g"],
+  ["1/3 kg", "133.333333 g", "1/3 kg"],
+]) test(`purchase, cook, undo cook, undo purchase preserve ${purchased}, its date and unrelated stock`, () => {
   const { checked, drafts } = preview(kitchen());
-  const added = applyBoughtItems(checked, week, today, [{ ...drafts[0], measure: "1 kg", useBy: "2026-10-30" }], "purchase", at);
+  const added = applyBoughtItems(checked, week, today, [{ ...drafts[0], measure: purchased, useBy: "2026-10-30" }], "purchase", at);
   const cooked = completeMeal(added, today, true, at);
-  assert.equal(cooked.pantry[2].measure, "800 g");
+  assert.equal(cooked.pantry[2].measure, afterCooking);
   assert.equal(cooked.meals[today].completion.deductions[0].useBy, "2026-10-30");
   assert.equal(undoPurchase(cooked, "purchase"), cooked);
   const uncooked = undoMeal(cooked, today);
-  assert.equal(uncooked.pantry[2].measure, "1000 g");
+  assert.equal(uncooked.pantry[2].measure, afterUndo);
   assert.equal(uncooked.pantry[2].useBy, "2026-10-30");
   assert.deepEqual(uncooked.shoppingPurchases, added.shoppingPurchases);
   const restored = parseKitchenBackup(serializeKitchenBackup(uncooked, at)).state;
